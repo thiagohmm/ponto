@@ -1,0 +1,41 @@
+#!/bin/zsh
+# ponto launcher: finds a Java 25+ runtime, runs the fat jar, stays quiet.
+set -e
+here="${0:A:h}"
+
+jar="$here/target/ponto.jar"
+[ -f "$jar" ] || jar="$HOME/.local/share/ponto/ponto.jar"
+if [ ! -f "$jar" ]; then
+    print -u2 "x   ponto.jar not found (run ./install.sh, or mvn -o package)"
+    exit 1
+fi
+
+java="${PONTO_JAVA:-}"
+ver() {
+    local v="$("$1" -version 2>&1 | head -1)"
+    v="${v#*\"}"; v="${v%%\"*}"; v="${v%%.*}"
+    case "$v" in (*[!0-9]*|"") echo 0 ;; (*) echo "$v" ;; esac
+}
+if [ -z "$java" ]; then
+    cand="$(/usr/libexec/java_home -v 25 2>/dev/null || true)/bin/java"
+    if [ "$(ver "$cand")" -ge 25 ]; then java="$cand"; fi
+fi
+if [ -z "$java" ]; then
+    for c in "$HOME"/.asdf/installs/java/*25*/bin/java(N); do
+        if [ "$(ver "$c")" -ge 25 ]; then java="$c"; break; fi
+    done
+fi
+if [ -z "$java" ]; then
+    c="$(command -v java || true)"
+    if [ -n "$c" ] && [ "$(ver "$c")" -ge 25 ]; then java="$c"; fi
+fi
+if [ ! -x "$java" ]; then
+    print -u2 "x   no java runtime (set PONTO_JAVA=/path/to/java)"
+    exit 1
+fi
+
+# The native-access flag only exists on Java 21+; the sqlite driver is noisy without it.
+if "$java" --enable-native-access=ALL-UNNAMED -version >/dev/null 2>&1; then
+    exec "$java" --enable-native-access=ALL-UNNAMED -jar "$jar" "$@"
+fi
+exec "$java" -jar "$jar" "$@"

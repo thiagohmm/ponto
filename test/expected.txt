@@ -1,0 +1,57 @@
+== PDF ==
+pages=2
+ponto 1.0.0  |  USER page 1
+RELATÓRIO DE PONTOS
+Relatório de pontos
+period    20/05/2026 - 20/05/2026
+user      Ana
+database  TESTDIR/…
+lines     3   incomplete  1
+total     0:45  (0.75 h)
+ID DATE DAY IN OUT DUR HOURS JUSTIFICATION
+1 20/05/2026 WED note trabalho remoto
+2 20/05/2026 WED 08:00 open
+3 20/05/2026 WED 08:30 09:15 0:45 0.75 medico
+TOTAL 0:45 0.75 3 lines  |  1 incomplete
+ponto 1.0.0  |  USER page 2
+SUMMARY BY DAY
+Relatório de pontos  |  20/05/2026 - 20/05/2026
+user     Ana
+DATE DAY LINES DUR HOURS
+20/05/2026 WED 3 0:45 0.75
+TOTAL 3 0:45 0.75
+
+== XLS ==
+magic=xls (OLE + BIFF8)
+--- REGISTRO ---
+  Relatório de pontos |
+  20/05/2026 - 20/05/2026 |
+  user Ana   ·   database TESTDIR/…
+  lines 3   ·   incomplete 1 |
+  ID | DATE | DAY | IN | OUT | DURATION | HOURS | JUSTIFICATION |
+  1 | 20/05/2026 | WED |  |  | note |  | trabalho remoto |
+  2 | 20/05/2026 | WED | 08:00 |  | open |  |  |
+  3 | 20/05/2026 | WED | 08:30 | 09:15 | 0:45 | 0.75 | medico |
+  TOTAL |  |  |  |  | 0:45 | 0.75 |  |
+  1 incomplete line(s): no pair, not counted |
+--- RESUMO ---
+  Relatório de pontos |
+  20/05/2026 - 20/05/2026 |
+  user Ana   ·   database TESTDIR/…
+  lines 3   ·   incomplete 1 |
+  DATE | DAY | LINES | DURATION | HOURS |
+  20/05/2026 | WED | 3 | 0:45 | 0.75 |
+  TOTAL |  | 3 | 0:45 | 0.75 |
+  1 incomplete line(s): no pair, not counted |
+== CSV ==
+ID;DIA;DIA_3L;IN;OUT;DURACAO;HORAS;JUSTIFICACAO
+1;20/05/2026;WED;;;note;;trabalho remoto
+2;20/05/2026;WED;08:00;;open;;
+3;20/05/2026;WED;08:30;09:15;0:45;0.75;medico
+TOTAL;;;;;0:45;0.75;3 lines
+User;Ana;;;;;;
+Period;20/05/2026 - 20/05/2026;;;;;;
+Days;1;;;;;;
+Total;0:45 (0.75 h);;;;;;
+Incomplete;1;;;;;;
+Database;TESTDIR/…

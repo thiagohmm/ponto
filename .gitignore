@@ -1,0 +1,13 @@
+target/
+test/out/
+.pi/
+
+# reports and databases produced by the app or the smoke test
+ponto-*.pdf
+ponto-*.xls
+ponto-*.csv
+*.db
+*.db-journal
+*.sqlite
+
+.DS_Store
