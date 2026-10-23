@@ -29,7 +29,7 @@ final class Xls {
     private static final int[] CW = {6, 11, 5, 6, 6, 9, 8, 62};
     private static final int[] SW = {11, 5, 7, 10, 8};
 
-    static byte[] write(Path f, Report r) {
+    static long write(Path f, Report r) {
         HSSFWorkbook wb = new HSSFWorkbook();
         try {
             St st = new St(wb);
@@ -41,10 +41,10 @@ final class Xls {
         }
     }
 
-    private static byte[] save(HSSFWorkbook wb, Path f) {
+    private static long save(HSSFWorkbook wb, Path f) {
         try {
             try (OutputStream os = Files.newOutputStream(f)) { wb.write(os); }
-            return Files.readAllBytes(f);
+            return Files.size(f);
         } catch (IOException e) { throw new Problema("xls: " + e.getMessage()); }
     }
 

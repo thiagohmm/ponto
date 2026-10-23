@@ -100,7 +100,11 @@ public final class Db implements AutoCloseable {
     }
 
     @Override public void close() {
-        try { c.close(); } catch (SQLException ignored) { /* already gone */ }
+        try {
+            try (Statement st = c.createStatement()) { st.execute("PRAGMA wal_checkpoint(TRUNCATE)"); }
+            catch (SQLException ignored) { /* checkpoint is best-effort */ }
+            c.close();
+        } catch (SQLException ignored) { /* already gone */ }
     }
 
     private static String nz(String... v) { for (String s : v) if (s != null && !s.isBlank()) return s; return ""; }

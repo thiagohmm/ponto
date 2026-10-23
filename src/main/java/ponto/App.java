@@ -64,10 +64,8 @@ final class App {
     }
 
     private void home() {
-        long mins = 0;
-        for (Entry e : repo.between(LocalDate.now().withDayOfMonth(1), LocalDate.now())) {
-            if (e.min() > 0) mins += e.min();
-        }
+        LocalDate today = LocalDate.now();
+        long mins = repo.sumMins(today.withDayOfMonth(1), today);
         out.home(who(), repo.count(), mins, db.file.toString(), openNote());
     }
 
@@ -76,11 +74,11 @@ final class App {
      * showing even when it is from last month.
      */
     private String openNote() {
-        List<Entry> half = repo.openAll().stream().filter(Entry::open).toList();
-        if (half.isEmpty()) return "open 0";
-        LocalDate oldest = half.getFirst().dia();
-        return "open " + half.size()
-             + (oldest.isBefore(LocalDate.now().withDayOfMonth(1)) ? "   since " + Str.d(oldest) : "");
+        Repo.OpenSum half = repo.openSummary();
+        if (half.n() == 0) return "open 0";
+        LocalDate oldest = half.oldest();
+        return "open " + half.n()
+             + (oldest != null && oldest.isBefore(LocalDate.now().withDayOfMonth(1)) ? "   since " + Str.d(oldest) : "");
     }
 
     private void setup() {
@@ -409,11 +407,13 @@ final class App {
         out.note("'" + q + "' -> " + rows.size() + " lines  ·  " + Dur.hm(totalOf(rows)));
     }
 
-    private static final int JUST_W = 34;   // justification column; the full text follows below
+    private static final int JUST_W = 31;   // justification column; the full text follows below
+    private static final int[] COL_W = {5, 10, 3, 5, 5, 5, JUST_W};
 
     private void table(List<Entry> rows) {
-        out.note(cols("ID", "DATE", "DAY", "IN", "OUT", "DUR", "JUSTIFICATION"));
-        out.note("-".repeat(76));
+        String head = cols("ID", "DATE", "DAY", "IN", "OUT", "DUR", "JUSTIFICATION");
+        out.note(head);
+        out.note("-".repeat(head.length()));
         for (Entry e : rows) {
             out.note(cols("" + e.id(), Str.d(e.dia()), Str.d3(e.dia()), Str.t(e.tin()), Str.t(e.tout()),
                          e.durCol(), Str.cut(e.just(), JUST_W)));
@@ -425,9 +425,8 @@ final class App {
     }
 
     private static String cols(String... v) {
-        int[] w = {5, 11, 4, 6, 6, 7, JUST_W};
         StringBuilder b = new StringBuilder();
-        for (int i = 0; i < v.length; i++) b.append(i > 0 ? "  " : "").append(Str.fix(v[i], w[i]));
+        for (int i = 0; i < v.length; i++) b.append(i > 0 ? "  " : "").append(Str.fix(v[i], COL_W[i]));
         return b.toString();
     }
 
@@ -482,12 +481,12 @@ final class App {
             return;
         }
 
-        byte[] bytes = switch (kind) {
+        long bytes = switch (kind) {
             case "csv" -> Csv.write(target, r);
             case "xls" -> Xls.write(target, r);
             default -> Pdf.write(target, r);
         };
-        out.ok(target + "   " + human(bytes.length) + "   " + r.lines().size() + " lines   " + r.totalLabel());
+        out.ok(target + "   " + human(bytes) + "   " + r.lines().size() + " lines   " + r.totalLabel());
         if (in.yes("open it?", true)) openWith(target);
     }
 
@@ -495,7 +494,7 @@ final class App {
         return new Report(new Report.Head(who(), db.file.toString(), p, stamp()), repo.between(p.from(), p.to()));
     }
 
-    private static String human(int n) {
+    private static String human(long n) {
         if (n < 1024) return n + " B";
         if (n < 1048576) return String.format(Locale.ROOT, "%.1f KB", n / 1024.0);
         return String.format(Locale.ROOT, "%.1f MB", n / 1048576.0);

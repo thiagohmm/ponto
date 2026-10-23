@@ -1,6 +1,6 @@
 == PDF ==
 pages=2
-ponto 1.0.0  |  USER page 1
+ponto 1.0.1  |  USER page 1
 RELATÓRIO DE PONTOS
 Relatório de pontos
 period    20/05/2026 - 20/05/2026
@@ -13,7 +13,7 @@ ID DATE DAY IN OUT DUR HOURS JUSTIFICATION
 2 20/05/2026 WED 08:00 open
 3 20/05/2026 WED 08:30 09:15 0:45 0.75 medico
 TOTAL 0:45 0.75 3 lines  |  1 incomplete
-ponto 1.0.0  |  USER page 2
+ponto 1.0.1  |  USER page 2
 SUMMARY BY DAY
 Relatório de pontos  |  20/05/2026 - 20/05/2026
 user     Ana

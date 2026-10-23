@@ -35,7 +35,8 @@ if [ ! -x "$java" ]; then
 fi
 
 # The native-access flag only exists on Java 21+; the sqlite driver is noisy without it.
+# Heap is capped: a timesheet does not need the JVM default (a quarter of RAM).
 if "$java" --enable-native-access=ALL-UNNAMED -version >/dev/null 2>&1; then
-    exec "$java" --enable-native-access=ALL-UNNAMED -jar "$jar" "$@"
+    exec "$java" -Xms16m -Xmx128m --enable-native-access=ALL-UNNAMED -jar "$jar" "$@"
 fi
-exec "$java" -jar "$jar" "$@"
+exec "$java" -Xms16m -Xmx128m -jar "$jar" "$@"

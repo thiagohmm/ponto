@@ -7,7 +7,7 @@
 
   <groupId>pt.ponto</groupId>
   <artifactId>ponto</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <packaging>jar</packaging>
   <name>ponto</name>
   <description>Terminal timesheet (SQLite) with CSV / XLS / PDF export</description>
@@ -108,6 +108,26 @@
                     <exclude>module-info.class</exclude>
                     <exclude>META-INF/versions/*/module-info.class</exclude>
                     <exclude>META-INF/maven/**</exclude>
+                  </excludes>
+                </filter>
+                <!-- Keep Linux x86_64 (dev) and aarch64 (prod). Drop the rest. -->
+                <filter>
+                  <artifact>org.xerial:sqlite-jdbc</artifact>
+                  <excludes>
+                    <exclude>org/sqlite/native/Windows/**</exclude>
+                    <exclude>org/sqlite/native/Mac/**</exclude>
+                    <exclude>org/sqlite/native/FreeBSD/**</exclude>
+                    <exclude>org/sqlite/native/Linux-Android/**</exclude>
+                    <exclude>org/sqlite/native/Linux-Musl/**</exclude>
+                    <exclude>org/sqlite/native/Linux/x86/**</exclude>
+                    <exclude>org/sqlite/native/Linux/arm/**</exclude>
+                    <exclude>org/sqlite/native/Linux/armv6/**</exclude>
+                    <exclude>org/sqlite/native/Linux/armv7/**</exclude>
+                    <exclude>org/sqlite/native/Linux/ppc64/**</exclude>
+                    <exclude>org/sqlite/native/Linux/riscv64/**</exclude>
+                    <exclude>org/sqlite/native/Linux/loongarch64/**</exclude>
+                    <exclude>org/sqlite/native/Linux/mips64/**</exclude>
+                    <exclude>org/sqlite/native/Linux/s390x/**</exclude>
                   </excludes>
                 </filter>
               </filters>

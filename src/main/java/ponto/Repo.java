@@ -141,9 +141,36 @@ public final class Repo {
                   + " OR (tin IS NULL AND tout IS NOT NULL))" + ORDER, d);
     }
 
-    int count() {
-        try (var q = prep("SELECT count(*) FROM ponto")) {
-            try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
+    int count() { return scalar("SELECT count(*) FROM ponto"); }
+
+    /**
+     * Minutes of closed lines in [a,b] (same rule as Entry.min: overnight when
+     * out <= in). Open lines and notes are 0.
+     */
+    long sumMins(LocalDate a, LocalDate b) {
+        String tinM = "(CAST(substr(tin,1,2) AS INTEGER)*60 + CAST(substr(tin,4,2) AS INTEGER))";
+        String toutM = "(CAST(substr(tout,1,2) AS INTEGER)*60 + CAST(substr(tout,4,2) AS INTEGER))";
+        try (var q = prep("SELECT COALESCE(SUM(CASE"
+                + " WHEN tin IS NULL OR tout IS NULL THEN 0"
+                + " WHEN " + toutM + " <= " + tinM + " THEN " + toutM + " - " + tinM + " + 1440"
+                + " ELSE " + toutM + " - " + tinM
+                + " END), 0) FROM ponto WHERE dia BETWEEN ? AND ?")) {
+            bind(q, new Object[]{a, b});
+            try (var rs = q.executeQuery()) { return rs.next() ? rs.getLong(1) : 0; }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
+    /** Half-open punches only (exactly one of in/out), oldest first. */
+    record OpenSum(int n, LocalDate oldest) {}
+
+    OpenSum openSummary() {
+        try (var q = prep("SELECT count(*), min(dia) FROM ponto"
+                + " WHERE (tin IS NULL) != (tout IS NULL)")) {
+            try (var rs = q.executeQuery()) {
+                if (!rs.next()) return new OpenSum(0, null);
+                String oldest = rs.getString(2);
+                return new OpenSum(rs.getInt(1), oldest == null ? null : LocalDate.parse(oldest));
+            }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
@@ -192,6 +219,13 @@ public final class Repo {
     /** Delete every record of a day (used by the day editor). */
     int deleteDay(LocalDate d) { return write("DELETE FROM ponto WHERE dia = ?", d); }
 
-    /** Snap a new timesheet for a brand new day: copies nothing, just inserts. */
-    int countOn(LocalDate d) { return on(d).size(); }
+    /** How many rows sit on that day. */
+    int countOn(LocalDate d) { return scalar("SELECT count(*) FROM ponto WHERE dia = ?", d); }
+
+    private int scalar(String sql, Object... args) {
+        try (var q = prep(sql)) {
+            bind(q, args);
+            try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
 }

@@ -22,8 +22,8 @@ final class Csv {
 
     private static final String[] HEAD = {"ID", "DIA", "DIA_3L", "IN", "OUT", "DURACAO", "HORAS", "JUSTIFICACAO"};
 
-    /** Renders and writes the report; returns the file content. */
-    static byte[] write(Path f, Report r) {
+    /** Renders and writes the report; returns the file size in bytes. */
+    static long write(Path f, Report r) {
         StringBuilder b = new StringBuilder("\uFEFF");
         b.append(line(HEAD));
         for (Entry e : r.lines()) b.append(line(row(e)));
@@ -40,7 +40,7 @@ final class Csv {
         byte[] out = b.toString().getBytes(StandardCharsets.UTF_8);
         try { Files.write(f, out); }
         catch (IOException e) { throw new Problema("csv: " + e.getMessage()); }
-        return out;
+        return out.length;
     }
 
     private static String[] row(Entry e) {

@@ -35,7 +35,7 @@ final class Pdf {
     private static final PDFont REG = new PDType1Font(FontName.HELVETICA);
     private static final PDFont BOLD = new PDType1Font(FontName.HELVETICA_BOLD);
 
-    static byte[] write(Path f, Report r) {
+    static long write(Path f, Report r) {
         PDDocument doc = new PDDocument();
         try {
             doc.setDocumentInformation(info(r));
@@ -44,7 +44,7 @@ final class Pdf {
             summary(pg, r);
             pg.close();
             try (OutputStream os = Files.newOutputStream(f)) { doc.save(os); }
-            return Files.readAllBytes(f);
+            return Files.size(f);
         } catch (IOException e) {
             throw new Problema("pdf: " + e.getMessage());
         } finally {
