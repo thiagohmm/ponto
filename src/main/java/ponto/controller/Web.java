@@ -8,7 +8,6 @@ import ponto.model.Entry;
 import ponto.model.Report;
 import ponto.model.Service;
 import ponto.model.Str;
-import ponto.view.Json;
 import ponto.view.Csv;
 import ponto.view.Json;
 import ponto.view.Json3;
@@ -16,14 +15,11 @@ import ponto.view.Pdf;
 import ponto.view.Xls;
 import ponto.model.Period;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDate;
-
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.LinkedHashMap;
