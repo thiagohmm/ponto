@@ -185,18 +185,34 @@ Then it replays `test/feed-off.txt` and checks the days off on the real output:
 
 ```
 src/main/java/ponto/
-  Main        arguments, first run, uncaught problems
-  App         the menu loop, one method per key
-  In          typed input: dates, times, ids, yes/no, free text
-  Out         printing: rules, columns, colours only on a TTY
-  Db          connection, schema, the `cfg` table
-  Repo        CRUD over the `ponto` table
-  Entry       one line: day, in, out, justification (open / note / closed)
-  Report      totals per day and grand total, shared by the three exporters
-  Parse       date and time text -> values
-  Holidays    weekends and the days off in Brazil, seen from São Paulo
-  Str, Dur    string and duration helpers
-  Csv, Pdf, Xls   the writers
+  Main        composition root: one Db, one Service, one UI per mode
+  Problema, Bad, NeedConfirm, Eof   the shared failure types
   Ver         NAME and VERSION
+  model/      domain: rules and SQLite, no printing
+    Entry       one line: day, in, out, justification (open / note / closed)
+    Report      totals per day and grand total, shared by the three exporters
+    Db          connection, schema, the `cfg` table
+    Repo        CRUD over the `ponto` table
+    Service     the whole vocabulary both UIs may call (one lock)
+    Holidays    weekends and the days off in Brazil, seen from São Paulo
+    Parse       date and time text -> values
+    Str, Dur    string and duration helpers
+    Period      a closed date range
+  view/       how things are rendered
+    Out         printing: rules, columns, colours only on a TTY
+    In          typed input: dates, times, ids, yes/no, free text
+    Csv, Pdf, Xls   the writers
+    Cols        the duration / decimal-hours table cells of one entry
+    Json        the JSON views of the web API (keys of web/src/types.ts)
+    Json3       Javalin's JSON mapper
+  controller/ the two UIs; they talk to Service and render views, nothing else
+    App         the menu loop, one method per key
+    Web         the Javalin API
 test/         feed.txt, feed-off.txt, Verify.java, expected.txt, smoke.sh
 ```
+
+Dependency rule: `controller -> model`, `view -> model`, and `controller ->`
+`view` when rendering; **the model never imports the view** — the JSON builders
+and the table columns live in `view/` for that reason. The frontend (`web/`) is
+unchanged: it is the browser view of the web mode.
+
