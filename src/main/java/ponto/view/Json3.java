@@ -1,4 +1,4 @@
-package ponto;
+package ponto.view;
 
 import io.javalin.json.JsonMapper;
 import java.lang.reflect.Type;
@@ -8,7 +8,7 @@ import java.lang.reflect.Type;
  * jollyday. Jackson 2 (`com.fasterxml`) must stay off the path: it hides
  * annotations jollyday needs and the holiday calendar goes silent.
  */
-final class Json3 implements JsonMapper {
+public final class Json3 implements JsonMapper {
 
     private final tools.jackson.databind.json.JsonMapper om = new tools.jackson.databind.json.JsonMapper();
 

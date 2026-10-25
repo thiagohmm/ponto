@@ -1,13 +1,13 @@
-package ponto;
+package ponto.view;
 
 import ponto.model.Dur;
 
 import java.io.PrintStream;
 
 /** Terminal rendering: colour only when attached to a real TTY. */
-final class Out {
+public final class Out {
 
-    static final boolean TTY = System.console() != null;
+    public static final boolean TTY = System.console() != null;
     private static final boolean COLOR =
             TTY && System.getenv("NO_COLOR") == null && !eq(System.getenv("TERM"), "dumb");
 
@@ -34,7 +34,7 @@ final class Out {
     static String red(String s) { return COLOR ? RED + s + R : s; }
 
     void rule() { ps.println(dim(RULE)); }
-    void blank() { ps.println(); }
+    public void blank() { ps.println(); }
 
     /**
      * The menu block. It clears the screen only on the first paint: the menu comes
@@ -43,7 +43,7 @@ final class Out {
      * Later repaints just leave a blank line, so what the key printed stays above
      * the menu and in the scrollback.
      */
-    void home(String name, int records, long mins, String dbPath, String openNote) {
+    public void home(String name, int records, long mins, String dbPath, String openNote) {
         if (TTY && !painted) ps.print("\u001B[2J\u001B[H"); else ps.println();
         painted = true;
         rule();
@@ -64,31 +64,31 @@ final class Out {
     }
 
     /** "> " waiting for a menu key. */
-    void key() { ps.print(COLOR ? CYA + "> " + R : "> "); }
+    public void key() { ps.print(COLOR ? CYA + "> " + R : "> "); }
 
     /** "label [default] > " */
-    void ask(String label, String def) {
+    public void ask(String label, String def) {
         String tail = def == null || def.isEmpty() ? "" : dim("[" + def + "] ");
         ps.print("  " + label + " " + tail + (COLOR ? CYA + "> " + R : "> "));
     }
 
     /** "label > " */
-    void ask(String label) { ask(label, null); }
+    public void ask(String label) { ask(label, null); }
 
     /** Wipe the screen on purpose (key x); run() repaints the menu right after. */
-    void clear() { if (TTY) { ps.print("\u001B[2J\u001B[H"); painted = true; } }
+    public void clear() { if (TTY) { ps.print("\u001B[2J\u001B[H"); painted = true; } }
 
     /** Where a value lands after Enter. */
     void echo(String s) { ps.println(COLOR ? GRN + s + R : s); }
-    void ok(String s) { ps.println(COLOR ? GRN + "ok  " + s + R : "ok  " + s); }
-    void warn(String s) { ps.println(COLOR ? YEL + "!   " + s + R : "!   " + s); }
-    void bad(String s) { ps.println(COLOR ? RED + "x   " + s + R : "x   " + s); }
-    void note(String s) { ps.println(dim("    " + s)); }
+    public void ok(String s) { ps.println(COLOR ? GRN + "ok  " + s + R : "ok  " + s); }
+    public void warn(String s) { ps.println(COLOR ? YEL + "!   " + s + R : "!   " + s); }
+    public void bad(String s) { ps.println(COLOR ? RED + "x   " + s + R : "x   " + s); }
+    public void note(String s) { ps.println(dim("    " + s)); }
 
-    void title(String s) { ps.println(); ps.println("  " + bold(s)); }
+    public void title(String s) { ps.println(); ps.println("  " + bold(s)); }
 
     void nl() { ps.println(); }
 
     /** Two-state message. */
-    void done(boolean changed, String extra) { ok((changed ? "saved " : "kept   ") + extra); }
+    public void done(boolean changed, String extra) { ok((changed ? "saved " : "kept   ") + extra); }
 }

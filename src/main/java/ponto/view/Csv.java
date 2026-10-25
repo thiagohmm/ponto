@@ -1,8 +1,9 @@
-package ponto;
+package ponto.view;
 
 import ponto.model.Entry;
 import ponto.model.Report;
 import ponto.model.Str;
+import ponto.Problema;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -49,8 +50,8 @@ public final class Csv {
 
     private static String[] row(Entry e) {
         return new String[]{"" + e.id(), Str.d(e.dia()), Str.d3(e.dia()),
-                Str.t(e.tin()), Str.t(e.tout()), e.durCol(),
-                e.hoursCol(), e.just()};
+                Str.t(e.tin()), Str.t(e.tout()), Cols.dur(e),
+                Cols.hours(e), e.just()};
     }
 
     private static String[] total(Report r) {

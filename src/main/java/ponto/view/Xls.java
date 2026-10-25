@@ -1,8 +1,10 @@
-package ponto;
+package ponto.view;
 
+import ponto.model.Dur;
 import ponto.model.Entry;
 import ponto.model.Report;
 import ponto.model.Str;
+import ponto.Problema;
 
 import java.io.IOException;
 import java.util.List;
@@ -103,7 +105,7 @@ public final class Xls {
         int i = 0;
         for (Entry e : r.lines()) {
             out[i++] = new String[] { Str.s(e.id()), Str.d(e.dia()), Str.d3(e.dia()), Str.t(e.tin()), Str.t(e.tout()),
-                                       e.durCol(), e.hoursCol(), e.just() };
+                                       Cols.dur(e), Cols.hours(e), e.just() };
         }
         return out;
     }

@@ -1,8 +1,11 @@
-package ponto;
+package ponto.view;
 
 import ponto.model.Parse;
 import ponto.model.Period;
 import ponto.model.Str;
+import ponto.Bad;
+import ponto.Eof;
+import ponto.Problema;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -17,14 +20,14 @@ import java.util.Optional;
  * Keyboard input. Every prompt is one short label plus the current value in
  * brackets: Enter keeps it, "-"/"x" clears it, anything else replaces it.
  */
-final class In {
+public final class In {
 
     /** raw text typed, plus whether the user just pressed Enter (keep). */
-    record Val(String raw, boolean keep) {
+    public record Val(String raw, boolean keep) {
         /** clear marker: "-" or "x". */
-        boolean clear() { return raw.equals("-") || raw.equalsIgnoreCase("x"); }
+        public boolean clear() { return raw.equals("-") || raw.equalsIgnoreCase("x"); }
         /** the effective string ("" when cleared or when the current value was empty). */
-        String value(String cur) { return keep ? cur : clear() ? "" : raw; }
+        public String value(String cur) { return keep ? cur : clear() ? "" : raw; }
     }
 
     private final Out o;
@@ -32,7 +35,7 @@ final class In {
     private final BufferedReader rd =
             new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 
-    In(Out o) { this.o = o; }
+    public In(Out o) { this.o = o; }
 
     private String read() {
         String s;
@@ -44,7 +47,7 @@ final class In {
     }
 
     /** Menu key + optional args on the same line ("2 12", "3 5 6 7", "4 40"). */
-    Cmd cmd() {
+    public Cmd cmd() {
         o.key();
         String s = read();
         String[] t = s.strip().split("\\s+");
@@ -59,18 +62,15 @@ final class In {
         return new Cmd(key, arg, ids, s.strip().substring(key.length()).strip());
     }
 
-    record Cmd(String key, int arg, List<Integer> ids, String rest) { }
+    public record Cmd(String key, int arg, List<Integer> ids, String rest) { }
 
     private static Integer safe(String s) {
         try { return s.chars().allMatch(c -> c >= '0' && c <= '9') && !s.isEmpty() ? Integer.parseInt(s) : null; }
         catch (RuntimeException ignored) { return null; }
     }
 
-    /** Free text, never rejected. */
-    String text(String label) { o.ask(label); return read().strip(); }
-
     /** Text with default (Enter keeps the default). */
-    String text(String label, String def) {
+    public String text(String label, String def) {
         o.ask(label, def);
         String s = read().strip();
         return s.isEmpty() ? def : s;
@@ -87,14 +87,14 @@ final class In {
     }
 
     /** Editable field of an existing record. */
-    Val field(String label, String cur) {
+    public Val field(String label, String cur) {
         o.ask(label, cur);
         String s = read().strip();
         return new Val(s, s.isEmpty());
     }
 
     /** Positive integer with retry; blank keeps the default (or re-prompts). */
-    int num(String label, int def) {
+    public int num(String label, int def) {
         o.ask(label, def <= 0 ? null : "" + def);
         String s = read().strip();
         if (s.isEmpty()) {
@@ -107,7 +107,7 @@ final class In {
     }
 
     /** Date with default; blank keeps the default. */
-    LocalDate date(String label, LocalDate def) {
+    public LocalDate date(String label, LocalDate def) {
         for (;;) {
             o.ask(label, def == null ? null : Str.d(def));
             String s = read().strip();
@@ -124,7 +124,7 @@ final class In {
      * Optional time. Enter keeps the default (which may itself be empty = no
      * punch); "now"/"n" = current minute; "-" clears it.
      */
-    Optional<LocalTime> time(String label, String def) {
+    public Optional<LocalTime> time(String label, String def) {
         o.ask(label, def == null ? "" : def);
         String s = read().strip();
         if (s.isEmpty() || s.equals("-") || s.equalsIgnoreCase("x")) {
@@ -141,7 +141,7 @@ final class In {
     }
 
     /** Yes/No, default encoded in the bracket. */
-    boolean yes(String label, boolean def) {
+    public boolean yes(String label, boolean def) {
         o.ask(label, def ? "Y/n" : "y/N");
         String s = read().strip().toLowerCase();
         if (s.isEmpty()) return def;
@@ -152,7 +152,7 @@ final class In {
     }
 
     /** Pick one letter: `opts` "ai" prints [a/i]; Enter keeps `def`. */
-    char choice(String label, String opts, char def) {
+    public char choice(String label, String opts, char def) {
         String hint = "";
         for (int i = 0; i < opts.length(); i++) hint += (i > 0 ? "/" : "") + opts.charAt(i);
         for (;;) {
@@ -166,7 +166,7 @@ final class In {
     }
 
     /** Period as "a b" / "a..b" / "a" (single day) / blank (default range). */
-    Period period(String label, LocalDate lo, LocalDate hi) {
+    public Period period(String label, LocalDate lo, LocalDate hi) {
         for (;;) {
             String def = lo == null || hi == null ? "" : Str.d(lo) + " " + Str.d(hi);
             o.ask(label, def);
@@ -186,7 +186,7 @@ final class In {
     }
 
     /** Id(s) on one line: "12", "5 6 7". Blank keeps the default. */
-    List<Integer> ids(String label, int def) {
+    public List<Integer> ids(String label, int def) {
         o.ask(label, def <= 0 ? null : "" + def);
         String s = read().strip();
         if (s.isEmpty()) {

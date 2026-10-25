@@ -1,8 +1,11 @@
-package ponto;
+package ponto.view;
 
+import ponto.model.Dur;
 import ponto.model.Entry;
 import ponto.model.Report;
 import ponto.model.Str;
+import ponto.Problema;
+import ponto.Ver;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -220,7 +223,7 @@ public final class Pdf {
             }
             text(X[0], "" + e.id(), BOLD, 8, b);
             String[] v = {Str.d(e.dia()), Str.d3(e.dia()), Str.t(e.tin()), Str.t(e.tout()),
-                         e.durCol(), e.hoursCol()};
+                         Cols.dur(e), Cols.hours(e)};
             for (int i = 1; i <= 6; i++) text(X[i], v[i - 1], REG, 8, b);
             for (int i = 0; i < js.size(); i++) text(X[7], js.get(i), REG, 8, b - i * LEAD);
             y = b - hh;

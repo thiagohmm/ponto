@@ -6,6 +6,7 @@ import ponto.model.Holidays;
 import ponto.model.Report;
 import ponto.model.Service;
 import ponto.model.Str;
+import ponto.view.Json3;
 
 import io.javalin.Javalin;
 import io.javalin.http.Context;

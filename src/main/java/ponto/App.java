@@ -10,6 +10,12 @@ import ponto.model.Report;
 import ponto.model.Repo;
 import ponto.model.Service;
 import ponto.model.Str;
+import ponto.view.Cols;
+import ponto.view.Csv;
+import ponto.view.In;
+import ponto.view.Out;
+import ponto.view.Pdf;
+import ponto.view.Xls;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -419,7 +425,7 @@ final class App {
         out.note("-".repeat(76));
         for (Entry e : rows) {
             out.note(cols("" + e.id(), Str.d(e.dia()), Str.d3(e.dia()), Str.t(e.tin()), Str.t(e.tout()),
-                         e.durCol(), Str.cut(e.just(), JUST_W)));
+                         Cols.dur(e), Str.cut(e.just(), JUST_W)));
             // the table column is narrow, but the text must never be lost: every
             // cut justification follows its line, word-wrapped ("· " = "continued")
             if (e.just().length() > JUST_W)

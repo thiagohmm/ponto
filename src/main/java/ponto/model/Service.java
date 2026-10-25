@@ -1,11 +1,12 @@
 package ponto.model;
 
 import ponto.Bad;
-import ponto.Csv;
 import ponto.NeedConfirm;
-import ponto.Pdf;
 import ponto.Problema;
-import ponto.Xls;
+import ponto.view.Cols;
+import ponto.view.Csv;
+import ponto.view.Pdf;
+import ponto.view.Xls;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -280,8 +281,8 @@ public final class Service {
         m.put("tout", Str.t(e.tout()));
         m.put("just", e.just());
         m.put("crea", e.crea());
-        m.put("dur", e.durCol());
-        m.put("hours", e.hoursCol());
+        m.put("dur", Cols.dur(e));
+        m.put("hours", Cols.hours(e));
         m.put("open", e.open());
         m.put("closed", e.closed());
         m.put("note", e.empty());
