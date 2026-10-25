@@ -1,0 +1,13 @@
+services:
+  ponto:
+    build: .
+    image: ponto:web
+    container_name: ponto
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    environment:
+      PONTO_DB: /data/ponto.db
+    volumes:
+      - /home/thiagohmm/.local/share/ponto:/data
+    command: ["--serve", "--port=8080"]

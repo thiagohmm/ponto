@@ -1,0 +1,9 @@
+.git
+.pi
+target/*
+!target/ponto.jar
+web/node_modules
+*.db
+*.db-wal
+*.db-shm
+*.db-journal

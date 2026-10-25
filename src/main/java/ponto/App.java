@@ -18,10 +18,16 @@ final class App {
 
     private final Db db;
     private final Repo repo;
+    private final Service svc;
     private final Out out = new Out();
     private final In in;
 
-    App(Db db) { this.db = db; this.repo = new Repo(db); this.in = new In(out); }
+    App(Db db) {
+        this.db = db;
+        this.repo = new Repo(db);
+        this.svc = new Service(db);
+        this.in = new In(out);
+    }
 
     void run() {
         setup();
@@ -204,16 +210,7 @@ final class App {
 
     /** cfg `off` = days you call off yourself: "2026-10-27 2026-12-31". */
     private List<LocalDate> offList(String raw) {
-        List<LocalDate> r = new ArrayList<>();
-        for (String s : raw.split("[;, ]+")) {
-            if (s.isBlank()) continue;
-            try {
-                r.add(Parse.date(s));
-            } catch (Bad b) {
-                out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored");
-            }
-        }
-        return r;
+        return Service.offDates(raw, s -> out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored"));
     }
 
     private LocalDate patchDate(In.Val v, LocalDate cur) {
@@ -241,19 +238,14 @@ final class App {
 
     /** Midnight + overlap guard (shared by new and edit; `skip` excludes the row itself). */
     private void check(Entry e, int skip) {
-        if (!e.closed()) return;
-        int a = Str.tod(e.tin()), b = Str.tod(e.tout());
-        if (a == b) throw new Bad("in = out");
-        if (b < a && !in.yes("crosses midnight (" + Dur.hm(b - a + 1440) + ")?", true)) throw new Problema("cancelled");
-        int bb = b < a ? b + 1440 : b;
-
-        for (Entry o : repo.on(e.dia())) {
-            if (o.id() == skip || !o.closed()) continue;
-            int x = Str.tod(o.tin()), y = Str.tod(o.tout());
-            if (y <= x) y += 1440;
-            if (bb <= x || a >= y) continue;
-            if (!in.yes("overlaps #" + o.id() + " " + o.stamp() + " (" + o.dur() + ")?", false)) throw new Problema("cancelled");
-            return;
+        Service.Warn w = svc.inspect(e, skip);
+        if (w.sameTime()) throw new Bad("in = out");
+        if (w.midnight() && !in.yes("crosses midnight (" + w.midnightLabel() + ")?", true))
+            throw new Problema("cancelled");
+        if (w.overlap() != null) {
+            Entry o = w.overlap();
+            if (!in.yes("overlaps #" + o.id() + " " + o.stamp() + " (" + o.dur() + ")?", false))
+                throw new Problema("cancelled");
         }
     }
 

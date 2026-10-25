@@ -1,6 +1,9 @@
 target/
 test/out/
 .pi/
+web/node_modules/
+web/dist/
+src/main/resources/public/assets/
 
 # reports and databases produced by the app or the smoke test
 ponto-*.pdf

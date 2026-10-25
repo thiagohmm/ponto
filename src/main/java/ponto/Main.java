@@ -4,6 +4,7 @@ package ponto;
  * Entry point.
  *
  *   ponto                 -> the menu (that's the normal way to use it)
+ *   ponto --serve         -> the same database, in the browser
  *   ponto --db=path     -> another database file
  *   ponto --help        -> this text
  *   ponto --version
@@ -14,10 +15,12 @@ package ponto;
 public final class Main {
 
     private static final String HELP = """
-        ponto %s - electronic timesheet in the terminal (SQLite)
+        ponto %s - electronic timesheet (SQLite): terminal or web
 
         usage
           ponto                     open the menu
+          ponto --serve             same database, in the browser
+          ponto --serve --port=8090
           ponto --db=<file>       use another database
           ponto --version | --help
 
@@ -52,6 +55,7 @@ public final class Main {
           PONTO_DB          database path (default ~/.local/share/ponto/ponto.db)
           PONTO_JAVA        JDK 25+ used by the launcher
           PONTO_CSV_SEP     ',' if you prefer commas over semicolons
+          PONTO_PORT        listen port for --serve (default 8090)
         """.formatted(Ver.N);
 
     public static void main(String[] args) {
@@ -59,6 +63,11 @@ public final class Main {
         if (flag(args, "-v", "--version")) { System.out.println(Ver.NAME + " " + Ver.N); return; }
         String db = value(args, "--db=");
         try {
+            if (flag(args, "--serve")) {
+                Db d = Db.open(db);
+                new Web(d, port(args)).start();
+                return;
+            }
             try (Db d = Db.open(db)) { new App(d).run(); }
             System.out.flush();
         } catch (Problema e) {
@@ -71,6 +80,19 @@ public final class Main {
         }
     }
 
+    private static int port(String[] args) {
+        String raw = value(args, "--port=");
+        if (raw == null || raw.isBlank()) raw = System.getenv("PONTO_PORT");
+        if (raw == null || raw.isBlank()) return 8090;
+        try {
+            int p = Integer.parseInt(raw);
+            if (p < 1 || p > 65535) throw new NumberFormatException();
+            return p;
+        } catch (NumberFormatException e) {
+            throw new Problema("port: '" + raw + "'");
+        }
+    }
+
     private static boolean flag(String[] args, String... names) {
         for (String a : args) for (String n : names) if (a.equals(n)) return true;
         return false;
@@ -78,7 +100,9 @@ public final class Main {
 
     private static String value(String[] args, String prefix) {
         for (String a : args) if (a.startsWith(prefix)) return a.substring(prefix.length());
-        if (args.length > 0 && !args[0].startsWith("-")) return args[0];
+        if (prefix.equals("--db=")) {
+            for (String a : args) if (!a.startsWith("-")) return a;
+        }
         return null;
     }
 }

@@ -32,8 +32,23 @@ justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
 ```sh
 mvn -o package      # fat jar  ->  target/ponto.jar
 ./ponto             # run straight from the project
+./ponto --serve   # same database, in the browser (React)
 ./install.sh      # jar -> ~/.local/share/ponto, launcher -> ~/.local/bin/ponto
 ponto             # anywhere afterwards
+```
+
+The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (default 8090) and serves the React build from the jar. Both talk to the same SQLite file (`$PONTO_DB` / `--db=`).
+
+```sh
+npm --prefix web ci && npm --prefix web run build   # writes src/main/resources/public
+mvn package
+./ponto --serve --port=8090
+```
+
+On the LAN host `192.168.0.8` the existing `/home/thiagohmm/.local/share/ponto/ponto.db` is bind-mounted into Docker. The deploy script copies **only** the jar and compose files — never a `.db` from this machine.
+
+```sh
+./deploy/deploy.sh    # http://192.168.0.8:8090
 ```
 
 The launcher finds a Java 25+ runtime by itself (`$PONTO_JAVA`, then

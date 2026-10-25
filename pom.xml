@@ -20,6 +20,7 @@
     <pdfbox.version>3.0.8</pdfbox.version>
     <poi.version>5.5.1</poi.version>
     <jollyday.version>2.21.0</jollyday.version>
+    <javalin.version>6.7.0</javalin.version>
   </properties>
 
   <dependencies>
@@ -70,6 +71,12 @@
       <groupId>de.focus-shift</groupId>
       <artifactId>jollyday-jackson</artifactId>
       <version>${jollyday.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.javalin</groupId>
+      <artifactId>javalin</artifactId>
+      <version>${javalin.version}</version>
     </dependency>
   </dependencies>
 
