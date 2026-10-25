@@ -1,5 +1,9 @@
 package ponto;
 
+import ponto.model.Entry;
+import ponto.model.Report;
+import ponto.model.Str;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -21,7 +25,7 @@ import org.apache.pdfbox.util.Matrix;
  * table whose justification column word-wraps, incomplete lines shaded, and a
  * final per-day summary page.
  */
-final class Pdf {
+public final class Pdf {
 
     private static final float M = 42;                                     // margin
     private static final float W = PDRectangle.A4.getWidth() - 2 * M;  // usable width
@@ -35,7 +39,7 @@ final class Pdf {
     private static final PDFont REG = new PDType1Font(FontName.HELVETICA);
     private static final PDFont BOLD = new PDType1Font(FontName.HELVETICA_BOLD);
 
-    static byte[] write(Path f, Report r) {
+    public static byte[] write(Path f, Report r) {
         PDDocument doc = new PDDocument();
         try {
             doc.setDocumentInformation(info(r));

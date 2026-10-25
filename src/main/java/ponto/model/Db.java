@@ -1,4 +1,6 @@
-package ponto;
+package ponto.model;
+
+import ponto.Problema;
 
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -31,7 +33,7 @@ public final class Db implements AutoCloseable {
         )""");
 
     private final Connection c;
-    final Path file;
+    public final Path file;
     final boolean fresh;
 
     private Db(Path p) throws SQLException {
@@ -57,7 +59,7 @@ public final class Db implements AutoCloseable {
         return p.isAbsolute() ? p : Path.of(System.getProperty("user.dir")).resolve(p);
     }
 
-    static Db open(String cliArg) {
+    public static Db open(String cliArg) {
         try {
             return new Db(resolve(cliArg));
         } catch (SQLException e) {
@@ -66,20 +68,20 @@ public final class Db implements AutoCloseable {
     }
 
     /** One-off db cleanup (delete a data file the user no longer wants). */
-    void vacuum() { exec("VACUUM"); }
+    public void vacuum() { exec("VACUUM"); }
 
     Connection conn() { return c; }
 
-    String cfg(String k) { return cfg(k, ""); }
+    public String cfg(String k) { return cfg(k, ""); }
 
-    String cfg(String k, String def) {
+    public String cfg(String k, String def) {
         try (var q = c.prepareStatement("SELECT v FROM cfg WHERE k = ?")) {
             q.setString(1, k);
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getString(1) : def; }
         } catch (SQLException ignored) { return def; }
     }
 
-    void setCfg(String k, String v) {
+    public void setCfg(String k, String v) {
         try (var q = c.prepareStatement("INSERT INTO cfg(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v")) {
             q.setString(1, k);
             q.setString(2, v);
@@ -93,7 +95,7 @@ public final class Db implements AutoCloseable {
     }
 
     /** The SQLite engine actually in use. */
-    String version() {
+    public String version() {
         try (Statement st = c.createStatement()) {
             try (var rs = st.executeQuery("SELECT sqlite_version()")) { return rs.next() ? rs.getString(1) : "?"; }
         } catch (SQLException e) { return "?"; }

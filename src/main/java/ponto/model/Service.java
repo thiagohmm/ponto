@@ -1,4 +1,11 @@
-package ponto;
+package ponto.model;
+
+import ponto.Bad;
+import ponto.Csv;
+import ponto.NeedConfirm;
+import ponto.Pdf;
+import ponto.Problema;
+import ponto.Xls;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,9 +22,9 @@ import java.util.function.Consumer;
  * Shared timesheet rules for the terminal menu and the web API.
  * One lock around SQLite: the JDBC connection is not thread-safe.
  */
-final class Service {
+public final class Service {
 
-    record Warn(boolean sameTime, boolean midnight, String midnightLabel, Entry overlap) {
+    public record Warn(boolean sameTime, boolean midnight, String midnightLabel, Entry overlap) {
         static Warn empty() { return new Warn(false, false, "", null); }
         static Warn same() { return new Warn(true, false, "", null); }
     }
@@ -26,12 +33,12 @@ final class Service {
     private final Repo repo;
     private final Object lock = new Object();
 
-    Service(Db db) { this.db = db; this.repo = new Repo(db); }
+    public Service(Db db) { this.db = db; this.repo = new Repo(db); }
 
     Repo repo() { return repo; }
-    Db db() { return db; }
+    public Db db() { return db; }
 
-    String who() {
+    public String who() {
         synchronized (lock) {
             String saved = db.cfg("who", "");
             if (!saved.isEmpty()) return saved;
@@ -40,7 +47,7 @@ final class Service {
         }
     }
 
-    Warn inspect(Entry e, int skip) {
+    public Warn inspect(Entry e, int skip) {
         synchronized (lock) { return inspectLocked(e, skip); }
     }
 
@@ -73,7 +80,7 @@ final class Service {
         }
     }
 
-    Entry create(LocalDate dia, LocalTime tin, LocalTime tout, String just,
+    public Entry create(LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean closeOpen, boolean confirmMidnight, boolean confirmOverlap) {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
@@ -96,7 +103,7 @@ final class Service {
         }
     }
 
-    Entry update(int id, LocalDate dia, LocalTime tin, LocalTime tout, String just,
+    public Entry update(int id, LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean confirmMidnight, boolean confirmOverlap) {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
@@ -112,15 +119,15 @@ final class Service {
         }
     }
 
-    void delete(int id) {
+    public void delete(int id) {
         synchronized (lock) { repo.delete(id); }
     }
 
-    int deleteDay(LocalDate d) {
+    public int deleteDay(LocalDate d) {
         synchronized (lock) { return repo.deleteDay(d); }
     }
 
-    Map<String, Object> home() {
+    public Map<String, Object> home() {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
             LocalDate from = LocalDate.now().withDayOfMonth(1);
@@ -149,7 +156,7 @@ final class Service {
         }
     }
 
-    List<Entry> list(String q, String filter, int n, int skip) {
+    public List<Entry> list(String q, String filter, int n, int skip) {
         synchronized (lock) {
             if (q != null && !q.isBlank()) return repo.search(q);
             if (filter != null && !filter.isBlank()) {
@@ -160,7 +167,7 @@ final class Service {
         }
     }
 
-    int count(String q, String filter) {
+    public int count(String q, String filter) {
         synchronized (lock) {
             if (q != null && !q.isBlank()) return repo.search(q).size();
             if (filter != null && !filter.isBlank()) return repo.countDay(Parse.like(filter).pattern());
@@ -168,29 +175,29 @@ final class Service {
         }
     }
 
-    Entry byId(int id) {
+    public Entry byId(int id) {
         synchronized (lock) { return repo.byId(id); }
     }
 
-    List<Entry> on(LocalDate d) {
+    public List<Entry> on(LocalDate d) {
         synchronized (lock) { return repo.on(d); }
     }
 
-    String holiday(LocalDate d) {
+    public String holiday(LocalDate d) {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
             return Holidays.off(d);
         }
     }
 
-    Report report(LocalDate from, LocalDate to) {
+    public Report report(LocalDate from, LocalDate to) {
         synchronized (lock) {
             Period p = new Period(from, to);
             return new Report(new Report.Head(who(), db.file.toString(), p, stamp()), repo.between(from, to));
         }
     }
 
-    byte[] export(String kind, LocalDate from, LocalDate to) {
+    public byte[] export(String kind, LocalDate from, LocalDate to) {
         Report r = report(from, to);
         if (r.lines().isEmpty()) throw new Problema("nothing between " + new Period(from, to).label());
         try {
@@ -210,7 +217,7 @@ final class Service {
         }
     }
 
-    Map<String, Object> config() {
+    public Map<String, Object> config() {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
             Map<String, Object> m = new LinkedHashMap<>();
@@ -227,7 +234,7 @@ final class Service {
         }
     }
 
-    Map<String, Object> setConfig(String who, String off, boolean vacuum) {
+    public Map<String, Object> setConfig(String who, String off, boolean vacuum) {
         synchronized (lock) {
             if (who != null) db.setCfg("who", who.equals("-") ? "" : who);
             if (off != null) {
@@ -240,9 +247,9 @@ final class Service {
         }
     }
 
-    static List<LocalDate> offDates(String raw) { return offDates(raw, s -> {}); }
+    public static List<LocalDate> offDates(String raw) { return offDates(raw, s -> {}); }
 
-    static List<LocalDate> offDates(String raw, Consumer<String> bad) {
+    public static List<LocalDate> offDates(String raw, Consumer<String> bad) {
         List<LocalDate> r = new ArrayList<>();
         if (raw == null || raw.isBlank() || raw.equals("-")) return r;
         for (String s : raw.split("[;, ]+")) {
@@ -253,17 +260,17 @@ final class Service {
         return r;
     }
 
-    static LocalDate parseDate(String raw, LocalDate fallback) {
+    public static LocalDate parseDate(String raw, LocalDate fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         return Parse.date(raw);
     }
 
-    static LocalTime parseTime(String raw) {
+    public static LocalTime parseTime(String raw) {
         if (raw == null || raw.isBlank() || raw.equals("-")) return null;
         return Parse.time(raw);
     }
 
-    static Map<String, Object> json(Entry e) {
+    public static Map<String, Object> json(Entry e) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", e.id());
         m.put("dia", Str.d(e.dia()));
@@ -281,7 +288,7 @@ final class Service {
         return m;
     }
 
-    static Map<String, Object> jsonDay(Report.Day d) {
+    public static Map<String, Object> jsonDay(Report.Day d) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("dia", Str.d(d.dia()));
         m.put("diaIso", Str.iso(d.dia()));

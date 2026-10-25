@@ -1,4 +1,6 @@
-package ponto;
+package ponto.model;
+
+import ponto.Problema;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -19,7 +21,7 @@ public final class Repo {
 
     private final Db db;
 
-    Repo(Db db) { this.db = db; }
+    public Repo(Db db) { this.db = db; }
 
     private List<Entry> rows(String sql, Object... args) {
         try (var q = prep(sql)) {
@@ -87,15 +89,15 @@ public final class Repo {
     List<Entry> recent(int n) { return recent(n, 0); }
 
     /** The newest rows, skipping the first `skip` (offset paging; see App.list). */
-    List<Entry> recent(int n, int skip) {
+    public List<Entry> recent(int n, int skip) {
         return rows("SELECT " + COLS + " FROM ponto" + ORDER + " LIMIT ? OFFSET ?", n, Math.max(0, skip));
     }
 
-    List<Entry> between(LocalDate a, LocalDate b) {
+    public List<Entry> between(LocalDate a, LocalDate b) {
         return rows("SELECT " + COLS + " FROM ponto WHERE dia BETWEEN ? AND ?" + ORDER, a, b);
     }
 
-    List<Entry> on(LocalDate d) { return between(d, d); }
+    public List<Entry> on(LocalDate d) { return between(d, d); }
 
     /** Ids in range, most recent first (used by the list/summary tables). */
     List<Entry> all() { return rows("SELECT " + COLS + " FROM ponto" + ORDER); }
@@ -104,25 +106,25 @@ public final class Repo {
      * Rows whose ISO day matches `like` (`2026-10-08` · `%2026%` · `2026-10%`),
      * newest first, offset paging so `older` walks to the last one.
      */
-    List<Entry> byDay(String like, int n, int skip) {
+    public List<Entry> byDay(String like, int n, int skip) {
         return rows("SELECT " + COLS + " FROM ponto WHERE dia LIKE ?" + ORDER + " LIMIT ? OFFSET ?",
                     like, n, Math.max(0, skip));
     }
 
     /** How many rows match that day pattern (the `of M` in the footer). */
-    int countDay(String like) {
+    public int countDay(String like) {
         try (var q = prep("SELECT count(*) FROM ponto WHERE dia LIKE ?")) {
             q.setString(1, like);
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
-    List<Entry> search(String q) {
+    public List<Entry> search(String q) {
         String like = "%" + q.trim().replace('%', ' ').replace('_', ' ') + "%";
         return rows("SELECT " + COLS + " FROM ponto WHERE just LIKE ? COLLATE NOCASE" + ORDER, like);
     }
 
-    Entry byId(int id) {
+    public Entry byId(int id) {
         List<Entry> r = rows("SELECT " + COLS + " FROM ponto WHERE id = ?", id);
         if (r.isEmpty()) throw new Problema("no record with id " + id);
         return r.getFirst();
@@ -130,7 +132,7 @@ public final class Repo {
 
     /** Lines whose day has an in without an out (or vice versa). */
     /** Unclosed lines of any day, oldest first (the banner counts these). */
-    List<Entry> openAll() {
+    public List<Entry> openAll() {
         return rows("SELECT " + COLS + " FROM ponto"
                   + " WHERE tin IS NULL OR tout IS NULL"
                   + " ORDER BY dia ASC, ifnull(tin,'99:99') ASC, id ASC");
@@ -141,14 +143,14 @@ public final class Repo {
                   + " OR (tin IS NULL AND tout IS NOT NULL))" + ORDER, d);
     }
 
-    int count() {
+    public int count() {
         try (var q = prep("SELECT count(*) FROM ponto")) {
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     /** First/last recorded day (defaults for the export period). */
-    LocalDate min() {
+    public LocalDate min() {
         try (var q = prep("SELECT min(dia) FROM ponto")) {
             try (var rs = q.executeQuery()) {
                 if (!rs.next()) return null;
@@ -158,7 +160,7 @@ public final class Repo {
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
-    LocalDate max() {
+    public LocalDate max() {
         try (var q = prep("SELECT max(dia) FROM ponto")) {
             try (var rs = q.executeQuery()) {
                 if (!rs.next()) return null;
@@ -170,28 +172,28 @@ public final class Repo {
 
     // ---- writes ----------------------------------------------------------
 
-    int insert(LocalDate dia, LocalTime tin, LocalTime tout, String just) {
+    public int insert(LocalDate dia, LocalTime tin, LocalTime tout, String just) {
         return insertId("INSERT INTO ponto(dia,tin,tout,just) VALUES(?,?,?,?)", dia, tin, tout, just);
     }
 
     /** Patch one field of one record: the UI always sends the whole row. */
-    void update(Entry e) {
+    public void update(Entry e) {
         write("UPDATE ponto SET dia=?, tin=?, tout=?, just=? WHERE id=?", e.dia(), e.tin(), e.tout(), e.just(), e.id());
     }
 
     /** Clear just the in/out pair (keeps the day + justification). */
-    void clearTimes(Entry e) {
+    public void clearTimes(Entry e) {
         write("UPDATE ponto SET tin=NULL, tout=NULL WHERE id=?", e.id());
     }
 
-    void delete(int id) {
+    public void delete(int id) {
         int n = write("DELETE FROM ponto WHERE id=?", id);
         if (n == 0) throw new Problema("no record with id " + id);
     }
 
     /** Delete every record of a day (used by the day editor). */
-    int deleteDay(LocalDate d) { return write("DELETE FROM ponto WHERE dia = ?", d); }
+    public int deleteDay(LocalDate d) { return write("DELETE FROM ponto WHERE dia = ?", d); }
 
     /** Snap a new timesheet for a brand new day: copies nothing, just inserts. */
-    int countOn(LocalDate d) { return on(d).size(); }
+    public int countOn(LocalDate d) { return on(d).size(); }
 }

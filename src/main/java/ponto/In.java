@@ -1,5 +1,9 @@
 package ponto;
 
+import ponto.model.Parse;
+import ponto.model.Period;
+import ponto.model.Str;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -204,11 +208,4 @@ final class In {
         String[] t = s.replace("..", " ").replace("...", " ").replace(" to ", " ").split("\\s+");
         return t.length == 0 ? new String[]{"", ""} : t.length == 1 ? new String[]{t[0], t[0]} : t;
     }
-}
-
-/** A closed date range. */
-record Period(LocalDate from, LocalDate to) {
-    boolean has(LocalDate d) { return !d.isBefore(from) && !d.isAfter(to); }
-    long days() { return from.datesUntil(to.plusDays(1)).count(); }
-    String label() { return Str.d(from) + " " + Str.d(to); }
 }

@@ -1,5 +1,12 @@
 package ponto;
 
+import ponto.model.Db;
+import ponto.model.Entry;
+import ponto.model.Holidays;
+import ponto.model.Report;
+import ponto.model.Service;
+import ponto.model.Str;
+
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;

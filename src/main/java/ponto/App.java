@@ -1,5 +1,16 @@
 package ponto;
 
+import ponto.model.Db;
+import ponto.model.Dur;
+import ponto.model.Entry;
+import ponto.model.Holidays;
+import ponto.model.Parse;
+import ponto.model.Period;
+import ponto.model.Report;
+import ponto.model.Repo;
+import ponto.model.Service;
+import ponto.model.Str;
+
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;

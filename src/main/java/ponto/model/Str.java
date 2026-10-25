@@ -1,4 +1,4 @@
-package ponto;
+package ponto.model;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -15,10 +15,10 @@ public final class Str {
     static final String PAD = "                                                  ";
 
     /** A time or an empty string when null. */
-    static String t(LocalTime v) { return v == null ? "" : p2(v.getHour()) + ":" + p2(v.getMinute()); }
+    public static String t(LocalTime v) { return v == null ? "" : p2(v.getHour()) + ":" + p2(v.getMinute()); }
 
     /** A date as dd/mm/yyyy. */
-    static String d(LocalDate v) {
+    public static String d(LocalDate v) {
         return v == null ? "" : p2(v.getDayOfMonth()) + "/" + p2(v.getMonthValue()) + "/" + v.getYear();
     }
 
@@ -28,7 +28,7 @@ public final class Str {
     }
 
     /** ISO yyyy-mm-dd (the storage format). */
-    static String iso(LocalDate v) {
+    public static String iso(LocalDate v) {
         return v == null ? "" : p4(v.getYear()) + "-" + p2(v.getMonthValue()) + "-" + p2(v.getDayOfMonth());
     }
 
@@ -43,15 +43,15 @@ public final class Str {
         catch (RuntimeException ignored) { return ""; }
     }
 
-    static String d3(LocalDate v) { return v == null ? "" : D3[v.getDayOfWeek().getValue() % 7]; }
+    public static String d3(LocalDate v) { return v == null ? "" : D3[v.getDayOfWeek().getValue() % 7]; }
 
     static Month month(int oneBased) { return Month.of(oneBased); }
 
     /** Any number without locale surprises (ids, counts). */
-    static String s(long v) { return "" + v; }
+    public static String s(long v) { return "" + v; }
 
     /** Decimal hours, always with a dot. */
-    static String n(double v) { return String.format(java.util.Locale.ROOT, "%.2f", v); }
+    public static String n(double v) { return String.format(java.util.Locale.ROOT, "%.2f", v); }
 
     /** Minutes since midnight. */
     static int tod(LocalTime v) { return v.getHour() * 60 + v.getMinute(); }
@@ -60,19 +60,19 @@ public final class Str {
     private static String p4(int v) { return v < 10 ? "000" + v : v < 100 ? "00" + v : v < 1000 ? "0" + v : "" + v; }
 
     /** Right-padded cell. */
-    static String fix(String s, int w) { return s.length() >= w ? s : s + PAD.substring(0, w - s.length()); }
+    public static String fix(String s, int w) { return s.length() >= w ? s : s + PAD.substring(0, w - s.length()); }
 
     /** Left-padded cell. */
     static String rfix(String s, int w) { return s.length() >= w ? s : PAD.substring(0, w - s.length()) + s; }
 
     /** Cut to width, marking overflow with an ellipsis. */
-    static String cut(String s, int w) { return s.length() <= w ? s : s.substring(0, Math.max(0, w - 1)) + "…"; }
+    public static String cut(String s, int w) { return s.length() <= w ? s : s.substring(0, Math.max(0, w - 1)) + "…"; }
 
     /**
      * The overflow of a cut cell: the whole text, word-wrapped so a line never
      * exceeds `width` (a word longer than the whole line goes alone, hard-cut).
      */
-    static List<String> wrap(String s, int width) {
+    public static List<String> wrap(String s, int width) {
         List<String> out = new ArrayList<>();
         String line = "";
         for (String w : s.trim().split("\\s+")) {

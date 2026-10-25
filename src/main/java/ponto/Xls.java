@@ -1,5 +1,9 @@
 package ponto;
 
+import ponto.model.Entry;
+import ponto.model.Report;
+import ponto.model.Str;
+
 import java.io.IOException;
 import java.util.List;
 import java.io.OutputStream;
@@ -22,14 +26,14 @@ import org.apache.poi.ss.usermodel.Workbook;
  * Genuine Excel .xls (BIFF8) via POI/HSSF: header block, styled table, a
  * TOTAL line, and a second sheet with the per-day summary.
  */
-final class Xls {
+public final class Xls {
 
     private static final String[] COLS = {"ID", "DATE", "DAY", "IN", "OUT", "DURATION", "HOURS", "JUSTIFICATION"};
     private static final String[] SCOLS = {"DATE", "DAY", "LINES", "DURATION", "HOURS"};
     private static final int[] CW = {6, 11, 5, 6, 6, 9, 8, 62};
     private static final int[] SW = {11, 5, 7, 10, 8};
 
-    static byte[] write(Path f, Report r) {
+    public static byte[] write(Path f, Report r) {
         HSSFWorkbook wb = new HSSFWorkbook();
         try {
             St st = new St(wb);

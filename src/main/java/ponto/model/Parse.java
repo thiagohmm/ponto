@@ -1,4 +1,6 @@
-package ponto;
+package ponto.model;
+
+import ponto.Bad;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -9,7 +11,7 @@ import java.util.regex.Pattern;
  * Input parsing, pt-BR friendly. Each method returns a value or throws Bad with
  * a short message; the caller echoes it and asks again.
  */
-final class Parse {
+public final class Parse {
 
     private static final Pattern ISO    = Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})");
     private static final Pattern DMY    = Pattern.compile("(\\d{1,2})[/\\-.](\\d{1,2})(?:[/\\-.](\\d{2,4}))?");
@@ -26,7 +28,7 @@ final class Parse {
      * A date: 08/10 · 08/10/2026 · 2026-10-08 · 5oct · today/h/hoje ·
      * yesterday/y/yer · -3 (3 days back) · +2 · or a bare day of this month.
      */
-    static LocalDate date(String raw) throws Bad {
+    public static LocalDate date(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
         LocalDate today = LocalDate.now();
         if (s.isEmpty()) throw new Bad("date required");
@@ -69,7 +71,7 @@ final class Parse {
     /**
      * A time: 07:30 · 07.30 · 07h30 · 0730 · 8 · 8h · now/n · 7pm · 7:05am.
      */
-    static LocalTime time(String raw) throws Bad {
+    public static LocalTime time(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
         if (s.equals("now") || s.equals("n") || s.equals("rn")) return LocalTime.now().withSecond(0).withNano(0);
 
@@ -92,9 +94,9 @@ final class Parse {
      * `y` · `-3` · `12` (a day of this month). The pattern runs against the ISO
      * day, so a bare year means "everything containing 2026".
      */
-    record Like(String pattern, String label) { }
+    public record Like(String pattern, String label) { }
 
-    static Like like(String raw) throws Bad {
+    public static Like like(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
         if (s.isEmpty()) throw new Bad("date: type 2026 · 10/2026 · oct · 01/10/2026");
         LocalDate today = LocalDate.now();
@@ -159,7 +161,7 @@ final class Parse {
         java.util.Map.entry("dec", 12), java.util.Map.entry("december", 12));
 
     /** A positive integer (id, how many rows). */
-    static int num(String raw, String what) throws Bad {
+    public static int num(String raw, String what) throws Bad {
         String s = raw.strip();
         if (!NUM.matcher(s).matches()) throw new Bad(what + ": '" + raw + "'");
         int v = (int) digits(s);

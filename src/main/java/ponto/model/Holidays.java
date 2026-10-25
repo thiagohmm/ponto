@@ -1,4 +1,4 @@
-package ponto;
+package ponto.model;
 
 import de.focus_shift.jollyday.core.Holiday;
 import de.focus_shift.jollyday.core.HolidayManager;
@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Nothing here touches the network, and a failure inside jollyday can only ever
  * hide a warning; it must never stop a punch.
  */
-final class Holidays {
+public final class Holidays {
 
     private static final String BR = "BR";
     /** ISO 3166-2: the state of São Paulo, and the city itself. */
@@ -89,7 +89,7 @@ final class Holidays {
         Map.entry("CHRISTMAS", "Christmas"));
 
     /** "" on a working day; otherwise what to say after the date. */
-    static String off(LocalDate d) {
+    public static String off(LocalDate d) {
         Off o = of(d.getYear()).get(d);
         if (o == null) return weekend(d) ? "weekend" : "";
         return o.text() + (weekend(d) ? "   ·   weekend" : "");
@@ -101,7 +101,7 @@ final class Holidays {
     }
 
     /** The next `n` days off from today on, for `c config`. */
-    static List<String> next(int n) {
+    public static List<String> next(int n) {
         List<String> r = new ArrayList<>();
         LocalDate today = LocalDate.now();
         for (int step = 0; step < 2 && r.size() < n; step++) {
@@ -113,9 +113,9 @@ final class Holidays {
     }
 
     /** The user's own days off; the list is rebuilt because these win over all. */
-    static void extra(List<LocalDate> days) { EXTRA = List.copyOf(days); YEARS.clear(); }
+    public static void extra(List<LocalDate> days) { EXTRA = List.copyOf(days); YEARS.clear(); }
 
-    static List<LocalDate> extra() { return EXTRA; }
+    public static List<LocalDate> extra() { return EXTRA; }
 
     private static Map<LocalDate, Off> of(int year) {
         Map<LocalDate, Off> hit = YEARS.get(year);

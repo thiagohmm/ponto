@@ -1,5 +1,8 @@
 package ponto;
 
+import ponto.model.Db;
+import ponto.model.Service;
+
 /**
  * Entry point.
  *

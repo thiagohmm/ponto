@@ -1,5 +1,7 @@
 package ponto;
 
+import ponto.model.Dur;
+
 import java.io.PrintStream;
 
 /** Terminal rendering: colour only when attached to a real TTY. */

@@ -1,5 +1,9 @@
 package ponto;
 
+import ponto.model.Entry;
+import ponto.model.Report;
+import ponto.model.Str;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -9,9 +13,9 @@ import java.nio.file.Path;
  * CSV export. BOM + ";" by default so Excel (pt-BR) opens it directly;
  * override the separator with $PONTO_CSV_SEP ("," for tooling).
  */
-final class Csv {
+public final class Csv {
 
-    static final char SEP = sep();
+    public static final char SEP = sep();
 
     private static char sep() {
         String s = System.getenv("PONTO_CSV_SEP");
@@ -23,7 +27,7 @@ final class Csv {
     private static final String[] HEAD = {"ID", "DIA", "DIA_3L", "IN", "OUT", "DURACAO", "HORAS", "JUSTIFICACAO"};
 
     /** Renders and writes the report; returns the file content. */
-    static byte[] write(Path f, Report r) {
+    public static byte[] write(Path f, Report r) {
         StringBuilder b = new StringBuilder("\uFEFF");
         b.append(line(HEAD));
         for (Entry e : r.lines()) b.append(line(row(e)));

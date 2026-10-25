@@ -1,4 +1,4 @@
-package ponto;
+package ponto.model;
 
 /** Duration formatting and arithmetic. */
 public final class Dur {
