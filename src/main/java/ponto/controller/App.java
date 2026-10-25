@@ -1,5 +1,9 @@
-package ponto;
+package ponto.controller;
 
+import ponto.Bad;
+import ponto.Eof;
+import ponto.Problema;
+import ponto.Ver;
 import ponto.model.Db;
 import ponto.model.Dur;
 import ponto.model.Entry;
@@ -31,7 +35,7 @@ import java.util.Optional;
  * Nothing ever has to be typed as "ponto in <date> <time> <justification>" —
  * keys are single characters and the current value is always the default.
  */
-final class App {
+public final class App {
 
     private final Db db;
     private final Repo repo;
@@ -39,14 +43,14 @@ final class App {
     private final Out out = new Out();
     private final In in;
 
-    App(Db db) {
+    public App(Db db) {
         this.db = db;
         this.repo = new Repo(db);
         this.svc = new Service(db);
         this.in = new In(out);
     }
 
-    void run() {
+    public void run() {
         setup();
         Holidays.extra(offList(db.cfg("off")));
         for (;;) {

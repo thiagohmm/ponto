@@ -1,12 +1,26 @@
-package ponto;
+package ponto.controller;
 
+import ponto.Bad;
+import ponto.NeedConfirm;
+import ponto.Problema;
+import ponto.Ver;
 import ponto.model.Db;
 import ponto.model.Entry;
 import ponto.model.Holidays;
 import ponto.model.Report;
 import ponto.model.Service;
 import ponto.model.Str;
+import ponto.view.Json;
+import ponto.view.Csv;
+import ponto.view.Json;
 import ponto.view.Json3;
+import ponto.view.Pdf;
+import ponto.view.Xls;
+import ponto.model.Period;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
 
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -19,18 +33,18 @@ import java.util.List;
 import java.util.Map;
 
 /** HTTP API + static React build. Same Service as the terminal menu. */
-final class Web {
+public final class Web {
 
     private final Service svc;
     private final int port;
 
-    Web(Db db, int port) {
+    public Web(Db db, int port) {
         this.svc = new Service(db);
         this.port = port;
         Holidays.extra(Service.offDates(db.cfg("off")));
     }
 
-    void start() {
+    public void start() {
         Javalin app = Javalin.create(cfg -> {
             cfg.showJavalinBanner = false;
             cfg.jsonMapper(new Json3());
@@ -84,12 +98,12 @@ final class Web {
         out.put("total", svc.count(q, dia));
         out.put("shown", rows.size());
         out.put("skip", skip);
-        out.put("entries", rows.stream().map(Service::json).toList());
+        out.put("entries", rows.stream().map(Json::json).toList());
         ctx.json(out);
     }
 
     private void one(Context ctx) {
-        ctx.json(Service.json(svc.byId(ctx.pathParamAsClass("id", Integer.class).get())));
+        ctx.json(Json.json(svc.byId(ctx.pathParamAsClass("id", Integer.class).get())));
     }
 
     private void create(Context ctx) {
@@ -99,7 +113,7 @@ final class Web {
         LocalTime tout = Service.parseTime(r.tout());
         Entry e = svc.create(dia, tin, tout, nz(r.just()), r.flag(r.closeOpen()),
                 r.flag(r.confirmMidnight()), r.flag(r.confirmOverlap()));
-        ctx.status(HttpStatus.CREATED).json(Service.json(e));
+        ctx.status(HttpStatus.CREATED).json(Json.json(e));
     }
 
     private void update(Context ctx) {
@@ -111,7 +125,7 @@ final class Web {
         LocalTime tout = r.tout() == null ? cur.tout() : Service.parseTime(r.tout());
         String just = r.just() == null ? cur.just() : r.just();
         Entry e = svc.update(id, dia, tin, tout, just, r.flag(r.confirmMidnight()), r.flag(r.confirmOverlap()));
-        ctx.json(Service.json(e));
+        ctx.json(Json.json(e));
     }
 
     private void delete(Context ctx) {
@@ -141,8 +155,8 @@ final class Web {
         out.put("d3", Str.d3(d));
         out.put("holiday", svc.holiday(d));
         out.put("lastOut", lastOut);
-        out.put("open", open.stream().map(Service::json).toList());
-        out.put("entries", rows.stream().map(Service::json).toList());
+        out.put("open", open.stream().map(Json::json).toList());
+        out.put("entries", rows.stream().map(Json::json).toList());
         ctx.json(out);
     }
 
@@ -164,7 +178,7 @@ final class Web {
         out.put("hours", r.totalDec());
         out.put("lines", r.lines().size());
         out.put("open", r.openLines());
-        out.put("days", r.summary().stream().map(Service::jsonDay).toList());
+        out.put("days", r.summary().stream().map(Json::jsonDay).toList());
         ctx.json(out);
     }
 
@@ -174,7 +188,7 @@ final class Web {
         LocalDate from = range(ctx, "from", true);
         LocalDate to = range(ctx, "to", false);
         if (to.isBefore(from)) { LocalDate x = from; from = to; to = x; }
-        byte[] bytes = svc.export(kind, from, to);
+        byte[] bytes = write(kind, from, to);
         String name = Ver.NAME + "-" + Str.iso(from) + "_" + Str.iso(to) + "." + kind;
         String mime = switch (kind) {
             case "pdf" -> "application/pdf";
@@ -189,6 +203,31 @@ final class Web {
     private void config(Context ctx) {
         SaveReq r = ctx.bodyAsClass(SaveReq.class);
         ctx.json(svc.setConfig(r.who(), r.off(), r.flag(r.vacuum())));
+    }
+
+    /**
+     * Temp file, render, read, delete: the writers take a Path, the HTTP
+     * response is built from bytes. (The terminal flow calls the writers
+     * directly on its target file.)
+     */
+    private byte[] write(String kind, LocalDate from, LocalDate to) {
+        Report r = svc.report(from, to);
+        if (r.lines().isEmpty()) throw new Problema("nothing between " + new Period(from, to).label());
+        try {
+            Path tmp = java.nio.file.Files.createTempFile("ponto-", "." + kind);
+            try {
+                return switch (kind) {
+                    case "csv" -> Csv.write(tmp, r);
+                    case "xls" -> Xls.write(tmp, r);
+                    case "pdf" -> Pdf.write(tmp, r);
+                    default -> throw new Bad("export: " + kind);
+                };
+            } finally {
+                java.nio.file.Files.deleteIfExists(tmp);
+            }
+        } catch (java.io.IOException e) {
+            throw new Problema("export: " + e.getMessage());
+        }
     }
 
     private static int intParam(Context ctx, String name, int def) {

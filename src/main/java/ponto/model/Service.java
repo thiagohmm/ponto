@@ -2,14 +2,7 @@ package ponto.model;
 
 import ponto.Bad;
 import ponto.NeedConfirm;
-import ponto.Problema;
-import ponto.view.Cols;
-import ponto.view.Csv;
-import ponto.view.Pdf;
-import ponto.view.Xls;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -198,26 +191,6 @@ public final class Service {
         }
     }
 
-    public byte[] export(String kind, LocalDate from, LocalDate to) {
-        Report r = report(from, to);
-        if (r.lines().isEmpty()) throw new Problema("nothing between " + new Period(from, to).label());
-        try {
-            Path tmp = Files.createTempFile("ponto-", "." + kind);
-            try {
-                return switch (kind) {
-                    case "csv" -> Csv.write(tmp, r);
-                    case "xls" -> Xls.write(tmp, r);
-                    case "pdf" -> Pdf.write(tmp, r);
-                    default -> throw new Bad("export: " + kind);
-                };
-            } finally {
-                Files.deleteIfExists(tmp);
-            }
-        } catch (java.io.IOException e) {
-            throw new Problema("export: " + e.getMessage());
-        }
-    }
-
     public Map<String, Object> config() {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
@@ -269,36 +242,6 @@ public final class Service {
     public static LocalTime parseTime(String raw) {
         if (raw == null || raw.isBlank() || raw.equals("-")) return null;
         return Parse.time(raw);
-    }
-
-    public static Map<String, Object> json(Entry e) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", e.id());
-        m.put("dia", Str.d(e.dia()));
-        m.put("diaIso", Str.iso(e.dia()));
-        m.put("d3", Str.d3(e.dia()));
-        m.put("tin", Str.t(e.tin()));
-        m.put("tout", Str.t(e.tout()));
-        m.put("just", e.just());
-        m.put("crea", e.crea());
-        m.put("dur", Cols.dur(e));
-        m.put("hours", Cols.hours(e));
-        m.put("open", e.open());
-        m.put("closed", e.closed());
-        m.put("note", e.empty());
-        return m;
-    }
-
-    public static Map<String, Object> jsonDay(Report.Day d) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("dia", Str.d(d.dia()));
-        m.put("diaIso", Str.iso(d.dia()));
-        m.put("d3", d.d3());
-        m.put("lines", d.lines());
-        m.put("mins", d.mins());
-        m.put("dur", Dur.hm(d.mins()));
-        m.put("hours", d.dec());
-        return m;
     }
 
     private static String stamp() {
