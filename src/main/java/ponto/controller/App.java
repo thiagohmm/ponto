@@ -4,14 +4,12 @@ import ponto.Bad;
 import ponto.Eof;
 import ponto.Problema;
 import ponto.Ver;
-import ponto.model.Db;
 import ponto.model.Dur;
 import ponto.model.Entry;
 import ponto.model.Holidays;
 import ponto.model.Parse;
 import ponto.model.Period;
 import ponto.model.Report;
-import ponto.model.Repo;
 import ponto.model.Service;
 import ponto.model.Str;
 import ponto.view.Cols;
@@ -23,11 +21,11 @@ import ponto.view.Xls;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -37,22 +35,15 @@ import java.util.Optional;
  */
 public final class App {
 
-    private final Db db;
-    private final Repo repo;
     private final Service svc;
     private final Out out = new Out();
     private final In in;
 
-    public App(Db db) {
-        this.db = db;
-        this.repo = new Repo(db);
-        this.svc = new Service(db);
-        this.in = new In(out);
-    }
+    public App(Service svc) { this.svc = svc; this.in = new In(out); }
 
     public void run() {
         setup();
-        Holidays.extra(offList(db.cfg("off")));
+        svc.registerOff(s -> out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored"));
         for (;;) {
             home();
             try {
@@ -91,44 +82,28 @@ public final class App {
     }
 
     private void home() {
-        long mins = 0;
-        for (Entry e : repo.between(LocalDate.now().withDayOfMonth(1), LocalDate.now())) {
-            if (e.min() > 0) mins += e.min();
-        }
-        out.home(who(), repo.count(), mins, db.file.toString(), openNote());
-    }
-
-    /**
-     * "open N" over every day, not just today: a punch left half-done is worth
-     * showing even when it is from last month.
-     */
-    private String openNote() {
-        List<Entry> half = repo.openAll().stream().filter(Entry::open).toList();
-        if (half.isEmpty()) return "open 0";
-        LocalDate oldest = half.getFirst().dia();
-        return "open " + half.size()
-             + (oldest.isBefore(LocalDate.now().withDayOfMonth(1)) ? "   since " + Str.d(oldest) : "");
+        Map<String, Object> h = svc.home();
+        long mins = (Long) h.get("monthMins");
+        int records = (Integer) h.get("records");
+        int open = (Integer) h.get("open");
+        String since = (String) h.get("openSince");
+        String openNote = open == 0 ? "open 0"
+                : "open " + open + (since.isEmpty() ? "" : "   since " + since);
+        out.home((String) h.get("who"), records, mins, (String) h.get("db"), openNote);
     }
 
     private void setup() {
-        if (db.cfg("asked").equals("1")) return;
-        if (!Out.TTY) { db.setCfg("asked", "1"); return; }
+        if (svc.asked()) return;
+        if (!Out.TTY) { svc.markAsked(); return; }
         out.title("SET UP");
-        out.note("db    " + db.file);
-        String who = in.text("name", db.cfg("who"));
-        db.setCfg("who", who);
-        db.setCfg("asked", "1");
+        out.note("db    " + svc.dbPath());
+        String who = in.text("name", svc.rawWho());
+        svc.setConfig(who, null, false);
         if (!who.isEmpty()) out.ok("user " + who);
     }
 
-    /** The name on the reports; $PONTO_USER seeds it so headless runs have one too. */
-    private String who() {
-        String saved = db.cfg("who", "");
-        return !saved.isEmpty() ? saved : System.getenv("PONTO_USER") == null ? "" : System.getenv("PONTO_USER");
-    }
-
     private void emptyCheck() {
-        if (repo.count() == 0) throw new Problema("no records yet (1 = new)");
+        if (svc.count() == 0) throw new Problema("no records yet (1 = new)");
     }
 
     // ---- 1 new -----------------------------------------------------------
@@ -137,7 +112,7 @@ public final class App {
         out.title("NEW");
         LocalDate dia = in.date("day", LocalDate.now());
         offDay(dia, true);
-        List<Entry> same = repo.on(dia);
+        List<Entry> same = svc.on(dia);
 
         // the day you picked, as it stands right now: every line already on it
         if (!same.isEmpty()) {
@@ -156,8 +131,8 @@ public final class App {
                 if (t.isPresent()) {
                     Entry done = new Entry(o.id(), o.dia(), o.tin(), t.get(), o.just(), o.crea());
                     check(done, done.id());
-                    repo.update(done);
-                    out.ok("#" + done.id() + "  " + Str.d(dia) + " " + done.stamp() + "  " + done.dur());
+                    Entry saved = svc.update(done.id(), done.dia(), done.tin(), done.tout(), done.just(), true, true);
+                    out.ok("#" + done.id() + "  " + Str.d(dia) + " " + saved.stamp() + "  " + saved.dur());
                     return;
                 }
             }
@@ -174,9 +149,8 @@ public final class App {
         Entry fresh = new Entry(0, dia, tin.orElse(null), tout.orElse(null), just, "");
         check(fresh, 0);
 
-        int id = repo.insert(dia, fresh.tin(), fresh.tout(), just);
-        Entry made = repo.byId(id);
-        out.ok("#" + id + "  " + Str.d(dia) + "  " + made.stamp() + "  " + made.dur());
+        Entry made = svc.create(dia, fresh.tin(), fresh.tout(), just, false, true, true);
+        out.ok("#" + made.id() + "  " + Str.d(dia) + "  " + made.stamp() + "  " + made.dur());
         if (made.open()) out.warn("half line: fill the other time later (2 = edit)");
     }
 
@@ -196,8 +170,8 @@ public final class App {
 
     private void edit(int id) {
         out.title("EDIT");
-        if (id <= 0) table(repo.recent(12, 0));
-        Entry e = repo.byId(id > 0 ? id : in.num("id", 0));
+        if (id <= 0) table(svc.recent(12, 0));
+        Entry e = svc.byId(id > 0 ? id : in.num("id", 0));
 
         out.note("#" + e.id() + "  " + Str.d(e.dia()) + "  " + e.stamp() + "  " + Str.cut(e.just(), 44));
         out.note("Enter keeps   ·   - clears");
@@ -214,8 +188,8 @@ public final class App {
         check(now, now.id());
 
         if (same(e, now)) { out.note("unchanged"); return; }
-        if (tin == null && tout == null) repo.clearTimes(now); else repo.update(now);
-        out.done(true, "#" + now.id() + "  " + Str.d(dia) + "  " + now.stamp() + "  " + now.dur());
+        Entry saved = svc.update(now.id(), dia, tin, tout, just, true, true);
+        out.done(true, "#" + now.id() + "  " + Str.d(dia) + "  " + saved.stamp() + "  " + saved.dur());
     }
 
     /**
@@ -227,11 +201,6 @@ public final class App {
         if (!force) return;
         String off = Holidays.off(d);
         if (!off.isEmpty()) out.warn(Str.d(d) + "  " + Str.d3(d) + "   " + off);
-    }
-
-    /** cfg `off` = days you call off yourself: "2026-10-27 2026-12-31". */
-    private List<LocalDate> offList(String raw) {
-        return Service.offDates(raw, s -> out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored"));
     }
 
     private LocalDate patchDate(In.Val v, LocalDate cur) {
@@ -296,13 +265,13 @@ public final class App {
 
     /** A whole day at once: every line of it goes, nothing else is touched. */
     private void delDay(LocalDate d) {
-        List<Entry> rows = repo.on(d);
+        List<Entry> rows = svc.on(d);
         if (rows.isEmpty()) { out.note("nothing on " + Str.d(d)); return; }
         out.note(Str.d(d) + "   " + rows.size() + " line(s)");
         table(rows);
         totalLine(minsOf(rows), rows.size(), openOf(rows));
         if (!in.yes("delete all " + rows.size() + " of " + Str.d(d) + "?", false)) { out.note("cancelled"); return; }
-        int n = repo.deleteDay(d);
+        int n = svc.deleteDay(d);
         out.ok("deleted " + n + "   " + Str.d(d) + "   day is empty now");
     }
 
@@ -311,20 +280,20 @@ public final class App {
         List<Entry> hits = new ArrayList<>();
         List<Integer> missing = new ArrayList<>();
         for (int id : ids) {
-            try { hits.add(repo.byId(id)); } catch (Problema ignored) { missing.add(id); }
+            try { hits.add(svc.byId(id)); } catch (Problema ignored) { missing.add(id); }
         }
         if (hits.isEmpty()) { out.bad("no record: " + ids); return; }
         table(hits);
         totalLine(minsOf(hits), hits.size(), openOf(hits));
         if (!in.yes("delete " + hits.size() + " line(s)?", false)) { out.note("cancelled"); return; }
-        for (Entry h : hits) repo.delete(h.id());
+        for (Entry h : hits) svc.delete(h.id());
         out.ok("deleted " + hits.size() + (missing.isEmpty() ? "" : "   not found: " + missing));
     }
 
     /** Today if it has lines, otherwise the last day that has any. */
     private LocalDate defaultDay() {
         LocalDate today = LocalDate.now();
-        return repo.countOn(today) > 0 ? today : nzD(repo.max(), today);
+        return svc.countOn(today) > 0 ? today : nzD(svc.max(), today);
     }
 
     private static LocalDate nzD(LocalDate v, LocalDate def) { return v == null ? def : v; }
@@ -374,8 +343,8 @@ public final class App {
     private void list(In.Cmd c) {
         out.title("LIST");
         String rest = c.rest().strip();
-        if (rest.isEmpty()) { page(repo.count(), c.arg() > 0 ? c.arg() : 20, (n, s) -> repo.recent(n, s)); return; }
-        if (countOnly(rest)) { page(repo.count(), Integer.parseInt(rest), (n, s) -> repo.recent(n, s)); return; }
+        if (rest.isEmpty()) { page(svc.count(), c.arg() > 0 ? c.arg() : 20, (n, s) -> svc.recent(n, s)); return; }
+        if (countOnly(rest)) { page(svc.count(), Integer.parseInt(rest), (n, s) -> svc.recent(n, s)); return; }
         Parse.Like f;
         try { f = Parse.like(rest); } catch (Bad e) { out.bad(e.getMessage()); return; }
         byFilter(f);
@@ -394,10 +363,10 @@ public final class App {
 
     /** Everything whose day matches the pattern, paged, with the running total. */
     private void byFilter(Parse.Like f) {
-        int total = repo.countDay(f.pattern());
+        int total = svc.countDay(f.pattern());
         out.note("matching  " + f.label() + "   ·   " + total + " record(s)");
         if (total == 0) { out.note("nothing in " + f.label()); return; }
-        page(total, 20, (n, s) -> repo.byDay(f.pattern(), n, s));
+        page(total, 20, (n, s) -> svc.byDay(f.pattern(), n, s));
     }
 
     /** A bare 1..999 after `4` means "how many rows"; a 4-digit year is a date. */
@@ -416,7 +385,7 @@ public final class App {
         out.title("FIND");
         String q = rest.isEmpty() ? in.text("text", "") : rest;
         if (q.isEmpty()) { out.note("type some text"); return; }
-        List<Entry> rows = repo.search(q);
+        List<Entry> rows = svc.search(q);
         if (rows.isEmpty()) { out.note("no match for '" + q + "'"); return; }
         table(rows);
         out.note("'" + q + "' -> " + rows.size() + " lines  ·  " + Dur.hm(totalOf(rows)));
@@ -449,8 +418,8 @@ public final class App {
     private void sum() {
         out.title("SUM");
         emptyCheck();
-        Period p = in.period("period", repo.min(), repo.max());
-        Report r = report(p);
+        Period p = in.period("period", svc.min(), svc.max());
+        Report r = svc.report(p.from(), p.to());
         out.note(Str.fix("DATE", 12) + Str.fix("DAY", 6) + Str.fix("LINES", 8) + Str.fix("DURATION", 12));
         out.note("-".repeat(38));
         for (Report.Day d : r.summary()) {
@@ -477,11 +446,9 @@ public final class App {
     private void export(String kind) {
         out.title("EXPORT " + kind.toUpperCase());
         emptyCheck();
-        Period p = in.period("period", repo.min(), repo.max());
-        List<Entry> rows = repo.between(p.from(), p.to());
-        if (rows.isEmpty()) { out.bad("nothing between " + p.label()); return; }
-
-        Report r = new Report(new Report.Head(who(), db.file.toString(), p, stamp()), rows);
+        Period p = in.period("period", svc.min(), svc.max());
+        Report r = svc.report(p.from(), p.to());
+        if (r.lines().isEmpty()) { out.bad("nothing between " + p.label()); return; }
         Path dir = Path.of(System.getProperty("user.dir"));
         String base = Ver.NAME + "-" + Str.iso(p.from()) + "_" + Str.iso(p.to()) + "." + kind;
         String typed = in.text("file", dir.resolve(base).toString());
@@ -504,19 +471,10 @@ public final class App {
         if (in.yes("open it?", true)) openWith(target);
     }
 
-    private Report report(Period p) {
-        return new Report(new Report.Head(who(), db.file.toString(), p, stamp()), repo.between(p.from(), p.to()));
-    }
-
     private static String human(int n) {
         if (n < 1024) return n + " B";
         if (n < 1048576) return String.format(Locale.ROOT, "%.1f KB", n / 1024.0);
         return String.format(Locale.ROOT, "%.1f MB", n / 1048576.0);
-    }
-
-    private String stamp() {
-        LocalDateTime n = LocalDateTime.now();
-        return Str.d(n.toLocalDate()) + " " + Str.t(n.toLocalTime());
     }
 
     private void openWith(Path p) {
@@ -533,27 +491,28 @@ public final class App {
 
     private void config() {
         out.title("CONFIG");
-        out.note("db      " + db.file);
-        out.note("user    " + (who().isEmpty() ? "-" : who()));
-        out.note("records " + repo.count() + "   " + range());
+        Map<String, Object> c = svc.config();
+        out.note("db      " + c.get("db"));
+        String who = (String) c.get("who");
+        out.note("user    " + (who.isEmpty() ? "-" : who));
+        out.note("records " + c.get("records") + "   " + range(c));
         out.note("csv     sep '" + Csv.SEP + "'  (PONTO_CSV_SEP)");
-        out.note("java    " + System.getProperty("java.version") + "   sqlite " + db.version());
-        out.note("off     " + (db.cfg("off").isEmpty() ? "-" : db.cfg("off")));
-        for (String s : Holidays.next(4)) out.note("day off " + s);
-        String now = who();
-        String who = in.text("user", now.isEmpty() ? "-" : now);
-        db.setCfg("who", who.equals("-") ? "" : who);
-        out.ok("user " + (who.equals("-") ? "-" : who));
-        String off = in.text("off", db.cfg("off").isEmpty() ? "-" : db.cfg("off"));
-        db.setCfg("off", off.equals("-") ? "" : off);
-        Holidays.extra(offList(off));
-        out.ok("off " + (off.equals("-") ? "-" : Holidays.extra().size() + " day(s)"));
-        if (in.yes("vacuum the db?", false)) { db.vacuum(); out.ok("vacuumed"); }
+        out.note("java    " + c.get("java") + "   sqlite " + c.get("sqlite"));
+        String off = (String) c.get("off");
+        out.note("off     " + (off.isEmpty() ? "-" : off));
+        for (Object s : (List<?>) c.get("nextOff")) out.note("day off " + s);
+        String w = in.text("user", who.isEmpty() ? "-" : who);
+        svc.setConfig(w, null, false);
+        out.ok("user " + (w.equals("-") ? "-" : w));
+        String o = in.text("off", off.isEmpty() ? "-" : off);
+        svc.setConfig(null, o, false, s -> out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored"));
+        out.ok("off " + (o.equals("-") ? "-" : Holidays.extra().size() + " day(s)"));
+        if (in.yes("vacuum the db?", false)) { svc.setConfig(null, null, true); out.ok("vacuumed"); }
     }
 
-    private String range() {
-        LocalDate a = repo.min(), b = repo.max();
-        return a == null ? "-" : Str.d(a) + " .. " + Str.d(b);
+    private String range(Map<String, Object> c) {
+        String a = (String) c.get("from"), b = (String) c.get("to");
+        return a.isEmpty() ? "-" : a + " .. " + b;
     }
 
     private void help() {
@@ -565,6 +524,6 @@ public final class App {
         out.note("         4 2026 works the same way as d 2026");
         out.note("dates  08/10 · 08/10/2026 · 2026-10-08 · 5oct · today · y · -3");
         out.note("times  07:30 · 07h30 · 0730 · 8 · now          '-' clears a field");
-        out.note("db     " + db.file + "   (PONTO_DB / --db=path)");
+        out.note("db     " + svc.dbPath() + "   (PONTO_DB / --db=path)");
     }
 }

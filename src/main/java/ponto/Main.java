@@ -70,10 +70,10 @@ public final class Main {
         try {
             if (flag(args, "--serve")) {
                 Db d = Db.open(db);
-                new Web(d, port(args)).start();
+                new Web(new Service(d), port(args)).start();
                 return;
             }
-            try (Db d = Db.open(db)) { new App(d).run(); }
+            try (Db d = Db.open(db)) { new App(new Service(d)).run(); }
             System.out.flush();
         } catch (Problema e) {
             System.out.flush();

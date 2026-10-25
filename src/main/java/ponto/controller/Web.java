@@ -4,9 +4,7 @@ import ponto.Bad;
 import ponto.NeedConfirm;
 import ponto.Problema;
 import ponto.Ver;
-import ponto.model.Db;
 import ponto.model.Entry;
-import ponto.model.Holidays;
 import ponto.model.Report;
 import ponto.model.Service;
 import ponto.model.Str;
@@ -38,13 +36,10 @@ public final class Web {
     private final Service svc;
     private final int port;
 
-    public Web(Db db, int port) {
-        this.svc = new Service(db);
-        this.port = port;
-        Holidays.extra(Service.offDates(db.cfg("off")));
-    }
+    public Web(Service svc, int port) { this.svc = svc; this.port = port; }
 
     public void start() {
+        svc.registerOff();
         Javalin app = Javalin.create(cfg -> {
             cfg.showJavalinBanner = false;
             cfg.jsonMapper(new Json3());
@@ -82,7 +77,7 @@ public final class Web {
         app.put("/api/config", this::config);
 
         app.start("0.0.0.0", port);
-        System.out.println("ponto web  http://0.0.0.0:" + port + "   db " + svc.db().file);
+        System.out.println("ponto web  http://0.0.0.0:" + port + "   db " + svc.dbPath());
         try { Thread.currentThread().join(); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         app.stop();

@@ -27,10 +27,45 @@ public final class Service {
     private final Repo repo;
     private final Object lock = new Object();
 
-    public Service(Db db) { this.db = db; this.repo = new Repo(db); }
+    public Service(Db db) {
+        this.db = db;
+        this.repo = new Repo(db);
+    }
 
-    Repo repo() { return repo; }
-    public Db db() { return db; }
+    /** Weekend/user-off registration for the two modes' startup. */
+    public void registerOff() { registerOff(s -> { }); }
+
+    public void registerOff(Consumer<String> bad) { Holidays.extra(offDates(db.cfg("off"), bad)); }
+
+    public int count() { synchronized (lock) { return repo.count(); } }
+
+    public LocalDate min() { synchronized (lock) { return repo.min(); } }
+
+    public LocalDate max() { synchronized (lock) { return repo.max(); } }
+
+    public int countOn(LocalDate d) { synchronized (lock) { return repo.countOn(d); } }
+
+    public List<Entry> recent(int n, int skip) { synchronized (lock) { return repo.recent(n, skip); } }
+
+    public List<Entry> search(String q) { synchronized (lock) { return repo.search(q); } }
+
+    public List<Entry> byDay(String pattern, int n, int skip) {
+        synchronized (lock) { return repo.byDay(pattern, n, skip); }
+    }
+
+    public int countDay(String pattern) { synchronized (lock) { return repo.countDay(pattern); } }
+
+    public String dbPath() { synchronized (lock) { return db.file.toString(); } }
+
+    /** cfg `off` as saved (the terminal edits + echoes it verbatim). */
+    public String rawOff() { synchronized (lock) { return db.cfg("off"); } }
+
+    /** cfg `who` as saved (without the $PONTO_USER fallback of who()). */
+    public String rawWho() { synchronized (lock) { return db.cfg("who", ""); } }
+
+    public boolean asked() { synchronized (lock) { return db.cfg("asked").equals("1"); } }
+
+    public void markAsked() { synchronized (lock) { db.setCfg("asked", "1"); } }
 
     public String who() {
         synchronized (lock) {
@@ -209,11 +244,16 @@ public final class Service {
     }
 
     public Map<String, Object> setConfig(String who, String off, boolean vacuum) {
+        return setConfig(who, off, vacuum, s -> { });
+    }
+
+    /** Same, but the terminal keeps its "off: '...' not a date" line for bad dates. */
+    public Map<String, Object> setConfig(String who, String off, boolean vacuum, Consumer<String> bad) {
         synchronized (lock) {
             if (who != null) db.setCfg("who", who.equals("-") ? "" : who);
             if (off != null) {
                 db.setCfg("off", off.equals("-") ? "" : off);
-                Holidays.extra(offDates(off));
+                Holidays.extra(offDates(off, bad));
             }
             db.setCfg("asked", "1");
             if (vacuum) db.vacuum();
