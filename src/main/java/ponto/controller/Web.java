@@ -5,6 +5,7 @@ import ponto.NeedConfirm;
 import ponto.Problema;
 import ponto.Ver;
 import ponto.model.Entry;
+import ponto.model.Note;
 import ponto.model.Report;
 import ponto.model.Service;
 import ponto.model.Str;
@@ -49,6 +50,12 @@ public final class Web {
             }
         });
 
+        app.after(ctx -> {
+            String p = ctx.path();
+            if (!p.startsWith("/api") && !p.startsWith("/assets"))
+                ctx.header("Cache-Control", "no-store");
+        });
+
         app.exception(NeedConfirm.class, (e, ctx) -> {
             ctx.status(409).json(Map.of("need", e.code, "message", e.getMessage()));
         });
@@ -71,6 +78,15 @@ public final class Web {
         app.get("/api/export/{kind}", this::export);
         app.get("/api/config", ctx -> ctx.json(svc.config()));
         app.put("/api/config", this::config);
+        app.get("/api/notes", this::notesList);
+        app.get("/api/notes/{id}", this::noteOne);
+        app.post("/api/notes", this::noteCreate);
+        app.put("/api/notes/{id}", this::noteUpdate);
+        app.put("/api/notes/{id}/folder", this::noteMove);
+        app.delete("/api/notes/{id}", this::noteDelete);
+        app.post("/api/folders", this::folderCreate);
+        app.put("/api/folders/{id}", this::folderUpdate);
+        app.delete("/api/folders/{id}", this::folderDelete);
 
         app.start("0.0.0.0", port);
         System.out.println("ponto web  http://0.0.0.0:" + port + "   db " + svc.dbPath());
@@ -85,10 +101,15 @@ public final class Web {
         int n = intParam(ctx, "n", 40);
         int skip = intParam(ctx, "skip", 0);
         List<Entry> rows = svc.list(q, dia, n, skip);
+        Service.Totals tot = svc.listTotals(q, dia);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("total", svc.count(q, dia));
         out.put("shown", rows.size());
         out.put("skip", skip);
+        out.put("mins", tot.mins());
+        out.put("dur", tot.dur());
+        out.put("hours", tot.hours());
+        out.put("open", tot.open());
         out.put("entries", rows.stream().map(Json::json).toList());
         ctx.json(out);
     }
@@ -196,6 +217,62 @@ public final class Web {
         ctx.json(svc.setConfig(r.who(), r.off(), r.flag(r.vacuum())));
     }
 
+    private void notesList(Context ctx) {
+        String q = ctx.queryParam("q");
+        List<Note> rows = svc.notes().list(q);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", rows.size());
+        out.put("notes", rows.stream().map(Json::json).toList());
+        out.put("folders", svc.notes().folders().stream().map(Json::json).toList());
+        ctx.json(out);
+    }
+
+    private void noteOne(Context ctx) {
+        ctx.json(Json.json(svc.notes().byId(ctx.pathParamAsClass("id", Integer.class).get())));
+    }
+
+    private void noteCreate(Context ctx) {
+        NoteReq r = ctx.bodyAsClass(NoteReq.class);
+        Note n = svc.notes().create(nz(r.title()), nz(r.body()), r.folderId());
+        ctx.status(HttpStatus.CREATED).json(Json.json(n));
+    }
+
+    private void noteUpdate(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        NoteReq r = ctx.bodyAsClass(NoteReq.class);
+        ctx.json(Json.json(svc.notes().update(id, nz(r.title()), nz(r.body()))));
+    }
+
+    private void noteMove(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        NoteReq r = ctx.bodyAsClass(NoteReq.class);
+        ctx.json(Json.json(svc.notes().move(id, r.folderId())));
+    }
+
+    private void folderCreate(Context ctx) {
+        FolderReq r = ctx.bodyAsClass(FolderReq.class);
+        ctx.status(HttpStatus.CREATED).json(Json.json(svc.notes().createFolder(nz(r.name()), r.parent())));
+    }
+
+    private void folderUpdate(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        FolderReq r = ctx.bodyAsClass(FolderReq.class);
+        if (r.name() != null) svc.notes().renameFolder(id, r.name());
+        ctx.json(Json.json(svc.notes().moveFolder(id, r.parent())));
+    }
+
+    private void folderDelete(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        svc.notes().deleteFolder(id);
+        ctx.json(Map.of("ok", true, "id", id));
+    }
+
+    private void noteDelete(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        svc.notes().delete(id);
+        ctx.json(Map.of("ok", true, "id", id));
+    }
+
     /**
      * Temp file, render, read, delete: the writers take a Path, the HTTP
      * response is built from bytes. (The terminal flow calls the writers
@@ -245,4 +322,8 @@ public final class Web {
                    String who, String off, Boolean vacuum) {
         boolean flag(Boolean v) { return Boolean.TRUE.equals(v); }
     }
+
+    record NoteReq(String title, String body, Integer folderId) { }
+
+    record FolderReq(String name, Integer parent) { }
 }

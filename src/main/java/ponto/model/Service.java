@@ -25,12 +25,17 @@ public final class Service {
 
     private final Db db;
     private final Repo repo;
+    private final Notes notes;
     private final Object lock = new Object();
 
     public Service(Db db) {
         this.db = db;
         this.repo = new Repo(db);
+        this.notes = new Notes(db, lock);
     }
+
+    /** Markdown notes: same SQLite file, unrelated to the timesheet. */
+    public Notes notes() { return notes; }
 
     /** Weekend/user-off registration for the two modes' startup. */
     public void registerOff() { registerOff(s -> { }); }
@@ -202,6 +207,32 @@ public final class Service {
             if (filter != null && !filter.isBlank()) return repo.countDay(Parse.like(filter).pattern());
             return repo.count();
         }
+    }
+
+    /**
+     * Closed-line minutes of every record matching the list filter
+     * (the whole set, not the current page). Incomplete lines count as 0.
+     */
+    public Totals listTotals(String q, String filter) {
+        synchronized (lock) {
+            List<Entry> rows;
+            if (q != null && !q.isBlank()) rows = repo.search(q);
+            else if (filter != null && !filter.isBlank())
+                rows = repo.byDay(Parse.like(filter).pattern());
+            else rows = repo.all();
+            long mins = 0;
+            int open = 0;
+            for (Entry e : rows) {
+                if (e.min() > 0) mins += e.min();
+                if (!e.closed()) open++;
+            }
+            return new Totals(mins, open);
+        }
+    }
+
+    public record Totals(long mins, int open) {
+        public String dur() { return Dur.hm(mins); }
+        public String hours() { return Dur.dec(mins); }
     }
 
     public Entry byId(int id) {

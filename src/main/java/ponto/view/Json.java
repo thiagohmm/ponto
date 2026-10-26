@@ -2,6 +2,8 @@ package ponto.view;
 
 import ponto.model.Dur;
 import ponto.model.Entry;
+import ponto.model.Folder;
+import ponto.model.Note;
 import ponto.model.Report;
 import ponto.model.Str;
 
@@ -29,6 +31,26 @@ public final class Json {
         m.put("open", e.open());
         m.put("closed", e.closed());
         m.put("note", e.empty());
+        return m;
+    }
+
+    public static Map<String, Object> json(Note n) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", n.id());
+        m.put("title", n.title());
+        m.put("body", n.body());
+        m.put("crea", n.crea());
+        m.put("upd", n.upd());
+        m.put("folderId", n.folderId());
+        return m;
+    }
+
+    public static Map<String, Object> json(Folder f) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", f.id());
+        m.put("parent", f.parent());
+        m.put("name", f.name());
+        m.put("crea", f.crea());
         return m;
     }
 

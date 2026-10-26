@@ -30,7 +30,25 @@ public final class Db implements AutoCloseable {
         CREATE TABLE IF NOT EXISTS cfg (
           k      TEXT PRIMARY KEY,
           v      TEXT NOT NULL DEFAULT ''
-        )""");
+        )""",
+        """
+        CREATE TABLE IF NOT EXISTS note (
+          id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          title     TEXT NOT NULL DEFAULT '',
+          body      TEXT NOT NULL DEFAULT '',
+          crea      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime')),
+          upd       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime')),
+          folder_id INTEGER
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_note_upd ON note(upd)",
+        """
+        CREATE TABLE IF NOT EXISTS folder (
+          id     INTEGER PRIMARY KEY AUTOINCREMENT,
+          parent INTEGER,
+          name   TEXT NOT NULL DEFAULT '',
+          crea   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_folder_parent ON folder(parent)");
 
     private final Connection c;
     public final Path file;
@@ -49,6 +67,17 @@ public final class Db implements AutoCloseable {
             try (Statement st = c.createStatement()) { st.execute(s); }
         }
         for (String sql : SCHEMA) exec(sql);
+        if (!hasColumn("note", "folder_id"))
+            exec("ALTER TABLE note ADD COLUMN folder_id INTEGER");
+        exec("CREATE INDEX IF NOT EXISTS ix_note_folder ON note(folder_id)");
+    }
+
+    private boolean hasColumn(String table, String col) {
+        try (Statement st = c.createStatement();
+             var rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) if (col.equalsIgnoreCase(rs.getString("name"))) return true;
+            return false;
+        } catch (SQLException e) { throw new Problema(clean(e.getMessage())); }
     }
 
     /** CLI --db=... wins over $PONTO_DB, which wins over ~/.local/share/ponto/ponto.db */

@@ -111,6 +111,11 @@ public final class Repo {
                     like, n, Math.max(0, skip));
     }
 
+    /** Every row whose ISO day matches `like`, newest first. */
+    public List<Entry> byDay(String like) {
+        return rows("SELECT " + COLS + " FROM ponto WHERE dia LIKE ?" + ORDER, like);
+    }
+
     /** How many rows match that day pattern (the `of M` in the footer). */
     public int countDay(String like) {
         try (var q = prep("SELECT count(*) FROM ponto WHERE dia LIKE ?")) {

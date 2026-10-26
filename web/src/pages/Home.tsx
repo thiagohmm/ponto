@@ -1,13 +1,54 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import type { Entry, Home } from "../types";
 import { ApiError } from "../types";
 
+function minsOf(e: Entry): number {
+  if (!e.closed || !e.hours) return 0;
+  const n = Number(e.hours);
+  return Number.isFinite(n) ? Math.round(n * 60) : 0;
+}
+
+function hm(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h + ":" + (m < 10 ? "0" : "") + m;
+}
+
+function dec(mins: number): string {
+  return (mins / 60).toFixed(2);
+}
+
+type DayGroup = {
+  key: string;
+  dia: string;
+  d3: string;
+  entries: Entry[];
+  mins: number;
+};
+
+function groupByDay(rows: Entry[]): DayGroup[] {
+  const groups: DayGroup[] = [];
+  for (const e of rows) {
+    const last = groups.at(-1);
+    if (!last || last.key !== e.diaIso) {
+      groups.push({ key: e.diaIso, dia: e.dia, d3: e.d3, entries: [e], mins: minsOf(e) });
+    } else {
+      last.entries.push(e);
+      last.mins += minsOf(e);
+    }
+  }
+  return groups;
+}
+
 export function HomePage() {
   const [home, setHome] = useState<Home | null>(null);
   const [rows, setRows] = useState<Entry[]>([]);
   const [total, setTotal] = useState(0);
+  const [filterDur, setFilterDur] = useState("0:00");
+  const [filterHours, setFilterHours] = useState("0.00");
+  const [filterOpen, setFilterOpen] = useState(0);
   const [q, setQ] = useState("");
   const [dia, setDia] = useState("");
   const [err, setErr] = useState("");
@@ -18,17 +59,23 @@ export function HomePage() {
     try {
       const [h, list] = await Promise.all([
         api.home(),
-        api.entries({ q: nextQ, dia: nextDia, n: 80 }),
+        api.entries({ q: nextQ, dia: nextDia, n: 500 }),
       ]);
       setHome(h);
       setRows(list.entries);
       setTotal(list.total);
+      setFilterDur(list.dur);
+      setFilterHours(list.hours);
+      setFilterOpen(list.open);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "erro");
     }
   }
 
   useEffect(() => { void load(); }, []);
+
+  const groups = useMemo(() => groupByDay(rows), [rows]);
+  const pageMins = useMemo(() => rows.reduce((s, e) => s + minsOf(e), 0), [rows]);
 
   async function del(id: number) {
     if (!confirm("apagar #" + id + "?")) return;
@@ -42,6 +89,8 @@ export function HomePage() {
       setBusy(false);
     }
   }
+
+  const filtered = Boolean(q.trim() || dia.trim());
 
   return (
     <>
@@ -64,44 +113,67 @@ export function HomePage() {
         <button className="btn" onClick={() => void load(q, dia)}>Filtrar</button>
         <Link className="btn primary" to="/novo">Novo</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
+        <div className="filter-sum" title="total do filtro">
+          <b>{filterDur}</b>
+          <span>{filterHours} h · {total} registro(s){filtered ? " no filtro" : ""}</span>
+        </div>
       </div>
 
+      {filterOpen > 0 && (
+        <p className="warn">{filterOpen} linha(s) incompleta(s) fora da soma</p>
+      )}
       {err && <p className="err">{err}</p>}
       <div className="card">
-        <p className="muted">{total} registro(s)</p>
+        <p className="muted">
+          {rows.length} na página{rows.length !== total ? " de " + total : ""}
+          {" · "}{hm(pageMins)} ({dec(pageMins)} h)
+        </p>
         <table>
           <thead>
             <tr>
               <th>ID</th>
-              <th>DATA</th>
-              <th className="hide-sm">DIA</th>
               <th>IN</th>
               <th>OUT</th>
               <th>DUR</th>
+              <th>HORAS</th>
               <th>JUSTIFICATIVA</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((e) => (
-              <tr key={e.id} className={e.open ? "open" : e.note ? "note" : ""}>
-                <td>{e.id}</td>
-                <td>{e.dia}</td>
-                <td className="hide-sm">{e.d3}</td>
-                <td>{e.tin || "—"}</td>
-                <td>{e.tout || "—"}</td>
-                <td>{e.dur}</td>
-                <td>{e.just}</td>
-                <td>
-                  <div className="actions">
-                    <Link className="btn" to={"/edit/" + e.id}>editar</Link>
-                    <button className="btn danger" disabled={busy} onClick={() => void del(e.id)}>apagar</button>
-                  </div>
-                </td>
-              </tr>
+            {groups.map((g) => (
+              <Fragment key={g.key}>
+                <tr className="day-head">
+                  <td colSpan={7}>
+                    <div className="day-head-row">
+                      <span>
+                        <b>{g.dia}</b>
+                        <span className="muted"> {g.d3} · {g.entries.length} linha(s)</span>
+                      </span>
+                      <span className="hours">{hm(g.mins)} ({dec(g.mins)} h)</span>
+                    </div>
+                  </td>
+                </tr>
+                {g.entries.map((e) => (
+                  <tr key={e.id} className={e.open ? "open" : e.note ? "note" : ""}>
+                    <td>{e.id}</td>
+                    <td>{e.tin || "—"}</td>
+                    <td>{e.tout || "—"}</td>
+                    <td>{e.dur}</td>
+                    <td>{e.hours || "—"}</td>
+                    <td>{e.just}</td>
+                    <td>
+                      <div className="actions">
+                        <Link className="btn" to={"/edit/" + e.id}>editar</Link>
+                        <button className="btn danger" disabled={busy} onClick={() => void del(e.id)}>apagar</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={8} className="muted">nada neste filtro</td></tr>
+              <tr><td colSpan={7} className="muted">nada neste filtro</td></tr>
             )}
           </tbody>
         </table>

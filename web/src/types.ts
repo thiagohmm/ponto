@@ -14,6 +14,17 @@ export type Entry = {
   note: boolean;
 };
 
+export type EntryList = {
+  total: number;
+  shown: number;
+  skip: number;
+  mins: number;
+  dur: string;
+  hours: string;
+  open: number;
+  entries: Entry[];
+};
+
 export type Home = {
   who: string;
   records: number;
@@ -70,6 +81,28 @@ export type Config = {
   java: string;
   sqlite: string;
   nextOff: string[];
+};
+
+export type Note = {
+  id: number;
+  title: string;
+  body: string;
+  crea: string;
+  upd: string;
+  folderId: number | null;
+};
+
+export type Folder = {
+  id: number;
+  parent: number | null;
+  name: string;
+  crea: string;
+};
+
+export type NoteList = {
+  total: number;
+  notes: Note[];
+  folders: Folder[];
 };
 
 export class ApiError extends Error {

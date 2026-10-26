@@ -1,4 +1,4 @@
-import type { Config, DayInfo, Entry, Home, Sum } from "./types";
+import type { Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteList, Sum } from "./types";
 import { ApiError } from "./types";
 
 async function parse(r: Response): Promise<unknown> {
@@ -30,9 +30,7 @@ export const api = {
     if (q.n) p.set("n", String(q.n));
     if (q.skip) p.set("skip", String(q.skip));
     const qs = p.toString();
-    return req<{ total: number; shown: number; skip: number; entries: Entry[] }>(
-      "/entries" + (qs ? "?" + qs : ""),
-    );
+    return req<EntryList>("/entries" + (qs ? "?" + qs : ""));
   },
   entry: (id: number) => req<Entry>("/entries/" + id),
   create: (body: Record<string, unknown>) =>
@@ -50,4 +48,19 @@ export const api = {
     req<Config>("/config", { method: "PUT", body: JSON.stringify(body) }),
   exportUrl: (kind: string, from: string, to: string) =>
     "/api/export/" + kind + "?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to),
+  notes: (q?: string) =>
+    req<NoteList>("/notes" + (q ? "?q=" + encodeURIComponent(q) : "")),
+  note: (id: number) => req<Note>("/notes/" + id),
+  createNote: (body: { title: string; body: string; folderId?: number | null }) =>
+    req<Note>("/notes", { method: "POST", body: JSON.stringify(body) }),
+  updateNote: (id: number, body: { title: string; body: string }) =>
+    req<Note>("/notes/" + id, { method: "PUT", body: JSON.stringify(body) }),
+  moveNote: (id: number, folderId: number | null) =>
+    req<Note>("/notes/" + id + "/folder", { method: "PUT", body: JSON.stringify({ folderId }) }),
+  removeNote: (id: number) => req<{ ok: boolean }>("/notes/" + id, { method: "DELETE" }),
+  createFolder: (body: { name: string; parent?: number | null }) =>
+    req<Folder>("/folders", { method: "POST", body: JSON.stringify(body) }),
+  updateFolder: (id: number, body: { name?: string; parent?: number | null }) =>
+    req<Folder>("/folders/" + id, { method: "PUT", body: JSON.stringify(body) }),
+  removeFolder: (id: number) => req<{ ok: boolean }>("/folders/" + id, { method: "DELETE" }),
 };
