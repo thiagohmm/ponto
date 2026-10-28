@@ -6,6 +6,7 @@ import ponto.model.Folder;
 import ponto.model.Note;
 import ponto.model.Report;
 import ponto.model.Str;
+import ponto.model.Tag;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -42,6 +43,16 @@ public final class Json {
         m.put("crea", n.crea());
         m.put("upd", n.upd());
         m.put("folderId", n.folderId());
+        m.put("tagIds", n.tagIds() == null ? java.util.List.of() : n.tagIds());
+        return m;
+    }
+
+    public static Map<String, Object> json(Tag t) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", t.id());
+        m.put("name", t.name());
+        m.put("color", t.color());
+        m.put("crea", t.crea());
         return m;
     }
 

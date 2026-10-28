@@ -1,4 +1,4 @@
-import type { Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteList, Sum } from "./types";
+import type { Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 async function parse(r: Response): Promise<unknown> {
@@ -51,16 +51,23 @@ export const api = {
   notes: (q?: string) =>
     req<NoteList>("/notes" + (q ? "?q=" + encodeURIComponent(q) : "")),
   note: (id: number) => req<Note>("/notes/" + id),
-  createNote: (body: { title: string; body: string; folderId?: number | null }) =>
+  createNote: (body: { title: string; body: string; folderId?: number | null; tagIds?: number[] }) =>
     req<Note>("/notes", { method: "POST", body: JSON.stringify(body) }),
   updateNote: (id: number, body: { title: string; body: string }) =>
     req<Note>("/notes/" + id, { method: "PUT", body: JSON.stringify(body) }),
   moveNote: (id: number, folderId: number | null) =>
     req<Note>("/notes/" + id + "/folder", { method: "PUT", body: JSON.stringify({ folderId }) }),
+  tagNote: (id: number, body: { tagId?: number; tagIds?: number[] }) =>
+    req<Note>("/notes/" + id + "/tags", { method: "PUT", body: JSON.stringify(body) }),
   removeNote: (id: number) => req<{ ok: boolean }>("/notes/" + id, { method: "DELETE" }),
   createFolder: (body: { name: string; parent?: number | null }) =>
     req<Folder>("/folders", { method: "POST", body: JSON.stringify(body) }),
   updateFolder: (id: number, body: { name?: string; parent?: number | null }) =>
     req<Folder>("/folders/" + id, { method: "PUT", body: JSON.stringify(body) }),
   removeFolder: (id: number) => req<{ ok: boolean }>("/folders/" + id, { method: "DELETE" }),
+  createTag: (body: { name: string; color?: string }) =>
+    req<Tag>("/tags", { method: "POST", body: JSON.stringify(body) }),
+  updateTag: (id: number, body: { name?: string; color?: string }) =>
+    req<Tag>("/tags/" + id, { method: "PUT", body: JSON.stringify(body) }),
+  removeTag: (id: number) => req<{ ok: boolean }>("/tags/" + id, { method: "DELETE" }),
 };

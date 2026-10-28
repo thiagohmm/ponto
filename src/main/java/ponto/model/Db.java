@@ -48,7 +48,21 @@ public final class Db implements AutoCloseable {
           name   TEXT NOT NULL DEFAULT '',
           crea   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))
         )""",
-        "CREATE INDEX IF NOT EXISTS ix_folder_parent ON folder(parent)");
+        "CREATE INDEX IF NOT EXISTS ix_folder_parent ON folder(parent)",
+        """
+        CREATE TABLE IF NOT EXISTS tag (
+          id     INTEGER PRIMARY KEY AUTOINCREMENT,
+          name   TEXT NOT NULL DEFAULT '',
+          color  TEXT NOT NULL DEFAULT '',
+          crea   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))
+        )""",
+        """
+        CREATE TABLE IF NOT EXISTS note_tag (
+          note_id INTEGER NOT NULL,
+          tag_id  INTEGER NOT NULL,
+          PRIMARY KEY (note_id, tag_id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_note_tag_tag ON note_tag(tag_id)");
 
     private final Connection c;
     public final Path file;

@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKey, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
-import { excerpt, NotePreview, todoStats, toggleTodoLine } from "../md";
-import type { Folder, Note } from "../types";
+import { NoteBody, type Look, type NoteBodyHandle } from "../NoteBody";
+import { excerpt, NOTE_COLORS, NOTE_FONTS, NotePreview, todoStats, toggleTodoLine } from "../md";
+import type { Folder, Note, Tag } from "../types";
+
+const TAG_PATH = "M3 11l8-8h6v6l-8 8-6-6zM14.5 6.5h.01";
 
 const TODO_PREFIX = "- [ ] ";
 
@@ -20,6 +23,10 @@ function Ico({ path }: { path: string }) {
 
 function folderOf(n: Note): number | null {
   return n.folderId && n.folderId > 0 ? n.folderId : null;
+}
+
+function tagIds(n?: Pick<Note, "tagIds"> | null): number[] {
+  return n?.tagIds ?? [];
 }
 
 function kids(folders: Folder[], parent: number | null): Folder[] {
@@ -61,6 +68,7 @@ export function NotesPage() {
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [q, setQ] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -71,10 +79,13 @@ export function NotesPage() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [here, setHere] = useState<number | null>(null);
+  const [tagHere, setTagHere] = useState<number | null>(null);
   const [open, setOpen] = useState<Record<number, boolean>>({});
-  const [dropOn, setDropOn] = useState<number | "root" | null>(null);
+  const [dropOn, setDropOn] = useState<number | "root" | string | null>(null);
+  const [pickTag, setPickTag] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<NoteBodyHandle | null>(null);
+  const [look, setLook] = useState<Look>({});
   const boundId = useRef(0);
   const saved = useRef({ title: "", body: "" });
   const draft = useRef({ title: "", body: "" });
@@ -91,15 +102,21 @@ export function NotesPage() {
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return notes;
-    return notes.filter((n) =>
-      n.title.toLowerCase().includes(needle) || n.body.toLowerCase().includes(needle));
-  }, [notes, q]);
+    const byTag = new Map(tags.map((t) => [t.id, t]));
+    return notes.filter((n) => {
+      if (tagHere && !tagIds(n).includes(tagHere)) return false;
+      if (!needle) return true;
+      if (n.title.toLowerCase().includes(needle) || n.body.toLowerCase().includes(needle)) return true;
+      return tagIds(n).some((id) => (byTag.get(id)?.name ?? "").toLowerCase().includes(needle));
+    });
+  }, [notes, q, tagHere, tags]);
   const openTodos = useMemo(
     () => visible.reduce((n, x) => n + todoStats(x.body).open, 0),
     [visible],
   );
   const searching = Boolean(q.trim());
+  const filtering = searching || tagHere != null;
+  const editingTags = tagIds(notes.find((n) => n.id === currentId));
 
   function apply(n: Note) {
     boundId.current = n.id;
@@ -114,14 +131,16 @@ export function NotesPage() {
     setErr("");
     try {
       const r = await api.notes();
-      setNotes(r.notes);
+      setNotes(r.notes.map((n) => ({ ...n, tagIds: n.tagIds ?? [] })));
       setFolders(r.folders ?? []);
+      setTags(r.tags ?? []);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "erro");
     }
   }
 
   useEffect(() => { void refresh(); }, []);
+  useEffect(() => { setPickTag(false); setLook({}); }, [currentId]);
 
   const persist = useCallback(async () => {
     const noteId = boundId.current;
@@ -204,7 +223,12 @@ export function NotesPage() {
       await persist();
     setErr("");
     try {
-      const n = await api.createNote({ title: presetTitle, body: presetBody, folderId: here });
+      const n = await api.createNote({
+        title: presetTitle,
+        body: presetBody,
+        folderId: here,
+        tagIds: tagHere ? [tagHere] : [],
+      });
       setNotes((list) => [n, ...list]);
       nav("/notas/" + n.id);
       setTimeout(() => {
@@ -217,43 +241,12 @@ export function NotesPage() {
   }
 
   function insertTodo() {
-    const el = bodyRef.current;
-    const start = el?.selectionStart ?? body.length;
-    const end = el?.selectionEnd ?? start;
-    const before = body.slice(0, start);
-    const after = body.slice(end);
-    const nl = before.length === 0 || before.endsWith("\n") ? "" : "\n";
-    setBody(before + nl + TODO_PREFIX + after);
-    setPreview(false);
-    requestAnimationFrame(() => {
-      const pos = before.length + nl.length + TODO_PREFIX.length;
-      el?.focus();
-      el?.setSelectionRange(pos, pos);
-    });
-  }
-
-  function onBodyKey(e: ReactKey<HTMLTextAreaElement>) {
-    if (e.key !== "Enter" || e.shiftKey) return;
-    const el = e.currentTarget;
-    const pos = el.selectionStart;
-    const lineStart = body.lastIndexOf("\n", pos - 1) + 1;
-    const line = body.slice(lineStart, pos);
-    const m = /^( *)[-*] \[([ xX])\](.*)$/.exec(line);
-    if (!m) return;
-    e.preventDefault();
-    if (m[3].trim() === "") {
-      const next = body.slice(0, lineStart) + body.slice(pos);
-      setBody(next);
-      requestAnimationFrame(() => el.setSelectionRange(lineStart, lineStart));
+    if (preview) {
+      setPreview(false);
+      setBody((b) => (b.length === 0 || b.endsWith("\n") ? b : b + "\n") + TODO_PREFIX);
       return;
     }
-    const insert = "\n" + m[1] + TODO_PREFIX;
-    const next = body.slice(0, pos) + insert + body.slice(el.selectionEnd);
-    setBody(next);
-    requestAnimationFrame(() => {
-      const p = pos + insert.length;
-      el.setSelectionRange(p, p);
-    });
+    bodyRef.current?.insertTodo();
   }
 
   async function openWiki(name: string) {
@@ -272,6 +265,52 @@ export function NotesPage() {
       nav("/notas");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não apagou");
+    }
+  }
+
+  async function addTag(preset = "", select = true) {
+    const name = window.prompt("nome da tag", preset || "Tag");
+    if (name == null) return;
+    setErr("");
+    try {
+      const t = await api.createTag({ name });
+      setTags((list) => list.some((x) => x.id === t.id) ? list : [...list, t].sort((a, b) => a.name.localeCompare(b.name, "pt")));
+      if (select) setTagHere(t.id);
+      return t;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não criou tag");
+    }
+  }
+
+  async function renameTag(t: Tag) {
+    const name = window.prompt("renomear tag", t.name);
+    if (name == null || name.trim() === t.name) return;
+    try {
+      const next = await api.updateTag(t.id, { name: name.trim() });
+      setTags((list) => list.map((x) => x.id === next.id ? next : x).sort((a, b) => a.name.localeCompare(b.name, "pt")));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não renomeou");
+    }
+  }
+
+  async function removeTag(t: Tag) {
+    if (!confirm("apagar a tag “" + t.name + "”? ela some das notas.")) return;
+    try {
+      await api.removeTag(t.id);
+      setTags((list) => list.filter((x) => x.id !== t.id));
+      setNotes((list) => list.map((n) => ({ ...n, tagIds: tagIds(n).filter((id) => id !== t.id) })));
+      if (tagHere === t.id) setTagHere(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não apagou tag");
+    }
+  }
+
+  async function putTags(noteId: number, ids: number[]) {
+    try {
+      const next = await api.tagNote(noteId, { tagIds: ids });
+      setNotes((list) => list.map((x) => x.id === next.id ? next : x));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não marcou");
     }
   }
 
@@ -315,6 +354,20 @@ export function NotesPage() {
     }
   }
 
+  async function dropOnTag(raw: string, tagId: number) {
+    setDropOn(null);
+    if (!raw.startsWith("note:")) return;
+    const noteId = Number(raw.slice(5));
+    const n = notesRef.current.find((x) => x.id === noteId);
+    if (!n || tagIds(n).includes(tagId)) return;
+    try {
+      const next = await api.tagNote(noteId, { tagId });
+      setNotes((list) => list.map((x) => x.id === next.id ? next : x));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não marcou");
+    }
+  }
+
   async function dropItem(raw: string, dest: number | null) {
     setDropOn(null);
     if (raw.startsWith("note:")) {
@@ -350,7 +403,7 @@ export function NotesPage() {
     e.dataTransfer.effectAllowed = "move";
   }
 
-  function allowDrop(e: DragEvent, target: number | "root") {
+  function allowDrop(e: DragEvent, target: number | "root" | string) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDropOn(target);
@@ -358,6 +411,7 @@ export function NotesPage() {
 
   function noteRow(n: Note, depth = 0) {
     const stats = todoStats(n.body);
+    const mine = tagIds(n).map((id) => tags.find((t) => t.id === id)).filter((t): t is Tag => Boolean(t));
     return (
       <button
         key={n.id}
@@ -372,8 +426,15 @@ export function NotesPage() {
         <span className="vault-file-ico" aria-hidden="true" />
         <span className="vault-file-text">
           <b>{fileName(n)}</b>
+          {mine.length > 0 && (
+            <span className="vault-file-tags">
+              {mine.map((t) => (
+                <span key={t.id} className="vault-pill" style={{ "--tag": t.color } as CSSProperties}>{t.name}</span>
+              ))}
+            </span>
+          )}
           <i>
-            {searching && pathOf(folders, folderOf(n)) ? pathOf(folders, folderOf(n)) + " · " : ""}
+            {filtering && pathOf(folders, folderOf(n)) ? pathOf(folders, folderOf(n)) + " · " : ""}
             {stats.total > 0 ? stats.done + "/" + stats.total + " · " : ""}
             {excerpt(n.body) || n.upd}
           </i>
@@ -384,7 +445,7 @@ export function NotesPage() {
 
   function folderBlock(parent: number | null, depth: number): ReactNode {
     const list = kids(folders, parent);
-    const files = searching ? [] : visible.filter((n) => folderOf(n) === parent);
+        const files = filtering ? [] : visible.filter((n) => folderOf(n) === parent);
     return (
       <>
         {list.map((f) => {
@@ -450,8 +511,36 @@ export function NotesPage() {
             <button type="button" className="vault-icon" title="Nova pasta" onClick={() => void addFolder()}>
               <Ico path="M3 8h6l2 2h10v9H3z" />
             </button>
+            <button type="button" className="vault-icon" title="Nova tag" onClick={() => void addTag()}>
+              <Ico path={TAG_PATH} />
+            </button>
           </div>
         </div>
+        {tags.length > 0 && (
+          <div className="vault-tagbar">
+            {tags.map((t) => {
+              const count = notes.filter((n) => tagIds(n).includes(t.id)).length;
+              return (
+                <div
+                  key={t.id}
+                  className={"vault-chip" + (tagHere === t.id ? " on" : "") + (dropOn === "t" + t.id ? " drop" : "")}
+                  style={{ "--tag": t.color } as CSSProperties}
+                  onClick={() => setTagHere((cur) => cur === t.id ? null : t.id)}
+                  onDoubleClick={() => void renameTag(t)}
+                  onDragOver={(e) => allowDrop(e, "t" + t.id)}
+                  onDragLeave={() => setDropOn((d) => d === "t" + t.id ? null : d)}
+                  onDrop={(e) => { e.preventDefault(); void dropOnTag(e.dataTransfer.getData("text/plain"), t.id); }}
+                  title="arraste uma nota · clique para filtrar · duplo para renomear"
+                >
+                  <span className="vault-tag-ico" aria-hidden="true" />
+                  {t.name}
+                  {count > 0 && <small>{count}</small>}
+                  <button type="button" className="vault-chip-x" title="apagar tag" onClick={(e) => { e.stopPropagation(); void removeTag(t); }}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div
           className={"vault-root" + (here == null ? " active" : "") + (dropOn === "root" ? " drop" : "")}
           onClick={() => setHere(null)}
@@ -463,16 +552,19 @@ export function NotesPage() {
           Notas
         </div>
         <div className="vault-files">
-          {searching ? visible.map(noteRow) : folderBlock(null, 0)}
-          {visible.length === 0 && (searching || (notes.length === 0 && folders.length === 0)) && (
+          {filtering ? visible.map(noteRow) : folderBlock(null, 0)}
+          {visible.length === 0 && (filtering || (notes.length === 0 && folders.length === 0)) && (
             <p className="muted vault-empty">
-              {searching ? "nada para “" + q + "”" : "nenhuma nota ainda"}
+              {searching ? "nada para “" + q + "”"
+                : tagHere ? "nenhuma nota com esta tag"
+                : "nenhuma nota ainda"}
             </p>
           )}
         </div>
         <p className="muted vault-count">
           {visible.length} nota(s){openTodos > 0 ? " · " + openTodos + " aberta(s)" : ""}
           {here ? " · " + pathOf(folders, here) : ""}
+          {tagHere ? " · " + (tags.find((t) => t.id === tagHere)?.name ?? "tag") : ""}
         </p>
       </aside>
 
@@ -483,13 +575,14 @@ export function NotesPage() {
             <p className="vault-kicker">Notas</p>
             <h2>Nenhuma nota selecionada</h2>
             <p className="muted">
-              arraste notas para as pastas. markdown, <code>[[ligações]]</code>
+              arraste notas para pastas ou tags. markdown, <code>[[ligações]]</code>
               e tarefas <code>- [ ]</code>.
             </p>
             <div className="row">
               <button className="btn primary" onClick={() => void create()}>Escrever</button>
               <button className="btn" onClick={() => void create("Tarefas", TODO_PREFIX)}>Tarefas</button>
               <button className="btn" onClick={() => void addFolder()}>Pasta</button>
+              <button className="btn" onClick={() => void addTag()}>Tag</button>
             </div>
           </div>
         )}
@@ -504,7 +597,39 @@ export function NotesPage() {
                 <button type="button" className={!preview ? "on" : ""} onClick={() => setPreview(false)}>editar</button>
                 <button type="button" className={preview ? "on" : ""} onClick={() => setPreview(true)}>ler</button>
               </div>
-              <button className="btn" onClick={insertTodo} title="inserir tarefa">Todo</button>
+              {!preview && (
+                <div className="vault-look" onMouseDown={(e) => e.preventDefault()}>
+                  <div className="vault-swatches">
+                    {NOTE_COLORS.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={"vault-swatch" + (look.c === c.id ? " on" : "")}
+                        style={{ background: c.value }}
+                        title={c.label}
+                        aria-label={c.label}
+                        onClick={() => bodyRef.current?.apply({ color: c.id })}
+                      />
+                    ))}
+                  </div>
+                  <div className="vault-fonts">
+                    <button type="button" className={!look.f ? "on" : ""} onClick={() => bodyRef.current?.apply({ font: "" })}>Padrão</button>
+                    {NOTE_FONTS.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        className={look.f === f.id ? "on" : ""}
+                        style={{ fontFamily: f.family }}
+                        onClick={() => bodyRef.current?.apply({ font: f.id })}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="btn" onClick={() => bodyRef.current?.apply({ clear: true })}>limpar</button>
+                </div>
+              )}
+              <button className="btn" onMouseDown={(e) => e.preventDefault()} onClick={insertTodo} title="inserir tarefa">Todo</button>
               <button className="btn" disabled={busy || !dirty} onClick={() => void persist()}>Salvar</button>
               <button className="btn danger" disabled={busy} onClick={() => void remove()}>apagar</button>
             </div>
@@ -515,6 +640,56 @@ export function NotesPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
+            <div className="vault-note-tags">
+              {editingTags.map((id) => {
+                const t = tags.find((x) => x.id === id);
+                if (!t) return null;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="vault-chip on"
+                    style={{ "--tag": t.color } as CSSProperties}
+                    onClick={() => void putTags(currentId, editingTags.filter((x) => x !== t.id))}
+                    title="tirar tag"
+                  >
+                    <span className="vault-tag-ico" aria-hidden="true" />
+                    {t.name}
+                    <span className="vault-chip-x">×</span>
+                  </button>
+                );
+              })}
+              <div className="vault-tag-add">
+                <button type="button" className="vault-chip ghost" onClick={() => setPickTag((v) => !v)}>
+                  <span className="vault-tag-ico" aria-hidden="true" />
+                  tag
+                </button>
+                {pickTag && (
+                  <div className="vault-tag-menu">
+                    {tags.filter((t) => !editingTags.includes(t.id)).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          void putTags(currentId, [...editingTags, t.id]);
+                          setPickTag(false);
+                        }}
+                      >
+                        <span className="vault-pill" style={{ "--tag": t.color } as CSSProperties}>{t.name}</span>
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => {
+                      setPickTag(false);
+                      void addTag("", false).then((t) => {
+                        if (t) void putTags(currentId, [...editingTags, t.id]);
+                      });
+                    }}>
+                      nova tag
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
             {preview ? (
               <div className="vault-preview">
                 <NotePreview
@@ -524,14 +699,13 @@ export function NotesPage() {
                 />
               </div>
             ) : (
-              <textarea
-                ref={bodyRef}
-                className="vault-body"
+              <NoteBody
+                key={currentId}
+                body={body}
                 placeholder={"# ideia\n\n- [ ] uma tarefa\n\nmarkdown · **negrito** · `código` · [[outra nota]]"}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                onKeyDown={onBodyKey}
-                spellCheck
+                onChange={setBody}
+                onLook={setLook}
+                handle={bodyRef}
               />
             )}
           </>

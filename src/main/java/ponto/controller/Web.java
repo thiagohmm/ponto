@@ -84,9 +84,13 @@ public final class Web {
         app.put("/api/notes/{id}", this::noteUpdate);
         app.put("/api/notes/{id}/folder", this::noteMove);
         app.delete("/api/notes/{id}", this::noteDelete);
+        app.put("/api/notes/{id}/tags", this::noteTags);
         app.post("/api/folders", this::folderCreate);
         app.put("/api/folders/{id}", this::folderUpdate);
         app.delete("/api/folders/{id}", this::folderDelete);
+        app.post("/api/tags", this::tagCreate);
+        app.put("/api/tags/{id}", this::tagUpdate);
+        app.delete("/api/tags/{id}", this::tagDelete);
 
         app.start("0.0.0.0", port);
         System.out.println("ponto web  http://0.0.0.0:" + port + "   db " + svc.dbPath());
@@ -224,6 +228,7 @@ public final class Web {
         out.put("total", rows.size());
         out.put("notes", rows.stream().map(Json::json).toList());
         out.put("folders", svc.notes().folders().stream().map(Json::json).toList());
+        out.put("tags", svc.notes().tags().stream().map(Json::json).toList());
         ctx.json(out);
     }
 
@@ -233,7 +238,7 @@ public final class Web {
 
     private void noteCreate(Context ctx) {
         NoteReq r = ctx.bodyAsClass(NoteReq.class);
-        Note n = svc.notes().create(nz(r.title()), nz(r.body()), r.folderId());
+        Note n = svc.notes().create(nz(r.title()), nz(r.body()), r.folderId(), r.tagIds());
         ctx.status(HttpStatus.CREATED).json(Json.json(n));
     }
 
@@ -264,6 +269,32 @@ public final class Web {
     private void folderDelete(Context ctx) {
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         svc.notes().deleteFolder(id);
+        ctx.json(Map.of("ok", true, "id", id));
+    }
+
+    private void noteTags(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        NoteReq r = ctx.bodyAsClass(NoteReq.class);
+        if (r.tagId() != null)
+            ctx.json(Json.json(svc.notes().addTag(id, r.tagId())));
+        else
+            ctx.json(Json.json(svc.notes().setTags(id, r.tagIds())));
+    }
+
+    private void tagCreate(Context ctx) {
+        TagReq r = ctx.bodyAsClass(TagReq.class);
+        ctx.status(HttpStatus.CREATED).json(Json.json(svc.notes().createTag(nz(r.name()), r.color())));
+    }
+
+    private void tagUpdate(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        TagReq r = ctx.bodyAsClass(TagReq.class);
+        ctx.json(Json.json(svc.notes().renameTag(id, r.name(), r.color())));
+    }
+
+    private void tagDelete(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        svc.notes().deleteTag(id);
         ctx.json(Map.of("ok", true, "id", id));
     }
 
@@ -323,7 +354,9 @@ public final class Web {
         boolean flag(Boolean v) { return Boolean.TRUE.equals(v); }
     }
 
-    record NoteReq(String title, String body, Integer folderId) { }
+    record NoteReq(String title, String body, Integer folderId, Integer tagId, List<Integer> tagIds) { }
 
     record FolderReq(String name, Integer parent) { }
+
+    record TagReq(String name, String color) { }
 }

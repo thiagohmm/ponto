@@ -90,6 +90,7 @@ export type Note = {
   crea: string;
   upd: string;
   folderId: number | null;
+  tagIds: number[];
 };
 
 export type Folder = {
@@ -99,10 +100,18 @@ export type Folder = {
   crea: string;
 };
 
+export type Tag = {
+  id: number;
+  name: string;
+  color: string;
+  crea: string;
+};
+
 export type NoteList = {
   total: number;
   notes: Note[];
   folders: Folder[];
+  tags: Tag[];
 };
 
 export class ApiError extends Error {
