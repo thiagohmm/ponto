@@ -85,6 +85,7 @@ export function NotesPage() {
   const [pickTag, setPickTag] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<NoteBodyHandle | null>(null);
+  const lookNode = useRef<HTMLDivElement | null>(null);
   const [look, setLook] = useState<Look>({});
   const boundId = useRef(0);
   const saved = useRef({ title: "", body: "" });
@@ -141,6 +142,18 @@ export function NotesPage() {
 
   useEffect(() => { void refresh(); }, []);
   useEffect(() => { setPickTag(false); setLook({}); }, [currentId]);
+
+  const bindLook = useCallback((node: HTMLDivElement | null) => {
+    const prev = lookNode.current;
+    if (prev) prev.removeEventListener("pointerdown", keepSelection, true);
+    lookNode.current = node;
+    if (node) node.addEventListener("pointerdown", keepSelection, { capture: true, passive: false });
+  }, []);
+
+  function keepSelection(e: Event) {
+    e.preventDefault();
+    bodyRef.current?.holdSelection();
+  }
 
   const persist = useCallback(async () => {
     const noteId = boundId.current;
@@ -598,7 +611,7 @@ export function NotesPage() {
                 <button type="button" className={preview ? "on" : ""} onClick={() => setPreview(true)}>ler</button>
               </div>
               {!preview && (
-                <div className="vault-look" onMouseDown={(e) => e.preventDefault()}>
+                <div className="vault-look" ref={bindLook}>
                   <div className="vault-swatches">
                     {NOTE_COLORS.map((c) => (
                       <button

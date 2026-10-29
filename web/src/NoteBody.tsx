@@ -10,6 +10,7 @@ export type StylePatch = { color?: string; font?: string; clear?: boolean };
 export type NoteBodyHandle = {
   focus(): void;
   insertTodo(): void;
+  holdSelection(): void;
   apply(patch: StylePatch): void;
 };
 
@@ -501,6 +502,8 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
   const skip = useRef(false);
   const pending = useRef<Look | null>(null);
   const armed = useRef<HTMLElement | null>(null);
+  const held = useRef<Range | null>(null);
+  const freeze = useRef(false);
   const mute = useRef(0);
   bodyRef.current = body;
   onChangeRef.current = onChange;
@@ -586,6 +589,54 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
     }
   }
 
+  function remember(range: Range | null) {
+    if (!range) return;
+    const root = surface.current;
+    if (!root || !range.startContainer.isConnected || !root.contains(range.startContainer)) return;
+    held.current = range.cloneRange();
+  }
+
+  function holdSelection() {
+    freeze.current = true;
+    const root = surface.current;
+    const sel = window.getSelection();
+    if (!root || !sel || sel.rangeCount === 0 || !sel.anchorNode || !root.contains(sel.anchorNode)) return;
+    remember(sel.getRangeAt(0));
+  }
+
+  function rangeForApply(root: HTMLElement): Range | null {
+    const live = caretIn(root);
+    const saved = held.current;
+    const savedOk = Boolean(saved && saved.startContainer.isConnected && root.contains(saved.startContainer));
+    if (savedOk && saved && !saved.collapsed && (!live || live.collapsed)) {
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(saved);
+      return saved;
+    }
+    if (live) return live;
+    if (!savedOk || !saved) return null;
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(saved);
+    return saved;
+  }
+
+  function focusCaret() {
+    const root = surface.current;
+    if (!root) return;
+    root.focus();
+    if (armed.current?.firstChild) {
+      const node = armed.current.firstChild;
+      placeIn(node, node.textContent?.length ?? 0);
+      return;
+    }
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && sel.anchorNode && root.contains(sel.anchorNode)) {
+      remember(sel.getRangeAt(0));
+    }
+  }
+
   function arm(look: Look) {
     const root = surface.current;
     if (!root) return;
@@ -616,7 +667,7 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
     const root = surface.current;
     if (!root) return;
     mute.current++;
-    const range = caretIn(root);
+    const range = rangeForApply(root);
     if (!range) root.focus();
     if (patch.clear) {
       pending.current = null;
@@ -624,6 +675,8 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
       if (range && !range.collapsed) restyle(root, range, { clear: true });
       dropEmptyRuns(root, null);
       emit();
+      focusCaret();
+      freeze.current = false;
       report(lookAt(root));
       window.setTimeout(() => { mute.current = Math.max(0, mute.current - 1); }, 0);
       return;
@@ -634,6 +687,8 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
       restyle(root, range, patch);
       dropEmptyRuns(root, null);
       emit();
+      focusCaret();
+      freeze.current = false;
       report(lookAt(root));
       window.setTimeout(() => { mute.current = Math.max(0, mute.current - 1); }, 0);
       return;
@@ -642,6 +697,8 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
     const next = mergeLook(base, patch);
     arm(next);
     emit();
+    focusCaret();
+    freeze.current = false;
     report(next);
     window.setTimeout(() => { mute.current = Math.max(0, mute.current - 1); }, 0);
   }
@@ -775,11 +832,12 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
     }
 
     function onSel() {
-      if (mute.current) return;
+      if (mute.current || freeze.current) return;
       const el = surface.current;
       if (!el) return;
       const sel = window.getSelection();
       if (!sel?.anchorNode || !el.contains(sel.anchorNode)) return;
+      if (sel.rangeCount) remember(sel.getRangeAt(0));
       if (armed.current && sel.isCollapsed && armed.current.contains(sel.anchorNode)) {
         report(pending.current ?? {});
         return;
@@ -805,7 +863,7 @@ export function NoteBody({ body, placeholder, onChange, onLook, handle }: Props)
     };
   }, []);
 
-  handle.current = { focus: focusEnd, insertTodo, apply };
+  handle.current = { focus: focusEnd, insertTodo, holdSelection, apply };
 
   return <Surface placeholder={placeholder} surface={surface} />;
 }
