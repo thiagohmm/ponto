@@ -5,7 +5,7 @@ import { NoteBody, type Look, type NoteBodyHandle } from "../NoteBody";
 import { excerpt, NOTE_COLORS, NOTE_FONTS, NotePreview, todoStats, toggleTodoLine } from "../md";
 import type { Folder, Note, NoteFile, Tag } from "../types";
 
-const TAG_PATH = "M3 11l8-8h6v6l-8 8-6-6zM14.5 6.5h.01";
+const TAG_PATH = "M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42zM8.7 7.5a1.2 1.2 0 1 1-2.4 0 1.2 1.2 0 0 1 2.4 0z";
 
 const TODO_PREFIX = "- [ ] ";
 
@@ -540,7 +540,7 @@ export function NotesPage() {
                   <Ico path="M4 16.5 15.5 5l3.5 3.5L7.5 20H4z" />
                 </button>
                 <button type="button" className="vault-mini danger" onClick={() => void removeFolder(f)} title="apagar pasta">
-                  <Ico path="M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12" />
+                  <Ico path="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 12a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8l1-12" />
                 </button>
               </div>
               {expanded && (
@@ -568,13 +568,13 @@ export function NotesPage() {
           />
           <div className="vault-actions">
             <button type="button" className="vault-icon" title="Nova nota" onClick={() => void create()}>
-              <Ico path="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M12 11v6M9 14h6" />
+              <Ico path="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-5zM14 3v5h5M12 11v6M9 14h6" />
             </button>
             <button type="button" className="vault-icon" title="Lista de tarefas" onClick={() => void create("Tarefas", TODO_PREFIX)}>
               <Ico path="M5 6h3v3H5zM5 13.5 7 15.5 11 11.5M12 7.5h8M12 14.5h8" />
             </button>
             <button type="button" className="vault-icon" title="Nova pasta" onClick={() => void addFolder()}>
-              <Ico path="M3 8h6l2 2h10v9H3z" />
+              <Ico path="M4 4h5l2 3h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
             </button>
             <button type="button" className="vault-icon" title="Nova tag" onClick={() => void addTag()}>
               <Ico path={TAG_PATH} />
@@ -613,7 +613,7 @@ export function NotesPage() {
           onDragLeave={() => setDropOn((d) => d === "root" ? null : d)}
           onDrop={(e) => { e.preventDefault(); void dropItem(e.dataTransfer.getData("text/plain"), null); }}
         >
-          <span className="vault-folder-ico" aria-hidden="true" />
+          <span className="vault-root-ico" aria-hidden="true" />
           Notas
         </div>
         <div className="vault-files">
