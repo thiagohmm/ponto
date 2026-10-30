@@ -44,6 +44,9 @@ export function ConfigPage() {
         <>
           <p className="muted">banco {cfg.db}</p>
           <p className="muted">{cfg.records} registros · {cfg.from} … {cfg.to} · java {cfg.java} · sqlite {cfg.sqlite}</p>
+          <p className={cfg.storage ? "ok" : "warn"}>
+            arquivos das notas: {cfg.storage ? "armazenamento S3 respondendo" : "armazenamento S3 fora do ar — PONTO_S3_ENDPOINT"}
+          </p>
           <div className="form" style={{ marginTop: 12 }}>
             <label>Nome
               <input value={who} onChange={(e) => setWho(e.target.value)} />

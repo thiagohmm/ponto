@@ -27,6 +27,8 @@ public final class Service {
     private final Repo repo;
     private final Notes notes;
     private final Object lock = new Object();
+    private Files files;
+    private Minio storage;
 
     public Service(Db db) {
         this.db = db;
@@ -36,6 +38,23 @@ public final class Service {
 
     /** Markdown notes: same SQLite file, unrelated to the timesheet. */
     public Notes notes() { return notes; }
+
+    /** Files attached to notes: index in SQLite, bytes in S3 (MinIO). */
+    public Files files() {
+        synchronized (lock) {
+            if (storage == null) storage = Minio.env();
+            if (files == null) files = new Files(db, lock, storage);
+            return files;
+        }
+    }
+
+    /** Storage reachable? Shown in the config screen, not enforced at boot. */
+    public boolean storageUp() {
+        synchronized (lock) {
+            if (storage == null) storage = Minio.env();
+            return storage != null && storage.up();
+        }
+    }
 
     /** Weekend/user-off registration for the two modes' startup. */
     public void registerOff() { registerOff(s -> { }); }
@@ -269,6 +288,7 @@ public final class Service {
             m.put("to", Str.d(repo.max()));
             m.put("java", System.getProperty("java.version"));
             m.put("sqlite", db.version());
+            m.put("storage", storageUp());
             m.put("nextOff", Holidays.next(4));
             return m;
         }

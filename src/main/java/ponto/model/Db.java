@@ -62,7 +62,18 @@ public final class Db implements AutoCloseable {
           tag_id  INTEGER NOT NULL,
           PRIMARY KEY (note_id, tag_id)
         )""",
-        "CREATE INDEX IF NOT EXISTS ix_note_tag_tag ON note_tag(tag_id)");
+        "CREATE INDEX IF NOT EXISTS ix_note_tag_tag ON note_tag(tag_id)",
+        """
+        CREATE TABLE IF NOT EXISTS note_file (
+          id      INTEGER PRIMARY KEY AUTOINCREMENT,
+          note_id INTEGER NOT NULL,
+          name    TEXT NOT NULL DEFAULT '',
+          key     TEXT NOT NULL,
+          size    INTEGER NOT NULL DEFAULT 0,
+          ctype   TEXT NOT NULL DEFAULT '',
+          crea    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_note_file_note ON note_file(note_id)");
 
     private final Connection c;
     public final Path file;

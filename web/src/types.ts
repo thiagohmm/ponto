@@ -81,6 +81,16 @@ export type Config = {
   java: string;
   sqlite: string;
   nextOff: string[];
+  storage: boolean;
+};
+
+export type NoteFile = {
+  id: number;
+  noteId: number;
+  name: string;
+  size: number;
+  ctype: string;
+  crea: string;
 };
 
 export type Note = {

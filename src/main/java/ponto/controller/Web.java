@@ -6,6 +6,7 @@ import ponto.Problema;
 import ponto.Ver;
 import ponto.model.Entry;
 import ponto.model.Note;
+import ponto.model.NoteFile;
 import ponto.model.Report;
 import ponto.model.Service;
 import ponto.model.Str;
@@ -39,6 +40,7 @@ public final class Web {
         svc.registerOff();
         Javalin app = Javalin.create(cfg -> {
             cfg.showJavalinBanner = false;
+            cfg.http.maxRequestSize = 50L * 1024 * 1024;
             cfg.jsonMapper(new Json3());
             if (Web.class.getResource("/public/index.html") != null) {
                 cfg.staticFiles.add(s -> {
@@ -85,6 +87,10 @@ public final class Web {
         app.put("/api/notes/{id}/folder", this::noteMove);
         app.delete("/api/notes/{id}", this::noteDelete);
         app.put("/api/notes/{id}/tags", this::noteTags);
+        app.get("/api/notes/{id}/files", this::filesList);
+        app.post("/api/notes/{id}/files", this::fileUpload);
+        app.get("/api/notes/{id}/files/{fid}/download", this::fileDownload);
+        app.delete("/api/notes/{id}/files/{fid}", this::fileDelete);
         app.post("/api/folders", this::folderCreate);
         app.put("/api/folders/{id}", this::folderUpdate);
         app.delete("/api/folders/{id}", this::folderDelete);
@@ -300,8 +306,61 @@ public final class Web {
 
     private void noteDelete(Context ctx) {
         int id = ctx.pathParamAsClass("id", Integer.class).get();
+        svc.files().dropNote(id);
         svc.notes().delete(id);
         ctx.json(Map.of("ok", true, "id", id));
+    }
+
+    private void filesList(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        svc.notes().byId(id);
+        ctx.json(Map.of("files", svc.files().list(id).stream().map(Json::json).toList()));
+    }
+
+    private void fileUpload(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        svc.notes().byId(id);
+        var up = ctx.uploadedFile("file");
+        if (up == null || up.filename() == null || up.filename().isBlank())
+            throw new Bad("file: send the multipart field 'file'");
+        if (up.size() == 0) throw new Bad("file: empty file");
+        NoteFile f;
+        try {
+            f = svc.files().add(id, up.filename(), up.contentType(), up.content().readAllBytes());
+        } catch (java.io.IOException e) {
+            throw new Problema("file: " + e.getMessage());
+        }
+        ctx.status(HttpStatus.CREATED).json(Json.json(f));
+    }
+
+    private void fileDownload(Context ctx) {
+        int noteId = ctx.pathParamAsClass("id", Integer.class).get();
+        int fid = ctx.pathParamAsClass("fid", Integer.class).get();
+        NoteFile f = svc.files().must(fid);
+        if (f.noteId() != noteId) throw new Bad("file " + fid + " is not on note " + noteId);
+        byte[] data = svc.files().download(fid);
+        String name = f.name().replace("\"", "");
+        String enc = java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+        StringBuilder disp = new StringBuilder("attachment");
+        if (!name.equals(enc)) {
+            disp.append("; filename=\"")
+                .append(name.replaceAll("[^\\u0020-\\u007E]", "_"))
+                .append("\"; filename*=UTF-8''").append(enc);
+        } else {
+            disp.append("; filename=\"").append(name).append("\"");
+        }
+        ctx.contentType(f.ctype().isBlank() ? "application/octet-stream" : f.ctype());
+        ctx.header("Content-Disposition", disp.toString());
+        ctx.result(data);
+    }
+
+    private void fileDelete(Context ctx) {
+        int noteId = ctx.pathParamAsClass("id", Integer.class).get();
+        int fid = ctx.pathParamAsClass("fid", Integer.class).get();
+        NoteFile f = svc.files().must(fid);
+        if (f.noteId() != noteId) throw new Bad("file " + fid + " is not on note " + noteId);
+        svc.files().remove(fid);
+        ctx.json(Map.of("ok", true, "id", fid));
     }
 
     /**

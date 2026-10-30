@@ -51,6 +51,23 @@ On the LAN host `192.168.0.8` the existing `/home/thiagohmm/.local/share/ponto/p
 ./deploy/deploy.sh    # http://192.168.0.8:8090
 ```
 
+### Files attached to notes
+
+Each note can hold files (drag them onto the note, or the *anexar* button).
+The row lives in SQLite (`note_file`), the bytes in an S3-compatible object
+store — no SDK, a minimal SigV4 client in `ponto/model/Minio.java`:
+
+* **SeaweedFS** (`chrislusf/seaweedfs`) runs next to the app in
+  `docker-compose.yml`: S3 API on `:8333`, browse/download web UI on `:8091`,
+  data in `/home/thiagohmm/.local/share/ponto-s3`.
+  (MinIO stopped publishing free container images in October 2025; SeaweedFS
+  answers the same API, so anything S3-compatible will do.)
+* Config via environment: `PONTO_S3_ENDPOINT` (required, e.g.
+  `http://s3:8333` inside compose), `PONTO_S3_ACCESS`, `PONTO_S3_SECRET`,
+  `PONTO_S3_BUCKET`, `PONTO_S3_REGION`.
+* Without an endpoint the app runs fine — the attachment button just says
+  storage is not set, and the config page shows the status.
+
 The launcher finds a Java 25+ runtime by itself (`$PONTO_JAVA`, then
 `/usr/libexec/java_home -v 25`, then the asdf install, then `java` on the PATH)
 and adds `--enable-native-access=ALL-UNNAMED` so the SQLite driver stays quiet.

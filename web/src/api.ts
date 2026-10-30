@@ -1,4 +1,4 @@
-import type { Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteList, Sum, Tag } from "./types";
+import type { Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteFile, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 async function parse(r: Response): Promise<unknown> {
@@ -60,6 +60,19 @@ export const api = {
   tagNote: (id: number, body: { tagId?: number; tagIds?: number[] }) =>
     req<Note>("/notes/" + id + "/tags", { method: "PUT", body: JSON.stringify(body) }),
   removeNote: (id: number) => req<{ ok: boolean }>("/notes/" + id, { method: "DELETE" }),
+  files: (noteId: number) => req<{ files: NoteFile[] }>("/notes/" + noteId + "/files"),
+  uploadFile: async (noteId: number, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch("/api/notes/" + noteId + "/files", { method: "POST", body: fd });
+    const body = await parse(r) as { error?: string; message?: string; need?: string };
+    if (!r.ok) throw new ApiError(body.error || body.message || r.statusText, r.status, body.need);
+    return body as NoteFile;
+  },
+  removeFile: (noteId: number, fileId: number) =>
+    req<{ ok: boolean }>("/notes/" + noteId + "/files/" + fileId, { method: "DELETE" }),
+  fileDownloadUrl: (noteId: number, fileId: number) =>
+    "/api/notes/" + noteId + "/files/" + fileId + "/download",
   createFolder: (body: { name: string; parent?: number | null }) =>
     req<Folder>("/folders", { method: "POST", body: JSON.stringify(body) }),
   updateFolder: (id: number, body: { name?: string; parent?: number | null }) =>

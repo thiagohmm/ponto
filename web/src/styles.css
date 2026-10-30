@@ -957,3 +957,97 @@ tr.note td { color: var(--muted); }
 @media (min-width: 721px) {
   .vault-back { display: none; }
 }
+
+.vault-attach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 28px 0;
+  padding: 10px 12px;
+  border: 1px dashed transparent;
+  border-radius: 10px;
+  background: #fafafa;
+}
+
+.vault-attach.drop {
+  border-color: var(--accent);
+  background: #eef5ff;
+}
+
+.vault-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vault-attach-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vault-attach-hint {
+  font-size: 12px;
+}
+
+.vault-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12.5px;
+}
+
+.vault-attach-chip a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 260px;
+}
+
+.vault-attach-chip a span,
+.vault-attach-chip a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-attach-chip svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vault-attach-chip small {
+  color: var(--muted);
+  flex: none;
+}
+
+.vault-attach-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.vault-attach-chip button:hover {
+  color: var(--stamp);
+}

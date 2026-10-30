@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { NoteBody, type Look, type NoteBodyHandle } from "../NoteBody";
 import { excerpt, NOTE_COLORS, NOTE_FONTS, NotePreview, todoStats, toggleTodoLine } from "../md";
-import type { Folder, Note, Tag } from "../types";
+import type { Folder, Note, NoteFile, Tag } from "../types";
 
 const TAG_PATH = "M3 11l8-8h6v6l-8 8-6-6zM14.5 6.5h.01";
 
@@ -11,6 +11,12 @@ const TODO_PREFIX = "- [ ] ";
 
 function fileName(n: Note): string {
   return n.title.trim() || "Sem título";
+}
+
+function fmtSize(n: number): string {
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1).replace(".", ",") + " KB";
+  return (n / (1024 * 1024)).toFixed(1).replace(".", ",") + " MB";
 }
 
 function Ico({ path }: { path: string }) {
@@ -81,13 +87,18 @@ export function NotesPage() {
   const [here, setHere] = useState<number | null>(null);
   const [tagHere, setTagHere] = useState<number | null>(null);
   const [open, setOpen] = useState<Record<number, boolean>>({});
+  const [files, setFiles] = useState<NoteFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [dropFiles, setDropFiles] = useState(false);
   const [dropOn, setDropOn] = useState<number | "root" | string | null>(null);
   const [pickTag, setPickTag] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<NoteBodyHandle | null>(null);
   const lookNode = useRef<HTMLDivElement | null>(null);
   const [look, setLook] = useState<Look>({});
   const boundId = useRef(0);
+  const fileDrag = useRef(0);
   const saved = useRef({ title: "", body: "" });
   const draft = useRef({ title: "", body: "" });
   const notesRef = useRef<Note[]>([]);
@@ -186,13 +197,18 @@ export function NotesPage() {
       setBody("");
       setSavedTitle("");
       setSavedBody("");
+      setFiles([]);
       setPreview(false);
       return () => { void persist(); };
     }
     let cancelled = false;
     const local = notesRef.current.find((x) => x.id === currentId);
     const load = local ? Promise.resolve(local) : api.note(currentId);
-    load.then((n) => { if (!cancelled) apply(n); }).catch((e: unknown) => {
+    load.then((n) => {
+      if (cancelled) return;
+      apply(n);
+      void loadFiles(n.id);
+    }).catch((e: unknown) => {
       if (cancelled) return;
       setErr(e instanceof Error ? e.message : "não achou");
       nav("/notas");
@@ -250,6 +266,42 @@ export function NotesPage() {
       }, 0);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não criou");
+    }
+  }
+
+  async function loadFiles(noteId: number) {
+    try {
+      const r = await api.files(noteId);
+      if (boundId.current === noteId) setFiles(r.files ?? []);
+    } catch (e) {
+      if (boundId.current === noteId) setErr(e instanceof Error ? e.message : "não listou arquivos");
+    }
+  }
+
+  async function upload(list: FileList | File[]) {
+    if (!currentId) return;
+    setUploading(true);
+    setErr("");
+    try {
+      for (const f of Array.from(list)) {
+        const nf = await api.uploadFile(currentId, f);
+        if (nf.noteId === currentId) setFiles((x) => [...x, nf]);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não anexou");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeFile(f: NoteFile) {
+    if (!currentId || !confirm("apagar o arquivo “" + f.name + "”?")) return;
+    setErr("");
+    try {
+      await api.removeFile(currentId, f.id);
+      setFiles((x) => x.filter((y) => y.id !== f.id));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não apagou");
     }
   }
 
@@ -581,7 +633,29 @@ export function NotesPage() {
         </p>
       </aside>
 
-      <section className="vault-editor">
+      <section
+        className="vault-editor"
+        onDragOver={(e) => {
+          if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+        }}
+        onDragEnter={(e) => {
+          if (Array.from(e.dataTransfer.types).includes("Files")) {
+            fileDrag.current++;
+            setDropFiles(true);
+          }
+        }}
+        onDragLeave={() => {
+          fileDrag.current = Math.max(0, fileDrag.current - 1);
+          if (fileDrag.current === 0) setDropFiles(false);
+        }}
+        onDrop={(e) => {
+          if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+          e.preventDefault();
+          fileDrag.current = 0;
+          setDropFiles(false);
+          if (e.dataTransfer.files.length) void upload(e.dataTransfer.files);
+        }}
+      >
         {err && <p className="err">{err}</p>}
         {!currentId && (
           <div className="vault-empty-main">
@@ -702,6 +776,45 @@ export function NotesPage() {
                   </div>
                 )}
               </div>
+            </div>
+            <div className={("vault-attach" + (dropFiles ? " drop" : "")).trim()}>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  if (e.target.files?.length) void upload(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                className="btn vault-attach-btn"
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+                title="anexar arquivo à nota"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 12.5l-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 1 1 5.6 5.6L11 17.2a2 2 0 1 1-2.8-2.8L16.7 5.9" />
+                </svg>
+                {uploading ? "anexando…" : "anexar"}
+              </button>
+              {files.length === 0 && !uploading && (
+                <span className="muted vault-attach-hint">arraste arquivos aqui para anexar</span>
+              )}
+              {files.map((f) => (
+                <span key={f.id} className="vault-attach-chip" title={f.name + " · " + f.crea}>
+                  <a href={api.fileDownloadUrl(currentId, f.id)} download>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M12 12v6M9.5 15.5 12 18l2.5-2.5" />
+                    </svg>
+                    {f.name}
+                  </a>
+                  <small>{fmtSize(f.size)}</small>
+                  <button type="button" title="apagar arquivo" onClick={() => void removeFile(f)}>×</button>
+                </span>
+              ))}
             </div>
             {preview ? (
               <div className="vault-preview">
