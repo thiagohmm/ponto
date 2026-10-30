@@ -57,13 +57,15 @@ Each note can hold files (drag them onto the note, or the *anexar* button).
 The row lives in SQLite (`note_file`), the bytes in an S3-compatible object
 store — no SDK, a minimal SigV4 client in `ponto/model/Minio.java`:
 
-* **SeaweedFS** (`chrislusf/seaweedfs`) runs next to the app in
-  `docker-compose.yml`: S3 API on `:8333`, browse/download web UI on `:8091`,
-  data in `/home/thiagohmm/.local/share/ponto-s3`.
-  (MinIO stopped publishing free container images in October 2025; SeaweedFS
-  answers the same API, so anything S3-compatible will do.)
+* **MinIO** runs next to the app in `docker-compose.yml`: S3 API on
+  `:9000`, browse/download web console on `:9001`, data in
+  `/home/thiagohmm/.local/share/ponto-minio`.
+  The official `minio/minio` images stopped being published in October 2025,
+  so the compose pulls the current release that Chainguard builds from source
+  (`cgr.dev/chainguard/minio`). Any S3-compatible store works: point
+  `PONTO_S3_ENDPOINT` at it.
 * Config via environment: `PONTO_S3_ENDPOINT` (required, e.g.
-  `http://s3:8333` inside compose), `PONTO_S3_ACCESS`, `PONTO_S3_SECRET`,
+  `http://minio:9000` inside compose), `PONTO_S3_ACCESS`, `PONTO_S3_SECRET`,
   `PONTO_S3_BUCKET`, `PONTO_S3_REGION`.
 * Without an endpoint the app runs fine — the attachment button just says
   storage is not set, and the config page shows the status.

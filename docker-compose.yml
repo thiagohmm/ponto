@@ -1,17 +1,23 @@
 services:
   # S3-compatible object storage for the note attachments.
-  # MinIO stopped publishing free container images (Oct/2025); SeaweedFS is
-  # the drop-in S3 gateway in its place (SigV4, path-style, same API shape).
-  s3:
-    image: chrislusf/seaweedfs:latest
-    container_name: ponto-s3
+  # The official minio/minio images stopped being published (Oct/2025);
+  # Chainguard builds the current release from source, console included.
+  # The image defaults to a locked-down non-root uid, which breaks the
+  # bind mount under rootless docker --user 0 runs it as the docker owner.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: ponto-minio
     restart: unless-stopped
-    command: ["server", "-dir", "/data", "-s3"]
+    user: "0"
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "8333:8333"   # S3 API
-      - "8091:8080"   # web UI (browse / download)
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
     volumes:
-      - /home/thiagohmm/.local/share/ponto-s3:/data
+      - /home/thiagohmm/.local/share/ponto-minio:/data
 
   ponto:
     build: .
@@ -19,12 +25,12 @@ services:
     container_name: ponto
     restart: unless-stopped
     depends_on:
-      - s3
+      - minio
     ports:
       - "8090:8080"
     environment:
       PONTO_DB: /data/ponto.db
-      PONTO_S3_ENDPOINT: http://s3:8333
+      PONTO_S3_ENDPOINT: http://minio:9000
       PONTO_S3_BUCKET: ponto
     volumes:
       - /home/thiagohmm/.local/share/ponto:/data
