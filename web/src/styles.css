@@ -150,35 +150,45 @@ button, input, textarea {
 
 .toolbar input.mes { flex: 0 1 150px; min-width: 132px; }
 
+.toolbar .push { margin-left: auto; }
+
 .filter-sum {
-  margin-left: auto;
+  display: flex;
   background: var(--card);
   border: 1px solid var(--line);
-  padding: 7px 12px;
   border-radius: 8px;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
+  margin-bottom: 14px;
+  overflow: hidden;
 }
 
-.filter-sum b {
+.fs-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+
+.fs-item:first-child { border-left: 0; }
+
+.fs-item b {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 16px;
-}
-
-.filter-sum span { color: var(--muted); }
-
-.filter-sum .ot {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  padding-left: 10px;
-  border-left: 1px solid var(--line);
   white-space: nowrap;
 }
 
-.filter-sum .ot.pos { color: var(--ok); }
-.filter-sum .ot.neg { color: var(--stamp); }
+.fs-item span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-item.pos b { color: var(--ok); }
+.fs-item.neg b { color: var(--stamp); }
 
 tr.day-head td {
   background: #f2f2f7;
@@ -965,6 +975,11 @@ tr.note td { color: var(--muted); }
   .vault { grid-template-columns: 1fr; }
   .vault.editing .vault-side { display: none; }
   .vault-back { display: inline-flex; }
+  .filter-sum { flex-wrap: wrap; }
+  .fs-item { flex: 1 1 45%; border-left: 0; border-top: 1px solid var(--line); }
+  .fs-item:nth-child(-n+2) { border-top: 0; }
+  .fs-item:nth-child(2) { border-left: 1px solid var(--line); }
+  .fs-item:last-child { flex-basis: 100%; }
 }
 
 @media (min-width: 721px) {

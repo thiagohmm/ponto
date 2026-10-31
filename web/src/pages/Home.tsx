@@ -20,12 +20,16 @@ function dec(mins: number): string {
   return (mins / 60).toFixed(2);
 }
 
-/** Overtime balance with sign: "+3:20 · 3.33 h extras" / "-1:05 · 1.08 h banco de horas". */
-function fmtOt(mins: number): string {
+/** Overtime value with sign: "+5:02" / "-1:05". */
+function otVal(mins: number): string {
   const a = Math.abs(mins);
   const hm = Math.floor(a / 60) + ":" + String(a % 60).padStart(2, "0");
-  if (mins === 0) return "0:00 · 0.00 h extras";
-  return (mins > 0 ? "+" : "-") + hm + " · " + (a / 60).toFixed(2) + " h " + (mins > 0 ? "extras" : "banco de horas");
+  return (mins > 0 ? "+" : mins < 0 ? "-" : "") + hm;
+}
+
+/** Overtime caption: "5.03 h extras" / "1.08 h banco de horas". */
+function otCap(mins: number): string {
+  return (Math.abs(mins) / 60).toFixed(2) + " h " + (mins < 0 ? "banco de horas" : "extras");
 }
 
 /** "2026-10" for the month picker, when the dia filter is "10/2026" or "2026-10". */
@@ -141,12 +145,22 @@ export function HomePage() {
             void load(q, nd);
           }} />
         <button className="btn" onClick={() => void load(q, dia)}>Filtrar</button>
-        <Link className="btn primary" to="/novo">Novo</Link>
+        <Link className="btn primary push" to="/novo">Novo</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
-        <div className="filter-sum" title="total do filtro · horas extras do período">
+      </div>
+
+      <div className="filter-sum" title="total do filtro · horas extras do período">
+        <div className="fs-item">
           <b>{filterDur}</b>
-          <span>{filterHours} h · {total} registro(s){filtered ? " no filtro" : ""}</span>
-          <span className={"ot" + (filterOt > 0 ? " pos" : filterOt < 0 ? " neg" : "")}>{fmtOt(filterOt)}</span>
+          <span>{filterHours} h no total</span>
+        </div>
+        <div className="fs-item">
+          <b>{total}</b>
+          <span>{filtered ? "registro(s) no filtro" : "registro(s)"}</span>
+        </div>
+        <div className={"fs-item" + (filterOt > 0 ? " pos" : filterOt < 0 ? " neg" : "")}>
+          <b>{otVal(filterOt)}</b>
+          <span>{otCap(filterOt)}</span>
         </div>
       </div>
 
