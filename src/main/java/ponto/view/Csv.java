@@ -41,6 +41,7 @@ public final class Csv {
         b.append(line(kv("Incomplete", "" + r.openLines())));
         b.append(line(kv("Generated", r.h().generated())));
         b.append(line(kv("Database", r.h().db())));
+        b.append(line(kv("saldo", r.saldoLabel())));
 
         byte[] out = b.toString().getBytes(StandardCharsets.UTF_8);
         try { Files.write(f, out); }

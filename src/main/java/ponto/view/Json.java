@@ -5,6 +5,7 @@ import ponto.model.Entry;
 import ponto.model.Folder;
 import ponto.model.Note;
 import ponto.model.Report;
+import ponto.model.Service;
 import ponto.model.Str;
 import ponto.model.Tag;
 
@@ -74,6 +75,41 @@ public final class Json {
         m.put("mins", d.mins());
         m.put("dur", Dur.hm(d.mins()));
         m.put("hours", d.dec());
+        return m;
+    }
+
+    /** The month bank: saldo, jornada, days left and the plan (Web adds days + months). */
+    public static Map<String, Object> jsonBank(Service.Bank b) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("ym", b.ym().toString());
+        m.put("saldo", b.saldoLabel());
+        m.put("saldoMins", b.saldoMins());
+        m.put("dailyMins", b.dailyMins());
+        m.put("remaining", b.remaining());
+        m.put("planMins", b.planMins());
+        m.put("planLabel", b.planLabel());
+        m.put("neg", b.neg());
+        return m;
+    }
+
+    public static Map<String, Object> jsonBankDay(Service.BankDay d) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("dia", Str.d(d.dia()));
+        m.put("diaIso", Str.iso(d.dia()));
+        m.put("d3", Str.d3(d.dia()));
+        m.put("mins", d.mins());
+        m.put("dur", Dur.hm(d.mins()));
+        m.put("hours", Str.n(d.mins() / 60.0));
+        m.put("falta", d.falta());
+        m.put("kind", d.kind());
+        return m;
+    }
+
+    public static Map<String, Object> jsonMonthSaldo(Service.MonthSaldo m0) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("ym", m0.ym().toString());
+        m.put("saldo", Dur.signed(m0.saldoMins()));
+        m.put("saldoMins", m0.saldoMins());
         return m;
     }
 }

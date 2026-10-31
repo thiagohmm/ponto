@@ -96,8 +96,17 @@ public final class Xls {
         cell(sh, sh.createRow(0), 0, r.h().title(), st.big);
         cell(sh, sh.createRow(1), 0, r.h().periodo(), st.meta);
         cell(sh, sh.createRow(2), 0, "user " + dash(r.h().who()) + "   ·   database " + r.h().db(), st.meta);
+        cell(sh, sh.createRow(3), 0, saldoLine(r), st.meta);
         cell(sh, sh.createRow(4), 0, "lines " + r.lines().size() + "   ·   incomplete " + r.openLines(), st.meta);
         cell(sh, sh.createRow(5), 0, "generated " + r.h().generated(), st.meta);
+    }
+
+    /** Banco de horas of the period: saldo, faltas when there are any, plan when still running. */
+    private static String saldoLine(Report r) {
+        String s = "saldo do período " + r.saldoLabel();
+        if (r.faltas() > 0) s += "   ·   faltas: " + r.faltas();
+        if (!r.planoLabel().isEmpty()) s += "   ·   plano " + r.planoLabel();
+        return s;
     }
 
     private static String[][] detail(Report r) {

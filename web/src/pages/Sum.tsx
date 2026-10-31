@@ -38,6 +38,11 @@ export function SumPage() {
       {sum && (
         <>
           <p className="muted">{sum.from} — {sum.to} · {sum.lines} linhas · {sum.total} ({sum.hours} h)</p>
+          <p className="muted">
+            saldo do período <b>{sum.saldo}</b>
+            {sum.faltas > 0 && <> · faltas: {sum.faltas}</>}
+            {sum.plano && <> · plano {sum.plano}</>}
+          </p>
           {sum.open > 0 && <p className="warn">{sum.open} linha(s) incompleta(s) fora da soma</p>}
           <table>
             <thead>

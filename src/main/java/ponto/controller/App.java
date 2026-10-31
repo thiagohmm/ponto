@@ -75,6 +75,7 @@ public final class App {
             case "9" -> export("csv");
             case "c" -> config();
             case "d" -> byDate(c.rest());
+            case "f" -> falta(c);
             case "x" -> out.clear();
             case "?" -> help();
             default -> out.bad("unknown key '" + c.key() + "'   ·   ? help");
@@ -89,7 +90,11 @@ public final class App {
         String since = (String) h.get("openSince");
         String openNote = open == 0 ? "open 0"
                 : "open " + open + (since.isEmpty() ? "" : "   since " + since);
-        out.home((String) h.get("who"), records, mins, (String) h.get("db"), openNote);
+        long saldoMins = (Long) h.get("saldoMins");
+        String plan = (String) h.get("planLabel");
+        String saldoNote = (saldoMins < 0 ? "! banco negativo " : "saldo do mês ") + h.get("saldo")
+                + (plan.isEmpty() ? "" : "   ·   plano " + plan);
+        out.home((String) h.get("who"), records, mins, (String) h.get("db"), openNote, saldoNote);
     }
 
     private void setup() {
@@ -413,6 +418,35 @@ public final class App {
         return b.toString();
     }
 
+    // ---- f falta -----------------------------------------------------------
+
+    /**
+     * The whole-day falta flag for the bank: `f` toggles today, `f 03/11`
+     * toggles that day, `f lista` lists them. Marking is a warning, never a
+     * wall (the same style as the day-off line of `1` and `2`).
+     */
+    private void falta(In.Cmd c) {
+        String rest = c.rest().strip();
+        if (rest.toLowerCase().startsWith("l")) {
+            out.title("FALTAS");
+            List<LocalDate> fl = svc.faltas();
+            if (fl.isEmpty()) { out.note("nenhuma falta marcada   ·   f [dia] alterna"); return; }
+            for (LocalDate d : fl) {
+                String off = Holidays.off(d);
+                out.note(Str.d(d) + "  " + Str.d3(d) + (off.isEmpty() ? "" : "   ·   " + off));
+            }
+            out.note(fl.size() + " falta(s)");
+            return;
+        }
+        LocalDate d = rest.isEmpty() ? LocalDate.now() : Parse.date(rest);
+        boolean on = !svc.falta(d);
+        String warn = on ? svc.faltaWarn(d) : "";
+        svc.falta(d, on);
+        out.title("FALTA");
+        out.ok("falta " + Str.d(d) + (on ? " marcada" : " retirada"));
+        if (!warn.isEmpty()) out.warn(warn);
+    }
+
     // ---- 5 sum -----------------------------------------------------------
 
     private void sum() {
@@ -428,6 +462,9 @@ public final class App {
         out.note("-".repeat(38));
         out.note(boldRow("TOTAL", r));
         if (r.openLines() > 0) out.warn(r.openLines() + " incomplete line(s) not counted");
+        out.note("saldo período  " + r.saldoLabel()
+                 + (r.faltas() > 0 ? "   ·   faltas: " + r.faltas() : ""));
+        if (!r.planoLabel().isEmpty()) out.note("plano  " + r.planoLabel());
     }
 
     private String boldRow(String label, Report r) {
@@ -526,7 +563,8 @@ public final class App {
         out.title("KEYS");
         out.note("1 new   2 edit [id]   3 delete [id id.. | a | dd/mm]   4 list [n]");
         out.note("5 sum   6 find [text]   7 pdf   8 xls   9 csv   d by date");
-        out.note("c config   x clear screen   ? help   0 quit");
+        out.note("c config   f falta [dia | lista]   x clear screen   ? help   0 quit");
+        out.note("falta  f marks today, f 03/11/2026 that day, f lista lists them (banco de horas)");
         out.note("by date  2026 (year) · 10/2026 · oct · oct 2026 · 01/10/2026 · today");
         out.note("         4 2026 works the same way as d 2026");
         out.note("dates  08/10 · 08/10/2026 · 2026-10-08 · 5oct · today · y · -3");

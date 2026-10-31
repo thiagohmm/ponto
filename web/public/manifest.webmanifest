@@ -1,0 +1,14 @@
+{
+  "name": "Ponto",
+  "short_name": "Ponto",
+  "description": "Timesheet: batidas, banco de horas e faltas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#e8e8ed",
+  "theme_color": "#e8e8ed",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

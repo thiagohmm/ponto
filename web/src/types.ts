@@ -23,6 +23,7 @@ export type EntryList = {
   hours: string;
   open: number;
   overtime: number;
+  faltas: string[];
   entries: Entry[];
 };
 
@@ -32,6 +33,10 @@ export type Home = {
   monthMins: number;
   monthLabel: string;
   monthHours: string;
+  saldo: string;
+  saldoMins: number;
+  planLabel: string;
+  bankNeg: boolean;
   open: number;
   openSince: string;
   db: string;
@@ -46,6 +51,7 @@ export type DayInfo = {
   diaIso: string;
   d3: string;
   holiday: string;
+  falta: boolean;
   lastOut: string;
   open: Entry[];
   entries: Entry[];
@@ -69,7 +75,41 @@ export type Sum = {
   hours: string;
   lines: number;
   open: number;
+  saldo: string;
+  saldoMins: number;
+  faltas: number;
+  plano: string;
   days: DaySum[];
+};
+
+export type BankDay = {
+  dia: string;
+  diaIso: string;
+  d3: string;
+  mins: number;
+  dur: string;
+  hours: string;
+  falta: boolean;
+  kind: string;
+};
+
+export type MonthSaldo = {
+  ym: string;
+  saldo: string;
+  saldoMins: number;
+};
+
+export type Bank = {
+  ym: string;
+  saldo: string;
+  saldoMins: number;
+  dailyMins: number;
+  remaining: number;
+  planMins: number;
+  planLabel: string;
+  neg: boolean;
+  days: BankDay[];
+  months: MonthSaldo[];
 };
 
 export type Config = {

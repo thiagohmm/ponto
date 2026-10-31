@@ -15,6 +15,12 @@ public final class Dur {
         return Str.n(minutes / 60.0);
     }
 
+    /** Signed bank balance: "+5:02", "-3:20", "0:00" (the web card's vocabulary). */
+    public static String signed(long minutes) {
+        if (minutes == 0) return "0:00";
+        return (minutes > 0 ? "+" : "-") + hm(Math.abs(minutes));
+    }
+
     /** Parse "8.75" or "8,75" (decimal hours) into minutes. */
     public static int fromDec(String s) {
         double v = Double.parseDouble(s.trim().replace(',', '.'));

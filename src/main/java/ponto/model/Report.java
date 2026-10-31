@@ -28,10 +28,16 @@ public final class Report {
     private final List<Day> days;
     private final long total;
     private final int open;
+    private final long saldoMins;
+    private final int faltas;
+    private final String planoLabel;
 
-    public Report(Head head, List<Entry> rows) {
+    public Report(Head head, List<Entry> rows, long saldoMins, int faltas, String planoLabel) {
         this.head = head;
         this.rows = rows.stream().sorted(ORDER).toList();
+        this.saldoMins = saldoMins;
+        this.faltas = faltas;
+        this.planoLabel = planoLabel;
 
         List<Day> acc = new ArrayList<>();
         long t = 0;
@@ -56,6 +62,12 @@ public final class Report {
     public int openLines() { return open; }
     public String totalLabel() { return Dur.hm(total); }
     public String totalDec() { return Dur.dec(total); }
+
+    /** Banco de horas of the period, faltas marked in it, and the plan label (current period only). */
+    public long saldoMins() { return saldoMins; }
+    public String saldoLabel() { return Dur.signed(saldoMins); }
+    public int faltas() { return faltas; }
+    public String planoLabel() { return planoLabel; }
 
     /** Rows outside the requested period would be a bug; the filter lives in Repo. */
     boolean inRange(LocalDate d) { return head.p().has(d); }

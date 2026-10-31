@@ -201,4 +201,36 @@ public final class Repo {
 
     /** Snap a new timesheet for a brand new day: copies nothing, just inserts. */
     public int countOn(LocalDate d) { return on(d).size(); }
+
+    // ---- day flags (`dia_flag`: the whole day, never one line) --------------
+
+    public boolean flagOn(LocalDate d, String flag) {
+        try (var q = prep("SELECT 1 FROM dia_flag WHERE dia = ? AND flag = ?")) {
+            q.setString(1, Str.iso(d));
+            q.setString(2, flag);
+            try (var rs = q.executeQuery()) { return rs.next(); }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
+    public void flagSet(LocalDate d, String flag) {
+        write("INSERT INTO dia_flag(dia, flag) VALUES(?, ?)"
+              + " ON CONFLICT(dia) DO UPDATE SET flag = excluded.flag", Str.iso(d), flag);
+    }
+
+    public void flagClear(LocalDate d, String flag) {
+        write("DELETE FROM dia_flag WHERE dia = ? AND flag = ?", Str.iso(d), flag);
+    }
+
+    /** Flagged days, oldest first; `like` runs against the ISO day (`%` = all). */
+    public List<LocalDate> flags(String flag, String like) {
+        try (var q = prep("SELECT dia FROM dia_flag WHERE flag = ? AND dia LIKE ? ORDER BY dia")) {
+            q.setString(1, flag);
+            q.setString(2, like);
+            try (var rs = q.executeQuery()) {
+                List<LocalDate> out = new ArrayList<>();
+                while (rs.next()) out.add(LocalDate.parse(rs.getString(1)));
+                return out;
+            }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
 }

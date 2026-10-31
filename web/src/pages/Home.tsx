@@ -1,7 +1,18 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { api } from "../api";
-import type { Entry, Home } from "../types";
+import type { Bank, BankDay, Entry, Home } from "../types";
 import { ApiError } from "../types";
 
 function minsOf(e: Entry): number {
@@ -66,6 +77,13 @@ function groupByDay(rows: Entry[]): DayGroup[] {
   return groups;
 }
 
+/** Bar colour of one day of the bank chart: falta red, days off grey, workdays blue. */
+function dayColor(d: BankDay): string {
+  if (d.falta) return "#ff3b30";
+  if (d.kind !== "work") return "#c7c7cc";
+  return "#007aff";
+}
+
 export function HomePage() {
   const [home, setHome] = useState<Home | null>(null);
   const [rows, setRows] = useState<Entry[]>([]);
@@ -74,6 +92,9 @@ export function HomePage() {
   const [filterHours, setFilterHours] = useState("0.00");
   const [filterOpen, setFilterOpen] = useState(0);
   const [filterOt, setFilterOt] = useState(0);
+  const [faltas, setFaltas] = useState<Set<string>>(new Set());
+  const [bank, setBank] = useState<Bank | null>(null);
+  const [msg, setMsg] = useState("");
   const [q, setQ] = useState("");
   const [dia, setDia] = useState("");
   const [err, setErr] = useState("");
@@ -82,9 +103,10 @@ export function HomePage() {
   async function load(nextQ = q, nextDia = dia) {
     setErr("");
     try {
-      const [h, list] = await Promise.all([
+      const [h, list, bk] = await Promise.all([
         api.home(),
         api.entries({ q: nextQ, dia: nextDia, n: 500 }),
+        api.bank(),
       ]);
       setHome(h);
       setRows(list.entries);
@@ -93,6 +115,8 @@ export function HomePage() {
       setFilterHours(list.hours);
       setFilterOpen(list.open);
       setFilterOt(list.overtime);
+      setFaltas(new Set(list.faltas));
+      setBank(bk);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "erro");
     }
@@ -111,6 +135,22 @@ export function HomePage() {
       await load();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "não apagou");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleFalta(g: DayGroup) {
+    const on = !faltas.has(g.key);
+    if (!confirm((on ? "marcar" : "retirar") + " a falta de " + g.dia + "?")) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await api.setFalta(g.key, on);
+      setMsg(r.warn);
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "não marcou");
     } finally {
       setBusy(false);
     }
@@ -149,7 +189,7 @@ export function HomePage() {
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
       </div>
 
-      <div className="filter-sum" title="total do filtro · horas extras do período">
+      <div className="filter-sum" title="total do filtro · horas extras do período · banco do mês">
         <div className="fs-item">
           <b>{filterDur}</b>
           <span>{filterHours} h no total</span>
@@ -162,11 +202,20 @@ export function HomePage() {
           <b>{otVal(filterOt)}</b>
           <span>{otCap(filterOt)}</span>
         </div>
+        {home && (
+          <div className={"fs-item" + (home.saldoMins > 0 ? " pos" : home.saldoMins < 0 ? " neg" : "")}>
+            <b>{otVal(home.saldoMins)}</b>
+            <span title={home.planLabel ? "plano para zerar o mês" : ""}>
+              banco do mês{home.planLabel ? " · " + home.planLabel : ""}
+            </span>
+          </div>
+        )}
       </div>
 
       {filterOpen > 0 && (
         <p className="warn">{filterOpen} linha(s) incompleta(s) fora da soma</p>
       )}
+      {msg && <p className="warn">{msg}</p>}
       {err && <p className="err">{err}</p>}
       <div className="card">
         <p className="muted">
@@ -195,7 +244,17 @@ export function HomePage() {
                         <b>{g.dia}</b>
                         <span className="muted"> {g.d3} · {g.entries.length} linha(s)</span>
                       </span>
-                      <span className="hours">{hm(g.mins)} ({dec(g.mins)} h)</span>
+                      <span className="row">
+                        <span className="hours">{hm(g.mins)} ({dec(g.mins)} h)</span>
+                        <button
+                          className={"btn" + (faltas.has(g.key) ? " falta-on" : "")}
+                          disabled={busy}
+                          title="falta: desconta a jornada do banco de horas"
+                          onClick={() => void toggleFalta(g)}
+                        >
+                          {faltas.has(g.key) ? "falta ✓" : "falta"}
+                        </button>
+                      </span>
                     </div>
                   </td>
                 </tr>
@@ -223,6 +282,49 @@ export function HomePage() {
           </tbody>
         </table>
       </div>
+
+      {bank && (
+        <div className="charts">
+          <div className="card">
+            <p className="muted">
+              minutos por dia · {hm(bank.dailyMins)} por dia
+              {bank.planLabel && <> · plano <b>{bank.planLabel}</b> (linha a {hm(bank.dailyMins + bank.planMins)})</>}
+            </p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={bank.days.map((d) => ({ ...d, dnum: Number(d.diaIso.slice(8, 10)) }))}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="dnum" tick={{ fontSize: 10 }} interval={1} tickLine={false} />
+                <YAxis tick={{ fontSize: 10 }} width={34} tickLine={false} axisLine={false}
+                  tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
+                <Tooltip formatter={(v) => hm(Number(v))}
+                  labelFormatter={(l, p) => String(p?.[0]?.payload?.dia ?? l)} />
+                <ReferenceLine y={bank.dailyMins + bank.planMins} stroke="#ff9f0a" strokeDasharray="4 4" />
+                <Bar dataKey="mins" isAnimationActive={false}>
+                  {bank.days.map((d) => <Cell key={d.diaIso} fill={dayColor(d)} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="card">
+            <p className="muted">banco de horas · últimos 12 meses</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={bank.months.map((m) => ({ ...m, mes: m.ym.slice(5) + "/" + m.ym.slice(2, 4) }))}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 10 }} interval={0} tickLine={false} />
+                <YAxis tick={{ fontSize: 10 }} width={40} tickLine={false} axisLine={false}
+                  tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
+                <Tooltip formatter={(v) => otVal(Number(v))} />
+                <ReferenceLine y={0} stroke="rgba(0,0,0,0.3)" />
+                <Bar dataKey="saldoMins" isAnimationActive={false}>
+                  {bank.months.map((m) => (
+                    <Cell key={m.ym} fill={m.saldoMins < 0 ? "#ff3b30" : "#34c759"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </>
   );
 }
