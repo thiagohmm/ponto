@@ -28,6 +28,18 @@ function fmtOt(mins: number): string {
   return (mins > 0 ? "+" : "-") + hm + " · " + (a / 60).toFixed(2) + " h " + (mins > 0 ? "extras" : "banco de horas");
 }
 
+/** "2026-10" for the month picker, when the dia filter is "10/2026" or "2026-10". */
+function mesFromDia(d: string): string {
+  const t = d.trim();
+  let y = "", m = "";
+  const a = t.match(/^(\d{1,2})\/(\d{4})$/);
+  const b = t.match(/^(\d{4})-(\d{1,2})$/);
+  if (a) { m = a[1]; y = a[2]; }
+  else if (b) { y = b[1]; m = b[2]; }
+  else return "";
+  return y + "-" + m.padStart(2, "0");
+}
+
 type DayGroup = {
   key: string;
   dia: string;
@@ -120,6 +132,14 @@ export function HomePage() {
         <input placeholder="dia, mês ou ano (oct, 10/2026, hoje)" value={dia}
           onChange={(e) => setDia(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void load(q, dia); }} />
+        <input type="month" className="mes" title="selecionar mês (horas extras daquele mês)"
+          value={mesFromDia(dia)}
+          onChange={(e) => {
+            const v = e.target.value; // "2026-10" or ""
+            const nd = v ? v.replace(/^(\d{4})-(\d{2})$/, "$2/$1") : "";
+            setDia(nd);
+            void load(q, nd);
+          }} />
         <button className="btn" onClick={() => void load(q, dia)}>Filtrar</button>
         <Link className="btn primary" to="/novo">Novo</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
