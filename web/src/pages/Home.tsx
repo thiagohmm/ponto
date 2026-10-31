@@ -20,6 +20,14 @@ function dec(mins: number): string {
   return (mins / 60).toFixed(2);
 }
 
+/** Overtime balance with sign: "+3:20 · 3.33 h extras" / "-1:05 · 1.08 h banco de horas". */
+function fmtOt(mins: number): string {
+  const a = Math.abs(mins);
+  const hm = Math.floor(a / 60) + ":" + String(a % 60).padStart(2, "0");
+  if (mins === 0) return "0:00 · 0.00 h extras";
+  return (mins > 0 ? "+" : "-") + hm + " · " + (a / 60).toFixed(2) + " h " + (mins > 0 ? "extras" : "banco de horas");
+}
+
 type DayGroup = {
   key: string;
   dia: string;
@@ -49,6 +57,7 @@ export function HomePage() {
   const [filterDur, setFilterDur] = useState("0:00");
   const [filterHours, setFilterHours] = useState("0.00");
   const [filterOpen, setFilterOpen] = useState(0);
+  const [filterOt, setFilterOt] = useState(0);
   const [q, setQ] = useState("");
   const [dia, setDia] = useState("");
   const [err, setErr] = useState("");
@@ -67,6 +76,7 @@ export function HomePage() {
       setFilterDur(list.dur);
       setFilterHours(list.hours);
       setFilterOpen(list.open);
+      setFilterOt(list.overtime);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "erro");
     }
@@ -113,9 +123,10 @@ export function HomePage() {
         <button className="btn" onClick={() => void load(q, dia)}>Filtrar</button>
         <Link className="btn primary" to="/novo">Novo</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
-        <div className="filter-sum" title="total do filtro">
+        <div className="filter-sum" title="total do filtro · horas extras do período">
           <b>{filterDur}</b>
           <span>{filterHours} h · {total} registro(s){filtered ? " no filtro" : ""}</span>
+          <span className={"ot" + (filterOt > 0 ? " pos" : filterOt < 0 ? " neg" : "")}>{fmtOt(filterOt)}</span>
         </div>
       </div>
 

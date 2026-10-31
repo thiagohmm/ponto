@@ -215,14 +215,9 @@ public final class Service {
      */
     public Totals listTotals(String q, String filter) {
         synchronized (lock) {
-            List<Entry> rows;
-            if (q != null && !q.isBlank()) rows = repo.search(q);
-            else if (filter != null && !filter.isBlank())
-                rows = repo.byDay(Parse.like(filter).pattern());
-            else rows = repo.all();
             long mins = 0;
             int open = 0;
-            for (Entry e : rows) {
+            for (Entry e : rows(q, filter)) {
                 if (e.min() > 0) mins += e.min();
                 if (!e.closed()) open++;
             }
@@ -233,6 +228,82 @@ public final class Service {
     public record Totals(long mins, int open) {
         public String dur() { return Dur.hm(mins); }
         public String hours() { return Dur.dec(mins); }
+    }
+
+    /** Default workday in minutes when the user has not set a daily hours. */
+    public static final int DEFAULT_DAILY_MINS = 8 * 60;
+
+    /**
+     * The configured workday in minutes (cfg `daily`, decimal hours like "8" or
+     * "8,5"), or {@link #DEFAULT_DAILY_MINS} when unset or unreadable.
+     */
+    public int dailyMinutes() {
+        synchronized (lock) {
+            String raw = db.cfg("daily");
+            try { return parseDailyMins(raw); }
+            catch (Bad e) { return DEFAULT_DAILY_MINS; }
+        }
+    }
+
+    /**
+     * Parse the cfg `daily` value into minutes: blank or "-" means unset
+     * (default 8h); otherwise decimal hours ("8", "8.5", "8,5") or h:mm ("8:30"),
+     * between 0.5h and 24h. The empty string is returned for "unset".
+     */
+    public static int parseDailyMins(String raw) {
+        if (raw == null || raw.isBlank() || raw.equals("-")) return DEFAULT_DAILY_MINS;
+        String s = raw.trim().replace(',', '.');
+        int mins;
+        if (s.contains(":")) {
+            String[] p = s.split(":");
+            if (p.length != 2) throw new Bad("daily: " + raw);
+            int h = Integer.parseInt(p[0].trim());
+            int m = Integer.parseInt(p[1].trim());
+            if (m >= 60) throw new Bad("daily: " + raw);
+            mins = h * 60 + m;
+        } else {
+            double v;
+            try { v = Double.parseDouble(s); }
+            catch (NumberFormatException e) { throw new Bad("daily: " + raw); }
+            if (v < 0) throw new Bad("daily: " + raw);
+            mins = (int) Math.round(v * 60.0);
+        }
+        if (mins < 30 || mins > 24 * 60) throw new Bad("daily: " + raw);
+        return mins;
+    }
+
+    /**
+     * Banco de horas over the filtered rows: for each day that has at least one
+     * closed line, add (day minutes - workday). Days over the workday count as
+     * overtime, days under as negative. Unfiltered (both null) covers everything
+     * recorded. Reuses the same row set as listTotals.
+     */
+    public long overtime(String q, String filter) {
+        synchronized (lock) {
+            long daily = dailyMinutes();
+            long sum = 0;
+            Long cur = null;
+            long curMins = 0;
+            int curClosed = 0;
+            for (Entry e : rows(q, filter)) {
+                long key = e.dia().toEpochDay();
+                if (cur != null && key != cur) {
+                    if (curClosed > 0) sum += curMins - daily;
+                    cur = key; curMins = 0; curClosed = 0;
+                } else if (cur == null) {
+                    cur = key;
+                }
+                if (e.closed() && e.min() > 0) { curMins += e.min(); curClosed++; }
+            }
+            if (cur != null && curClosed > 0) sum += curMins - daily;
+            return sum;
+        }
+    }
+
+    private List<Entry> rows(String q, String filter) {
+        if (q != null && !q.isBlank()) return repo.search(q);
+        if (filter != null && !filter.isBlank()) return repo.byDay(Parse.like(filter).pattern());
+        return repo.all();
     }
 
     public Entry byId(int id) {
@@ -263,6 +334,8 @@ public final class Service {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("who", who());
             m.put("off", db.cfg("off"));
+            m.put("daily", db.cfg("daily"));
+            m.put("dailyMins", dailyMinutes());
             m.put("db", db.file.toString());
             m.put("records", repo.count());
             m.put("from", Str.d(repo.min()));
@@ -275,21 +348,43 @@ public final class Service {
     }
 
     public Map<String, Object> setConfig(String who, String off, boolean vacuum) {
-        return setConfig(who, off, vacuum, s -> { });
+        return setConfig(who, off, null, vacuum, s -> { });
     }
 
     /** Same, but the terminal keeps its "off: '...' not a date" line for bad dates. */
     public Map<String, Object> setConfig(String who, String off, boolean vacuum, Consumer<String> bad) {
+        return setConfig(who, off, null, vacuum, bad);
+    }
+
+    /**
+     * Save settings. `daily` is the workday in decimal hours ("8", "8.5") or
+     * h:mm; null leaves it untouched, ""/"-" clears it (back to 8h). Invalid
+     * values throw Bad.
+     */
+    public Map<String, Object> setConfig(String who, String off, String daily, boolean vacuum, Consumer<String> bad) {
         synchronized (lock) {
             if (who != null) db.setCfg("who", who.equals("-") ? "" : who);
             if (off != null) {
                 db.setCfg("off", off.equals("-") ? "" : off);
                 Holidays.extra(offDates(off, bad));
             }
+            if (daily != null) {
+                String d = daily.trim();
+                if (d.isEmpty() || d.equals("-")) db.setCfg("daily", "");
+                else db.setCfg("daily", dailyLabel(parseDailyMins(d)));
+            }
             db.setCfg("asked", "1");
             if (vacuum) db.vacuum();
             return config();
         }
+    }
+
+    /** 480 -> "8", 510 -> "8.5": the stored cfg value of the workday. */
+    public static String dailyLabel(int mins) {
+        String v = String.format(java.util.Locale.ROOT, "%.2f", mins / 60.0);
+        if (v.endsWith("00")) v = v.substring(0, v.length() - 3);
+        else if (v.endsWith("0")) v = v.substring(0, v.length() - 1);
+        return v;
     }
 
     public static List<LocalDate> offDates(String raw) { return offDates(raw, s -> {}); }

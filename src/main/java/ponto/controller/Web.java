@@ -114,6 +114,7 @@ public final class Web {
         out.put("dur", tot.dur());
         out.put("hours", tot.hours());
         out.put("open", tot.open());
+        out.put("overtime", svc.overtime(q, dia));
         out.put("entries", rows.stream().map(Json::json).toList());
         ctx.json(out);
     }
@@ -218,7 +219,7 @@ public final class Web {
 
     private void config(Context ctx) {
         SaveReq r = ctx.bodyAsClass(SaveReq.class);
-        ctx.json(svc.setConfig(r.who(), r.off(), r.flag(r.vacuum())));
+        ctx.json(svc.setConfig(r.who(), r.off(), r.daily(), r.flag(r.vacuum()), s -> { }));
     }
 
     private void notesList(Context ctx) {
@@ -350,7 +351,7 @@ public final class Web {
 
     record SaveReq(String dia, String tin, String tout, String just,
                    Boolean closeOpen, Boolean confirmMidnight, Boolean confirmOverlap,
-                   String who, String off, Boolean vacuum) {
+                   String who, String off, String daily, Boolean vacuum) {
         boolean flag(Boolean v) { return Boolean.TRUE.equals(v); }
     }
 

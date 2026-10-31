@@ -22,6 +22,7 @@ export type EntryList = {
   dur: string;
   hours: string;
   open: number;
+  overtime: number;
   entries: Entry[];
 };
 
@@ -74,6 +75,8 @@ export type Sum = {
 export type Config = {
   who: string;
   off: string;
+  daily: string;
+  dailyMins: number;
   db: string;
   records: number;
   from: string;

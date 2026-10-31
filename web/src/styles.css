@@ -167,6 +167,17 @@ button, input, textarea {
 
 .filter-sum span { color: var(--muted); }
 
+.filter-sum .ot {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.filter-sum .ot.pos { color: var(--ok); }
+.filter-sum .ot.neg { color: var(--stamp); }
+
 tr.day-head td {
   background: #f2f2f7;
   border-bottom: 1px solid var(--line);

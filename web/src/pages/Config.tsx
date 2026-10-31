@@ -6,6 +6,7 @@ export function ConfigPage() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [who, setWho] = useState("");
   const [off, setOff] = useState("");
+  const [daily, setDaily] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -15,6 +16,7 @@ export function ConfigPage() {
       setCfg(c);
       setWho(c.who);
       setOff(c.off);
+      setDaily(c.daily);
     }).catch((e: unknown) => setErr(e instanceof Error ? e.message : "erro"));
   }, []);
 
@@ -23,7 +25,7 @@ export function ConfigPage() {
     setErr("");
     setMsg("");
     try {
-      const c = await api.saveConfig({ who, off, vacuum });
+      const c = await api.saveConfig({ who, off, daily, vacuum });
       setCfg(c);
       setMsg(vacuum ? "salvo e vacuum feito" : "salvo");
     } catch (e) {
@@ -51,6 +53,11 @@ export function ConfigPage() {
             <label className="span2">Folgas próprias (espaço, vírgula ou ;)
               <input value={off} onChange={(e) => setOff(e.target.value)} placeholder="27/10/2026 31/12" />
             </label>
+            <label>Horas por dia
+              <input type="number" min={0.5} max={24} step={0.25} value={daily} onChange={(e) => setDaily(e.target.value)} placeholder="8" />
+            </label>
+            <p className="muted" style={{ margin: 0, alignSelf: "start" }}>
+jornada em uso: {cfg.dailyMins / 60} h/dia · vazio = 8 h</p>
           </div>
           {cfg.nextOff.length > 0 && (
             <div style={{ marginTop: 16 }}>

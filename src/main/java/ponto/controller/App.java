@@ -500,6 +500,8 @@ public final class App {
         out.note("java    " + c.get("java") + "   sqlite " + c.get("sqlite"));
         String off = (String) c.get("off");
         out.note("off     " + (off.isEmpty() ? "-" : off));
+        String daily = (String) c.get("daily");
+        out.note("daily   " + (daily.isEmpty() ? "8" : daily) + " h/day");
         for (Object s : (List<?>) c.get("nextOff")) out.note("day off " + s);
         String w = in.text("user", who.isEmpty() ? "-" : who);
         svc.setConfig(w, null, false);
@@ -507,6 +509,11 @@ public final class App {
         String o = in.text("off", off.isEmpty() ? "-" : off);
         svc.setConfig(null, o, false, s -> out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored"));
         out.ok("off " + (o.equals("-") ? "-" : Holidays.extra().size() + " day(s)"));
+        String d = in.text("daily", daily.isEmpty() ? "8" : daily);
+        try {
+            svc.setConfig(null, null, d, false, s -> { });
+            out.ok("daily " + (d.equals("-") ? "8 (default)" : d + " h"));
+        } catch (Bad b) { out.bad(b.getMessage()); }
         if (in.yes("vacuum the db?", false)) { svc.setConfig(null, null, true); out.ok("vacuumed"); }
     }
 
