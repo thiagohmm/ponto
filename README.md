@@ -130,7 +130,7 @@ comma or `;`.
 
 The calendar comes from [jollyday](https://jollyday.focus-shift.de): the country
 list for `BR` plus the ISO 3166-2 codes `sp` (state) and `csp` (city), so
-09/07 and 20/11 count as São Paulo days and 25/01 counts for the city. Five days
+09/07 and 20/11 count as São Paulo days and 25/01 counts for the city. Four days
 are added by hand in `Holidays.java`, checked against the city's own calendar
 (Prefecture of São Paulo, Decree 64.862/2025) and listed there with the reason:
 
@@ -139,8 +139,10 @@ are added by hand in `Holidays.java`, checked against the city's own calendar
 | 26/12 | Boxing Day, national, missing from the country XML |
 | Carnival Monday | the XML knows the Tuesday only |
 | 24/12 · 31/12 | Christmas Eve, New Year's Eve — optional days off |
-| 30/10 | Servant's Day (28/10 moved), optional |
 | Carnival Tuesday · Ash Wednesday | the XML says *public*, the decree says *facultative* |
+
+(28/10 "Servant's Day" was removed: it is a public-servant day, not a private
+holiday, and the bank must treat a punch there as a normal working day.)
 
 ## Banco de horas
 

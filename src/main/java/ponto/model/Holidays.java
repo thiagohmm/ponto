@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * and the ISO 3166-2 codes `sp` (state) and `csp` (city) add the local days --
  * 09/07 and 20/11 for the state, 25/01 for the city. That XML was compared here
  * against the city's own calendar (Prefecture of São Paulo, Decree 64.862/2025
- * for 2026) and four days are missing from it, three of them "pontos
+ * for 2026) and three days are missing from it, two of them "pontos
  * facultativos", the optional days off, where a punch is normal work and not
  * a mistake. They are added below, each one saying why.
  *
@@ -59,7 +59,6 @@ public final class Holidays {
     private static final List<Fix> MISSING = List.of(
         new Fix(12, 26, "Boxing Day", false),                   // national day off, not in the XML
         new Fix(12, 24, "Christmas Eve", true),                 // optional day off, city decree
-        new Fix(10, 30, "Servant's Day", true),                 // 28/10 moved here, city decree
         new Fix(12, 31, "New Year's Eve", true));               // optional day off, city decree
 
     /** jollyday says PUBLIC; the city decree lists these as facultative. */
