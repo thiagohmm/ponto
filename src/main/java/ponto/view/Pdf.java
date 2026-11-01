@@ -142,6 +142,11 @@ public final class Pdf {
         pg.text(sx[2], "" + r.lines().size(), BOLD, 9, b);
         pg.text(sx[3], r.totalLabel(), BOLD, 9, b);
         pg.right(r.totalDec(), BOLD, 9, b);
+        pg.gap(15);
+        String saldo = "Saldo do período  " + r.saldoLabel()
+                + (r.faltas() > 0 ? "   ·   faltas: " + r.faltas() : "")
+                + (r.planoLabel().isEmpty() ? "" : "   ·   plano " + r.planoLabel());
+        pg.text(0, saldo, REG, 9);
     }
 
     // ---- layout helper ---------------------------------------------------

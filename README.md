@@ -9,12 +9,13 @@ justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
   P O N T O
   Ana                   12 records
   this month 46:30   open 1   since 20/05/2026
+  saldo do mês +5:02   ·   plano 40 min a menos/dia
   /Users/ana/.local/share/ponto/ponto.db
 --------------------------------------------------------
   1 new     2 edit    3 delete  4 list
   5 sum     6 find    7 pdf     8 xls
-  9 csv     d date    c config  x clear
-  ? help    0 quit
+  9 csv     d date    c config  f falta
+  ? help    x clear   0 quit
 --------------------------------------------------------
 >
 ```
@@ -38,6 +39,8 @@ ponto             # anywhere afterwards
 ```
 
 The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (default 8090) and serves the React build from the jar. Both talk to the same SQLite file (`$PONTO_DB` / `--db=`).
+
+The web app is a **PWA**: open `http://host:8090` in the phone's browser and "add to home screen" installs it like an app (standalone, icons, offline shell — `web/public/sw.js`, registered in production only).
 
 ```sh
 npm --prefix web ci && npm --prefix web run build   # writes src/main/resources/public
@@ -78,6 +81,8 @@ and adds `--enable-native-access=ALL-UNNAMED` so the SQLite driver stays quiet.
 
 * Database: `$PONTO_DB`, default `~/.local/share/ponto/ponto.db` (or `--db=path`).
 * One table, `ponto`: `id, dia, tin, tout, just, crea`.
+* One flag table, `dia_flag`: `dia, flag` — the whole-day **falta** of the banco
+  de horas (`f` / the web button). A flag of the day, never of a punch line.
 * Any row can be edited or deleted at any time — nothing is locked to "today".
 * A line may hold one clock (an open punch) or none at all (just a note).
 
@@ -96,6 +101,7 @@ and adds `--enable-native-access=ALL-UNNAMED` so the SQLite driver stays quiet.
 | `9` | export CSV (UTF-8 BOM, `;` separated, decimal always `.`) |
 | `c` | config: user name, your own days off (`off`), database path, vacuum |
 | `d` | list by date — asks for a **day, month or year** (`d`, `d 2026`, `d oct`) |
+| `f` | falta: `f` toggles today, `f 03/11/2026` that day, `f lista` lists them (banco de horas) |
 | `x` | clear the screen |
 | `?` | help |
 | `0` | quit |
@@ -143,7 +149,7 @@ comma or `;`.
 
 The calendar comes from [jollyday](https://jollyday.focus-shift.de): the country
 list for `BR` plus the ISO 3166-2 codes `sp` (state) and `csp` (city), so
-09/07 and 20/11 count as São Paulo days and 25/01 counts for the city. Five days
+09/07 and 20/11 count as São Paulo days and 25/01 counts for the city. Four days
 are added by hand in `Holidays.java`, checked against the city's own calendar
 (Prefecture of São Paulo, Decree 64.862/2025) and listed there with the reason:
 
@@ -152,8 +158,33 @@ are added by hand in `Holidays.java`, checked against the city's own calendar
 | 26/12 | Boxing Day, national, missing from the country XML |
 | Carnival Monday | the XML knows the Tuesday only |
 | 24/12 · 31/12 | Christmas Eve, New Year's Eve — optional days off |
-| 30/10 | Servant's Day (28/10 moved), optional |
 | Carnival Tuesday · Ash Wednesday | the XML says *public*, the decree says *facultative* |
+
+(28/10 "Servant's Day" was removed: it is a public-servant day, not a private
+holiday, and the bank must treat a punch there as a normal working day.)
+
+## Banco de horas
+
+The bank is **monthly**. One rule per day, never past today:
+
+| the day | what counts |
+|---|---|
+| marked as **falta** (`f`) | batido − jornada — the day enters the math even empty, and it wins over every other rule |
+| **day off** (weekend, holiday, optional, your `off`) | batido − 0 — everything worked is banked |
+| working day with a closed punch | batido − jornada |
+| empty working day | ignored (a missed punch is not a falta) |
+
+`f` toggles the flag for the whole day (it lives in `dia_flag`, never on a punch
+line). Marking a falta on a working day that already has closed punches is a
+no-op for the balance and says so; marking one on a day off deducts the jornada
+and warns in yellow — a warning, never a wall.
+
+The header prints `saldo do mês +5:02 · plano 40 min a menos/dia`: the plan is
+`saldo / dias úteis restantes` (from today on, without days off and without
+future faltas — a paid day leaves the plan), the last day absorbs the rounding
+remainder. A negative bank prints `! banco negativo -3:20 · plano 30 min a
+mais/dia` in yellow. `5 sum` repeats the saldo of the period, and the PDF, the
+XLS and the CSV carry it too.
 
 ## Input
 

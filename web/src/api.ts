@@ -1,4 +1,4 @@
-import type { Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteFile, NoteList, Sum, Tag } from "./types";
+import type { Bank, Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 async function parse(r: Response): Promise<unknown> {
@@ -39,6 +39,10 @@ export const api = {
     req<Entry>("/entries/" + id, { method: "PUT", body: JSON.stringify(body) }),
   remove: (id: number) => req<{ ok: boolean }>("/entries/" + id, { method: "DELETE" }),
   removeDay: (dia: string) => req<{ ok: boolean; deleted: number }>("/days/" + encodeURIComponent(dia), { method: "DELETE" }),
+  setFalta: (dia: string, on: boolean) =>
+    req<{ ok: boolean; dia: string; diaIso: string; falta: boolean; warn: string }>(
+      "/days/" + encodeURIComponent(dia) + "/falta", { method: "PUT", body: JSON.stringify({ on }) }),
+  bank: (ym?: string) => req<Bank>("/bank" + (ym ? "?ym=" + encodeURIComponent(ym) : "")),
   day: (dia: string) => req<DayInfo>("/day?dia=" + encodeURIComponent(dia)),
   holiday: (dia: string) => req<{ dia: string; off: string }>("/holiday?dia=" + encodeURIComponent(dia)),
   sum: (from: string, to: string) =>

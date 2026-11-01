@@ -6,10 +6,14 @@ import ponto.NeedConfirm;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -198,6 +202,11 @@ public final class Service {
             m.put("monthMins", mins);
             m.put("monthLabel", Dur.hm(mins));
             m.put("monthHours", Str.n(mins / 60.0));
+            Bank b = bank();
+            m.put("saldo", b.saldoLabel());
+            m.put("saldoMins", b.saldoMins());
+            m.put("planLabel", b.planLabel());
+            m.put("bankNeg", b.neg());
             m.put("open", half.size());
             m.put("openSince", since);
             m.put("db", db.file.toString());
@@ -234,14 +243,9 @@ public final class Service {
      */
     public Totals listTotals(String q, String filter) {
         synchronized (lock) {
-            List<Entry> rows;
-            if (q != null && !q.isBlank()) rows = repo.search(q);
-            else if (filter != null && !filter.isBlank())
-                rows = repo.byDay(Parse.like(filter).pattern());
-            else rows = repo.all();
             long mins = 0;
             int open = 0;
-            for (Entry e : rows) {
+            for (Entry e : rows(q, filter)) {
                 if (e.min() > 0) mins += e.min();
                 if (!e.closed()) open++;
             }
@@ -252,6 +256,247 @@ public final class Service {
     public record Totals(long mins, int open) {
         public String dur() { return Dur.hm(mins); }
         public String hours() { return Dur.dec(mins); }
+    }
+
+    /** Default workday in minutes when the user has not set a daily hours. */
+    public static final int DEFAULT_DAILY_MINS = 8 * 60;
+
+    /**
+     * The configured workday in minutes (cfg `daily`, decimal hours like "8" or
+     * "8,5"), or {@link #DEFAULT_DAILY_MINS} when unset or unreadable.
+     */
+    public int dailyMinutes() {
+        synchronized (lock) {
+            String raw = db.cfg("daily");
+            try { return parseDailyMins(raw); }
+            catch (Bad e) { return DEFAULT_DAILY_MINS; }
+        }
+    }
+
+    /**
+     * Parse the cfg `daily` value into minutes: blank or "-" means unset
+     * (default 8h); otherwise decimal hours ("8", "8.5", "8,5") or h:mm ("8:30"),
+     * between 0.5h and 24h. The empty string is returned for "unset".
+     */
+    public static int parseDailyMins(String raw) {
+        if (raw == null || raw.isBlank() || raw.equals("-")) return DEFAULT_DAILY_MINS;
+        String s = raw.trim().replace(',', '.');
+        int mins;
+        if (s.contains(":")) {
+            String[] p = s.split(":");
+            if (p.length != 2) throw new Bad("daily: " + raw);
+            int h = Integer.parseInt(p[0].trim());
+            int m = Integer.parseInt(p[1].trim());
+            if (m >= 60) throw new Bad("daily: " + raw);
+            mins = h * 60 + m;
+        } else {
+            double v;
+            try { v = Double.parseDouble(s); }
+            catch (NumberFormatException e) { throw new Bad("daily: " + raw); }
+            if (v < 0) throw new Bad("daily: " + raw);
+            mins = (int) Math.round(v * 60.0);
+        }
+        if (mins < 30 || mins > 24 * 60) throw new Bad("daily: " + raw);
+        return mins;
+    }
+
+    /**
+     * Banco de horas over the filtered rows, one rule per day (the same as
+     * {@link #monthSaldo}): a marked falta wins over everything (worked -
+     * jornada, even on an empty day); a day off credits everything worked
+     * (worked - 0); a working day with a closed line counts worked - jornada;
+     * an empty working day is ignored. A month filter therefore walks the
+     * whole month, not only the days that have lines. Never past today.
+     */
+    public long overtime(String q, String filter) {
+        synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
+            long daily = dailyMinutes();
+            List<Entry> rows = rows(q, filter);
+            Map<LocalDate, Long> mins = dayMins(rows);
+            Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
+            LocalDate today = LocalDate.now();
+            Set<LocalDate> days = new HashSet<>();
+            for (LocalDate d : mins.keySet()) if (!d.isAfter(today)) days.add(d);
+            if (q == null || q.isBlank()) {
+                String pattern = (filter == null || filter.isBlank()) ? "%" : Parse.like(filter).pattern();
+                for (LocalDate d : fl) if (!d.isAfter(today) && like(pattern, d)) days.add(d);
+            }
+            long sum = 0;
+            for (LocalDate d : days) {
+                long m = mins.getOrDefault(d, 0L);
+                if (fl.contains(d)) sum += m - daily;
+                else if (!Holidays.off(d).isEmpty()) sum += m;
+                else if (mins.containsKey(d)) sum += m - daily;
+            }
+            return sum;
+        }
+    }
+
+    /** Closed-line minutes per day of a row set (open lines and notes count as 0). */
+    private static Map<LocalDate, Long> dayMins(List<Entry> rows) {
+        Map<LocalDate, Long> m = new HashMap<>();
+        for (Entry e : rows) if (e.closed() && e.min() > 0) m.merge(e.dia(), e.min(), Long::sum);
+        return m;
+    }
+
+    /** A `dia LIKE` pattern from Parse.like against one ISO day, in Java. */
+    private static boolean like(String pattern, LocalDate d) {
+        String iso = Str.iso(d);
+        String p = pattern.replace("%", "");
+        boolean a = pattern.startsWith("%"), b = pattern.endsWith("%");
+        if (a && b) return iso.contains(p);
+        if (b) return iso.startsWith(p);
+        if (a) return iso.endsWith(p);
+        return iso.equals(p);
+    }
+
+    /**
+     * The bank balance of a stretch of days, walking every day of it (a falta
+     * counts even on a day without punches), never past today.
+     */
+    private long saldoBetween(LocalDate from, LocalDate to) {
+        LocalDate end = to.isAfter(LocalDate.now()) ? LocalDate.now() : to;
+        if (from.isAfter(end)) return 0;
+        long daily = dailyMinutes();
+        Map<LocalDate, Long> mins = dayMins(repo.between(from, end));
+        Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
+        long sum = 0;
+        for (LocalDate d = from; !d.isAfter(end); d = d.plusDays(1)) {
+            long m = mins.getOrDefault(d, 0L);
+            if (fl.contains(d)) sum += m - daily;
+            else if (!Holidays.off(d).isEmpty()) sum += m;
+            else if (mins.containsKey(d)) sum += m - daily;
+        }
+        return sum;
+    }
+
+    /** The month's saldo: every day of the month up to today, the whole month when closed. */
+    public long monthSaldo(YearMonth ym) {
+        synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
+            return saldoBetween(ym.atDay(1), ym.atEndOfMonth());
+        }
+    }
+
+    /**
+     * One month of the bank: the saldo, the workdays left (from today on,
+     * without days off and without future faltas) and the plan that zeroes the
+     * saldo by the end of the month. `planMins` is the signed adjustment per
+     * remaining day: negative saldo -> work more, positive -> work less.
+     */
+    public record Bank(YearMonth ym, long saldoMins, String saldoLabel, int dailyMins,
+                       int remaining, int planMins, String planLabel, boolean neg) { }
+
+    public Bank bank() { return bank(YearMonth.now()); }
+
+    public Bank bank(YearMonth ym) {
+        synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
+            long saldo = saldoBetween(ym.atDay(1), ym.atEndOfMonth());
+            LocalDate today = LocalDate.now();
+            int remaining = 0;
+            if (!ym.atEndOfMonth().isBefore(today)) {
+                LocalDate from = ym.atDay(1).isAfter(today) ? ym.atDay(1) : today;
+                Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
+                for (LocalDate d = from; !d.isAfter(ym.atEndOfMonth()); d = d.plusDays(1)) {
+                    if (!Holidays.off(d).isEmpty() || fl.contains(d)) continue;
+                    remaining++;
+                }
+            }
+            int planMins = 0;
+            String planLabel = "";
+            if (saldo != 0 && remaining > 0) {
+                planMins = (int) Math.round(-saldo / (double) remaining);
+                if (planMins == 0) planMins = saldo > 0 ? -1 : 1;   // the last day absorbs the rest
+                long a = Math.abs(planMins);
+                planLabel = a + (planMins < 0 ? " min a menos/dia" : " min a mais/dia");
+            }
+            return new Bank(ym, saldo, Dur.signed(saldo), dailyMinutes(),
+                            remaining, planMins, planLabel, saldo < 0);
+        }
+    }
+
+    /** One day of the month chart: worked minutes, the falta mark, the day kind. */
+    public record BankDay(LocalDate dia, long mins, boolean falta, String kind) { }
+
+    /** Every day of the month up to today, for the daily bar chart. */
+    public List<BankDay> bankDays(YearMonth ym) {
+        synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
+            LocalDate today = LocalDate.now();
+            LocalDate from = ym.atDay(1), to = ym.atEndOfMonth();
+            if (from.isAfter(today)) return List.of();
+            if (to.isAfter(today)) to = today;
+            Map<LocalDate, Long> mins = dayMins(repo.between(from, to));
+            Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
+            List<BankDay> out = new ArrayList<>();
+            for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+                boolean falta = fl.contains(d);
+                String off = Holidays.off(d);
+                String kind = falta ? "falta"
+                           : off.isEmpty() ? "work"
+                           : off.startsWith("weekend") ? "weekend"
+                           : off.startsWith("holiday:") ? "holiday"
+                           : off.startsWith("optional:") ? "optional" : "off";
+                out.add(new BankDay(d, mins.getOrDefault(d, 0L), falta, kind));
+            }
+            return out;
+        }
+    }
+
+    /** One closed month of history (the 12-bar chart). */
+    public record MonthSaldo(YearMonth ym, long saldoMins) { }
+
+    /** The last `n` months ending at `ym`, oldest first. */
+    public List<MonthSaldo> history(YearMonth ym, int n) {
+        synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
+            List<MonthSaldo> out = new ArrayList<>();
+            for (int i = n - 1; i >= 0; i--) {
+                YearMonth m = ym.minusMonths(i);
+                out.add(new MonthSaldo(m, saldoBetween(m.atDay(1), m.atEndOfMonth())));
+            }
+            return out;
+        }
+    }
+
+    // ---- falta: a flag of the whole day, never a punch line ----------------
+
+    public boolean falta(LocalDate d) {
+        synchronized (lock) { return repo.flagOn(d, "falta"); }
+    }
+
+    public void falta(LocalDate d, boolean on) {
+        synchronized (lock) {
+            if (on) repo.flagSet(d, "falta");
+            else repo.flagClear(d, "falta");
+        }
+    }
+
+    public List<LocalDate> faltas() {
+        synchronized (lock) { return repo.flags("falta", "%"); }
+    }
+
+    /**
+     * What marking this falta does to the bank, as one warning line (a warning,
+     * never a wall): on a day off the falta deducts the jornada; on a working
+     * day that already has closed lines it changes nothing. "" when plain.
+     */
+    public String faltaWarn(LocalDate d) {
+        synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
+            String off = Holidays.off(d);
+            if (!off.isEmpty()) return "dia off (" + off + ")   ·   a falta deduz a jornada";
+            for (Entry e : repo.on(d)) if (e.closed()) return "o dia já tem batidas (a falta não muda o saldo)";
+            return "";
+        }
+    }
+
+    private List<Entry> rows(String q, String filter) {
+        if (q != null && !q.isBlank()) return repo.search(q);
+        if (filter != null && !filter.isBlank()) return repo.byDay(Parse.like(filter).pattern());
+        return repo.all();
     }
 
     public Entry byId(int id) {
@@ -271,8 +516,16 @@ public final class Service {
 
     public Report report(LocalDate from, LocalDate to) {
         synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
             Period p = new Period(from, to);
-            return new Report(new Report.Head(who(), db.file.toString(), p, stamp()), repo.between(from, to));
+            long saldo = saldoBetween(from, to);
+            int faltas = 0;
+            for (LocalDate d : repo.flags("falta", "%"))
+                if (!d.isBefore(from) && !d.isAfter(to)) faltas++;
+            LocalDate today = LocalDate.now();
+            String plano = (!from.isAfter(today) && !to.isBefore(today)) ? bank().planLabel() : "";
+            return new Report(new Report.Head(who(), db.file.toString(), p, stamp()),
+                              repo.between(from, to), saldo, faltas, plano);
         }
     }
 
@@ -282,6 +535,8 @@ public final class Service {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("who", who());
             m.put("off", db.cfg("off"));
+            m.put("daily", db.cfg("daily"));
+            m.put("dailyMins", dailyMinutes());
             m.put("db", db.file.toString());
             m.put("records", repo.count());
             m.put("from", Str.d(repo.min()));
@@ -295,21 +550,43 @@ public final class Service {
     }
 
     public Map<String, Object> setConfig(String who, String off, boolean vacuum) {
-        return setConfig(who, off, vacuum, s -> { });
+        return setConfig(who, off, null, vacuum, s -> { });
     }
 
     /** Same, but the terminal keeps its "off: '...' not a date" line for bad dates. */
     public Map<String, Object> setConfig(String who, String off, boolean vacuum, Consumer<String> bad) {
+        return setConfig(who, off, null, vacuum, bad);
+    }
+
+    /**
+     * Save settings. `daily` is the workday in decimal hours ("8", "8.5") or
+     * h:mm; null leaves it untouched, ""/"-" clears it (back to 8h). Invalid
+     * values throw Bad.
+     */
+    public Map<String, Object> setConfig(String who, String off, String daily, boolean vacuum, Consumer<String> bad) {
         synchronized (lock) {
             if (who != null) db.setCfg("who", who.equals("-") ? "" : who);
             if (off != null) {
                 db.setCfg("off", off.equals("-") ? "" : off);
                 Holidays.extra(offDates(off, bad));
             }
+            if (daily != null) {
+                String d = daily.trim();
+                if (d.isEmpty() || d.equals("-")) db.setCfg("daily", "");
+                else db.setCfg("daily", dailyLabel(parseDailyMins(d)));
+            }
             db.setCfg("asked", "1");
             if (vacuum) db.vacuum();
             return config();
         }
+    }
+
+    /** 480 -> "8", 510 -> "8.5": the stored cfg value of the workday. */
+    public static String dailyLabel(int mins) {
+        String v = String.format(java.util.Locale.ROOT, "%.2f", mins / 60.0);
+        if (v.endsWith("00")) v = v.substring(0, v.length() - 3);
+        else if (v.endsWith("0")) v = v.substring(0, v.length() - 1);
+        return v;
     }
 
     public static List<LocalDate> offDates(String raw) { return offDates(raw, s -> {}); }

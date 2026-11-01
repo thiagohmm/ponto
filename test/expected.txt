@@ -20,6 +20,7 @@ user     Ana
 DATE DAY LINES DUR HOURS
 20/05/2026 WED 3 0:45 0.75
 TOTAL 3 0:45 0.75
+Saldo do período  -7:15
 
 == XLS ==
 magic=xls (OLE + BIFF8)
@@ -27,6 +28,7 @@ magic=xls (OLE + BIFF8)
   Relatório de pontos |
   20/05/2026 - 20/05/2026 |
   user Ana   ·   database TESTDIR/…
+  saldo do período -7:15 |
   lines 3   ·   incomplete 1 |
   ID | DATE | DAY | IN | OUT | DURATION | HOURS | JUSTIFICATION |
   1 | 20/05/2026 | WED |  |  | note |  | trabalho remoto |
@@ -38,6 +40,7 @@ magic=xls (OLE + BIFF8)
   Relatório de pontos |
   20/05/2026 - 20/05/2026 |
   user Ana   ·   database TESTDIR/…
+  saldo do período -7:15 |
   lines 3   ·   incomplete 1 |
   DATE | DAY | LINES | DURATION | HOURS |
   20/05/2026 | WED | 3 | 0:45 | 0.75 |
@@ -55,3 +58,4 @@ Days;1;;;;;;
 Total;0:45 (0.75 h);;;;;;
 Incomplete;1;;;;;;
 Database;TESTDIR/…
+saldo;-7:15;;;;;;

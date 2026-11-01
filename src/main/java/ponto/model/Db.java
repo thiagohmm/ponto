@@ -27,6 +27,11 @@ public final class Db implements AutoCloseable {
         )""",
         "CREATE INDEX IF NOT EXISTS ix_ponto_dia ON ponto(dia)",
         """
+        CREATE TABLE IF NOT EXISTS dia_flag (
+          dia    TEXT PRIMARY KEY,
+          flag   TEXT NOT NULL DEFAULT 'falta'
+        )""",
+        """
         CREATE TABLE IF NOT EXISTS cfg (
           k      TEXT PRIMARY KEY,
           v      TEXT NOT NULL DEFAULT ''

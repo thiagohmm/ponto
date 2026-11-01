@@ -24,6 +24,7 @@ import io.javalin.http.staticfiles.Location;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +48,7 @@ public final class Web {
                     s.hostedPath = "/";
                     s.directory = "/public";
                     s.location = Location.CLASSPATH;
+                    s.mimeTypes.add("application/manifest+json", "webmanifest");
                 });
                 cfg.spaRoot.addFile("/", "/public/index.html", Location.CLASSPATH);
             }
@@ -74,8 +76,10 @@ public final class Web {
         app.put("/api/entries/{id}", this::update);
         app.delete("/api/entries/{id}", this::delete);
         app.delete("/api/days/{dia}", this::deleteDay);
+        app.put("/api/days/{dia}/falta", this::falta);
         app.get("/api/day", this::day);
         app.get("/api/holiday", this::holiday);
+        app.get("/api/bank", this::bank);
         app.get("/api/sum", this::sum);
         app.get("/api/export/{kind}", this::export);
         app.get("/api/config", ctx -> ctx.json(svc.config()));
@@ -120,6 +124,8 @@ public final class Web {
         out.put("dur", tot.dur());
         out.put("hours", tot.hours());
         out.put("open", tot.open());
+        out.put("overtime", svc.overtime(q, dia));
+        out.put("faltas", svc.faltas().stream().map(Str::iso).toList());
         out.put("entries", rows.stream().map(Json::json).toList());
         ctx.json(out);
     }
@@ -176,6 +182,7 @@ public final class Web {
         out.put("diaIso", Str.iso(d));
         out.put("d3", Str.d3(d));
         out.put("holiday", svc.holiday(d));
+        out.put("falta", svc.falta(d));
         out.put("lastOut", lastOut);
         out.put("open", open.stream().map(Json::json).toList());
         out.put("entries", rows.stream().map(Json::json).toList());
@@ -200,7 +207,43 @@ public final class Web {
         out.put("hours", r.totalDec());
         out.put("lines", r.lines().size());
         out.put("open", r.openLines());
+        out.put("saldo", r.saldoLabel());
+        out.put("saldoMins", r.saldoMins());
+        out.put("faltas", r.faltas());
+        out.put("plano", r.planoLabel());
         out.put("days", r.summary().stream().map(Json::jsonDay).toList());
+        ctx.json(out);
+    }
+
+    /** Month bank: saldo + plan, the days of the month chart, the 12-month history. */
+    private void bank(Context ctx) {
+        String raw = ctx.queryParam("ym");
+        YearMonth ym;
+        if (raw == null || raw.isBlank()) ym = YearMonth.now();
+        else {
+            try { ym = YearMonth.parse(raw); }
+            catch (RuntimeException e) { throw new Bad("ym: '" + raw + "'  (YYYY-MM)"); }
+        }
+        Map<String, Object> out = new LinkedHashMap<>(Json.jsonBank(svc.bank(ym)));
+        out.put("days", svc.bankDays(ym).stream().map(Json::jsonBankDay).toList());
+        out.put("months", svc.history(ym, 12).stream().map(Json::jsonMonthSaldo).toList());
+        ctx.json(out);
+    }
+
+    /** Mark or clear the whole-day falta flag (`{ "on": true|false }`). */
+    private void falta(Context ctx) {
+        LocalDate d = Service.parseDate(ctx.pathParam("dia"), null);
+        if (d == null) throw new Bad("date required");
+        FaltaReq r = ctx.bodyAsClass(FaltaReq.class);
+        boolean on = Boolean.TRUE.equals(r.on());
+        String warn = on ? svc.faltaWarn(d) : "";
+        svc.falta(d, on);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("dia", Str.d(d));
+        out.put("diaIso", Str.iso(d));
+        out.put("falta", on);
+        out.put("warn", warn);
         ctx.json(out);
     }
 
@@ -224,7 +267,7 @@ public final class Web {
 
     private void config(Context ctx) {
         SaveReq r = ctx.bodyAsClass(SaveReq.class);
-        ctx.json(svc.setConfig(r.who(), r.off(), r.flag(r.vacuum())));
+        ctx.json(svc.setConfig(r.who(), r.off(), r.daily(), r.flag(r.vacuum()), s -> { }));
     }
 
     private void notesList(Context ctx) {
@@ -409,9 +452,11 @@ public final class Web {
 
     record SaveReq(String dia, String tin, String tout, String just,
                    Boolean closeOpen, Boolean confirmMidnight, Boolean confirmOverlap,
-                   String who, String off, Boolean vacuum) {
+                   String who, String off, String daily, Boolean vacuum) {
         boolean flag(Boolean v) { return Boolean.TRUE.equals(v); }
     }
+
+    record FaltaReq(Boolean on) { }
 
     record NoteReq(String title, String body, Integer folderId, Integer tagId, List<Integer> tagIds) { }
 

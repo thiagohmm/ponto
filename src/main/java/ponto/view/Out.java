@@ -43,7 +43,7 @@ public final class Out {
      * Later repaints just leave a blank line, so what the key printed stays above
      * the menu and in the scrollback.
      */
-    public void home(String name, int records, long mins, String dbPath, String openNote) {
+    public void home(String name, int records, long mins, String dbPath, String openNote, String saldoNote) {
         if (TTY && !painted) ps.print("\u001B[2J\u001B[H"); else ps.println();
         painted = true;
         rule();
@@ -52,14 +52,18 @@ public final class Out {
                    + " ".repeat(Math.max(1, 22 - name.length()))
                    + dim(records + " records"));
         ps.println("  " + dim("this month " + Dur.hm(mins) + "   " + openNote));
+        if (!saldoNote.isEmpty()) {
+            boolean neg = saldoNote.startsWith("!");
+            ps.println("  " + (neg ? yel(saldoNote) : dim(saldoNote)));
+        }
         ps.println("  " + dim(dbPath));
         rule();
         // four keys per row, never wider than the rule above, so nothing can be
         // clipped or wrapped away on a narrow terminal
         ps.println("  " + bold("1") + " new     " + bold("2") + " edit    " + bold("3") + " delete  " + bold("4") + " list");
         ps.println("  " + bold("5") + " sum     " + bold("6") + " find    " + bold("7") + " pdf     " + bold("8") + " xls");
-        ps.println("  " + bold("9") + " csv     " + bold("d") + " date    " + bold("c") + " config  " + bold("x") + " clear");
-        ps.println("  " + bold("?") + " help    " + bold("0") + " quit");
+        ps.println("  " + bold("9") + " csv     " + bold("d") + " date    " + bold("c") + " config  " + bold("f") + " falta");
+        ps.println("  " + bold("?") + " help    " + bold("x") + " clear   " + bold("0") + " quit");
         rule();
     }
 
