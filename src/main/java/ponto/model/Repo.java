@@ -84,29 +84,33 @@ public final class Repo {
 
     private static String clean(SQLException e) { return Db.clean(e.getMessage()); }
 
+    private int cid() { return db.company(); }
+
     // ---- reads -------------------------------------------------------------
 
     List<Entry> recent(int n) { return recent(n, 0); }
 
     /** The newest rows, skipping the first `skip` (offset paging; see App.list). */
     public List<Entry> recent(int n, int skip) {
-        return rows("SELECT " + COLS + " FROM ponto" + ORDER + " LIMIT ? OFFSET ?", n, Math.max(0, skip));
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ?" + ORDER
+                    + " LIMIT ? OFFSET ?", cid(), n, Math.max(0, skip));
     }
 
     public List<Entry> between(LocalDate a, LocalDate b) {
-        return rows("SELECT " + COLS + " FROM ponto WHERE dia BETWEEN ? AND ?" + ORDER, a, b);
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND dia BETWEEN ? AND ?"
+                    + ORDER, cid(), a, b);
     }
 
     /** Paged window of a date range, newest first (the web list over a month span). */
     public List<Entry> between(LocalDate a, LocalDate b, int n, int skip) {
-        return rows("SELECT " + COLS + " FROM ponto WHERE dia BETWEEN ? AND ?" + ORDER
-                  + " LIMIT ? OFFSET ?", a, b, n, Math.max(0, skip));
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND dia BETWEEN ? AND ?"
+                    + ORDER + " LIMIT ? OFFSET ?", cid(), a, b, n, Math.max(0, skip));
     }
 
     /** How many rows inside the date range (the `de M` of the web footer). */
     public int countBetween(LocalDate a, LocalDate b) {
-        try (var q = prep("SELECT count(*) FROM ponto WHERE dia BETWEEN ? AND ?")) {
-            bind(q, new Object[]{a, b});
+        try (var q = prep("SELECT count(*) FROM ponto WHERE company_id = ? AND dia BETWEEN ? AND ?")) {
+            bind(q, new Object[]{cid(), a, b});
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
@@ -114,37 +118,40 @@ public final class Repo {
     public List<Entry> on(LocalDate d) { return between(d, d); }
 
     /** Ids in range, most recent first (used by the list/summary tables). */
-    List<Entry> all() { return rows("SELECT " + COLS + " FROM ponto" + ORDER); }
+    List<Entry> all() {
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ?" + ORDER, cid());
+    }
 
     /**
      * Rows whose ISO day matches `like` (`2026-10-08` · `%2026%` · `2026-10%`),
      * newest first, offset paging so `older` walks to the last one.
      */
     public List<Entry> byDay(String like, int n, int skip) {
-        return rows("SELECT " + COLS + " FROM ponto WHERE dia LIKE ?" + ORDER + " LIMIT ? OFFSET ?",
-                    like, n, Math.max(0, skip));
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND dia LIKE ?" + ORDER
+                    + " LIMIT ? OFFSET ?", cid(), like, n, Math.max(0, skip));
     }
 
     /** Every row whose ISO day matches `like`, newest first. */
     public List<Entry> byDay(String like) {
-        return rows("SELECT " + COLS + " FROM ponto WHERE dia LIKE ?" + ORDER, like);
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND dia LIKE ?" + ORDER, cid(), like);
     }
 
     /** How many rows match that day pattern (the `of M` in the footer). */
     public int countDay(String like) {
-        try (var q = prep("SELECT count(*) FROM ponto WHERE dia LIKE ?")) {
-            q.setString(1, like);
+        try (var q = prep("SELECT count(*) FROM ponto WHERE company_id = ? AND dia LIKE ?")) {
+            bind(q, new Object[]{cid(), like});
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     public List<Entry> search(String q) {
         String like = "%" + q.trim().replace('%', ' ').replace('_', ' ') + "%";
-        return rows("SELECT " + COLS + " FROM ponto WHERE just LIKE ? COLLATE NOCASE" + ORDER, like);
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND just LIKE ? COLLATE NOCASE"
+                    + ORDER, cid(), like);
     }
 
     public Entry byId(int id) {
-        List<Entry> r = rows("SELECT " + COLS + " FROM ponto WHERE id = ?", id);
+        List<Entry> r = rows("SELECT " + COLS + " FROM ponto WHERE id = ? AND company_id = ?", id, cid());
         if (r.isEmpty()) throw new Problema("no record with id " + id);
         return r.getFirst();
     }
@@ -153,24 +160,27 @@ public final class Repo {
     /** Unclosed lines of any day, oldest first (the banner counts these). */
     public List<Entry> openAll() {
         return rows("SELECT " + COLS + " FROM ponto"
-                  + " WHERE tin IS NULL OR tout IS NULL"
-                  + " ORDER BY dia ASC, ifnull(tin,'99:99') ASC, id ASC");
+                  + " WHERE company_id = ? AND (tin IS NULL OR tout IS NULL)"
+                  + " ORDER BY dia ASC, ifnull(tin,'99:99') ASC, id ASC", cid());
     }
 
     List<Entry> open(LocalDate d) {
-        return rows("SELECT " + COLS + " FROM ponto WHERE dia = ? AND ((tin IS NOT NULL AND tout IS NULL)"
-                  + " OR (tin IS NULL AND tout IS NOT NULL))" + ORDER, d);
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND dia = ?"
+                  + " AND ((tin IS NOT NULL AND tout IS NULL)"
+                  + " OR (tin IS NULL AND tout IS NOT NULL))" + ORDER, cid(), d);
     }
 
     public int count() {
-        try (var q = prep("SELECT count(*) FROM ponto")) {
+        try (var q = prep("SELECT count(*) FROM ponto WHERE company_id = ?")) {
+            bind(q, new Object[]{cid()});
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     /** First/last recorded day (defaults for the export period). */
     public LocalDate min() {
-        try (var q = prep("SELECT min(dia) FROM ponto")) {
+        try (var q = prep("SELECT min(dia) FROM ponto WHERE company_id = ?")) {
+            bind(q, new Object[]{cid()});
             try (var rs = q.executeQuery()) {
                 if (!rs.next()) return null;
                 String v = rs.getString(1);
@@ -180,7 +190,8 @@ public final class Repo {
     }
 
     public LocalDate max() {
-        try (var q = prep("SELECT max(dia) FROM ponto")) {
+        try (var q = prep("SELECT max(dia) FROM ponto WHERE company_id = ?")) {
+            bind(q, new Object[]{cid()});
             try (var rs = q.executeQuery()) {
                 if (!rs.next()) return null;
                 String v = rs.getString(1);
@@ -192,26 +203,32 @@ public final class Repo {
     // ---- writes ----------------------------------------------------------
 
     public int insert(LocalDate dia, LocalTime tin, LocalTime tout, String just) {
-        return insertId("INSERT INTO ponto(dia,tin,tout,just) VALUES(?,?,?,?)", dia, tin, tout, just);
+        return insertId("INSERT INTO ponto(dia,tin,tout,just,company_id) VALUES(?,?,?,?,?)",
+                        dia, tin, tout, just, cid());
     }
 
     /** Patch one field of one record: the UI always sends the whole row. */
     public void update(Entry e) {
-        write("UPDATE ponto SET dia=?, tin=?, tout=?, just=? WHERE id=?", e.dia(), e.tin(), e.tout(), e.just(), e.id());
+        int n = write("UPDATE ponto SET dia=?, tin=?, tout=?, just=? WHERE id=? AND company_id=?",
+                      e.dia(), e.tin(), e.tout(), e.just(), e.id(), cid());
+        if (n == 0) throw new Problema("no record with id " + e.id());
     }
 
     /** Clear just the in/out pair (keeps the day + justification). */
     public void clearTimes(Entry e) {
-        write("UPDATE ponto SET tin=NULL, tout=NULL WHERE id=?", e.id());
+        int n = write("UPDATE ponto SET tin=NULL, tout=NULL WHERE id=? AND company_id=?", e.id(), cid());
+        if (n == 0) throw new Problema("no record with id " + e.id());
     }
 
     public void delete(int id) {
-        int n = write("DELETE FROM ponto WHERE id=?", id);
+        int n = write("DELETE FROM ponto WHERE id=? AND company_id=?", id, cid());
         if (n == 0) throw new Problema("no record with id " + id);
     }
 
     /** Delete every record of a day (used by the day editor). */
-    public int deleteDay(LocalDate d) { return write("DELETE FROM ponto WHERE dia = ?", d); }
+    public int deleteDay(LocalDate d) {
+        return write("DELETE FROM ponto WHERE company_id = ? AND dia = ?", cid(), d);
+    }
 
     /** Snap a new timesheet for a brand new day: copies nothing, just inserts. */
     public int countOn(LocalDate d) { return on(d).size(); }
@@ -219,27 +236,27 @@ public final class Repo {
     // ---- day flags (`dia_flag`: the whole day, never one line) --------------
 
     public boolean flagOn(LocalDate d, String flag) {
-        try (var q = prep("SELECT 1 FROM dia_flag WHERE dia = ? AND flag = ?")) {
-            q.setString(1, Str.iso(d));
-            q.setString(2, flag);
+        try (var q = prep("SELECT 1 FROM dia_flag WHERE company_id = ? AND dia = ? AND flag = ?")) {
+            bind(q, new Object[]{cid(), Str.iso(d), flag});
             try (var rs = q.executeQuery()) { return rs.next(); }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     public void flagSet(LocalDate d, String flag) {
-        write("INSERT INTO dia_flag(dia, flag) VALUES(?, ?)"
-              + " ON CONFLICT(dia) DO UPDATE SET flag = excluded.flag", Str.iso(d), flag);
+        write("INSERT INTO dia_flag(company_id, dia, flag) VALUES(?, ?, ?)"
+              + " ON CONFLICT(company_id, dia) DO UPDATE SET flag = excluded.flag",
+              cid(), Str.iso(d), flag);
     }
 
     public void flagClear(LocalDate d, String flag) {
-        write("DELETE FROM dia_flag WHERE dia = ? AND flag = ?", Str.iso(d), flag);
+        write("DELETE FROM dia_flag WHERE company_id = ? AND dia = ? AND flag = ?",
+              cid(), Str.iso(d), flag);
     }
 
     /** Flagged days, oldest first; `like` runs against the ISO day (`%` = all). */
     public List<LocalDate> flags(String flag, String like) {
-        try (var q = prep("SELECT dia FROM dia_flag WHERE flag = ? AND dia LIKE ? ORDER BY dia")) {
-            q.setString(1, flag);
-            q.setString(2, like);
+        try (var q = prep("SELECT dia FROM dia_flag WHERE company_id = ? AND flag = ? AND dia LIKE ? ORDER BY dia")) {
+            bind(q, new Object[]{cid(), flag, like});
             try (var rs = q.executeQuery()) {
                 List<LocalDate> out = new ArrayList<>();
                 while (rs.next()) out.add(LocalDate.parse(rs.getString(1)));

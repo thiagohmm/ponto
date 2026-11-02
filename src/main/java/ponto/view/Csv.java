@@ -35,6 +35,7 @@ public final class Csv {
         b.append(line(total(r)));
         b.append('\n');
         b.append(line(kv("User", r.h().who())));
+        b.append(line(kv("Company", r.h().company())));
         b.append(line(kv("Period", r.h().periodo())));
         b.append(line(kv("Days", "" + r.summary().size())));
         b.append(line(kv("Total", r.totalLabel() + " (" + Str.n(r.totalMin() / 60.0) + " h)")));

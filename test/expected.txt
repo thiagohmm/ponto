@@ -5,6 +5,7 @@ RELATÓRIO DE PONTOS
 Relatório de pontos
 period    20/05/2026 - 20/05/2026
 user      Ana
+company   Empresa
 database  TESTDIR/…
 lines     3   incomplete  1
 total     0:45  (0.75 h)
@@ -17,6 +18,7 @@ ponto 1.0.0  |  USER page 2
 SUMMARY BY DAY
 Relatório de pontos  |  20/05/2026 - 20/05/2026
 user     Ana
+company  Empresa
 DATE DAY LINES DUR HOURS
 20/05/2026 WED 3 0:45 0.75
 TOTAL 3 0:45 0.75
@@ -27,7 +29,7 @@ magic=xls (OLE + BIFF8)
 --- REGISTRO ---
   Relatório de pontos |
   20/05/2026 - 20/05/2026 |
-  user Ana   ·   database TESTDIR/…
+  user Ana   ·   company Empresa   ·   database TESTDIR/…
   saldo do período -7:15 |
   lines 3   ·   incomplete 1 |
   ID | DATE | DAY | IN | OUT | DURATION | HOURS | JUSTIFICATION |
@@ -39,7 +41,7 @@ magic=xls (OLE + BIFF8)
 --- RESUMO ---
   Relatório de pontos |
   20/05/2026 - 20/05/2026 |
-  user Ana   ·   database TESTDIR/…
+  user Ana   ·   company Empresa   ·   database TESTDIR/…
   saldo do período -7:15 |
   lines 3   ·   incomplete 1 |
   DATE | DAY | LINES | DURATION | HOURS |
@@ -53,6 +55,7 @@ ID;DIA;DIA_3L;IN;OUT;DURACAO;HORAS;JUSTIFICACAO
 3;20/05/2026;WED;08:30;09:15;0:45;0.75;medico
 TOTAL;;;;;0:45;0.75;3 lines
 User;Ana;;;;;;
+Company;Empresa;;;;;;
 Period;20/05/2026 - 20/05/2026;;;;;;
 Days;1;;;;;;
 Total;0:45 (0.75 h);;;;;;

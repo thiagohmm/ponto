@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../api";
+import { CompanyStat, useCompany } from "../Company";
 import { useConfirm } from "../ui/Confirm";
 import { isEscuro, toggleTema } from "../theme";
 import type { Bank, BankDay, Entry, Home } from "../types";
@@ -122,6 +123,7 @@ function kindLabel(d: BankDay): string {
 
 export function HomePage() {
   const confirm = useConfirm();
+  const { active } = useCompany();
   const [home, setHome] = useState<Home | null>(null);
   const [rows, setRows] = useState<Entry[]>([]);
   const [total, setTotal] = useState(0);
@@ -171,7 +173,7 @@ export function HomePage() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [active?.id]);
 
   const groups = useMemo(() => groupByDay(rows), [rows]);
   const pageMins = useMemo(() => rows.reduce((s, e) => s + minsOf(e), 0), [rows]);
@@ -233,7 +235,7 @@ export function HomePage() {
     <>
       {home && (
         <section className="stats">
-          <div className="stat"><b>{home.who || "—"}</b><span>nome</span></div>
+          <CompanyStat />
           <div className="stat"><b>{home.monthLabel}</b><span>este mês · {home.monthHours} h</span></div>
           <div className="stat"><b>{home.open}</b><span>abertos{home.openSince ? " desde " + home.openSince : ""}</span></div>
           <div className="stat"><b>{home.records}</b><span>{home.from} … {home.to}</span></div>

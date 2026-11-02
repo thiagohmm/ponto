@@ -95,7 +95,8 @@ public final class Xls {
     private static void title(Sheet sh, St st, Report r) {
         cell(sh, sh.createRow(0), 0, r.h().title(), st.big);
         cell(sh, sh.createRow(1), 0, r.h().periodo(), st.meta);
-        cell(sh, sh.createRow(2), 0, "user " + dash(r.h().who()) + "   ·   database " + r.h().db(), st.meta);
+        cell(sh, sh.createRow(2), 0, "user " + dash(r.h().who()) + "   ·   company " + dash(r.h().company())
+                + "   ·   database " + r.h().db(), st.meta);
         cell(sh, sh.createRow(3), 0, saldoLine(r), st.meta);
         cell(sh, sh.createRow(4), 0, "lines " + r.lines().size() + "   ·   incomplete " + r.openLines(), st.meta);
         cell(sh, sh.createRow(5), 0, "generated " + r.h().generated(), st.meta);

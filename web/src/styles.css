@@ -263,6 +263,78 @@ button, input, textarea {
 
 .stat span { color: var(--muted); font-size: 12px; }
 
+.stat.pick { position: relative; padding: 0; }
+.stat-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: inherit;
+}
+.stat.pick:hover, .stat.pick.open { border-color: var(--accent); }
+
+.company-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.company-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: inherit;
+}
+.company-chip b { font-size: 14px; }
+.company-chip span { color: var(--muted); font-size: 11px; }
+
+.picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 15;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  border-radius: 10px;
+  padding: 6px;
+}
+.picker button, .picker-cfg {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: inherit;
+  font-size: 14px;
+}
+.picker button.on { color: var(--accent); font-weight: 600; }
+.picker button:hover, .picker-cfg:hover { background: var(--sub); }
+.picker-cfg { color: var(--muted); font-size: 12px; }
+
+.company-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sub);
+}
+.company-card.on { border-color: var(--accent); }
+
 .toolbar {
   display: flex;
   gap: 8px;

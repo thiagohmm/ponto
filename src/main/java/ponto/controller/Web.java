@@ -4,6 +4,7 @@ import ponto.Bad;
 import ponto.NeedConfirm;
 import ponto.Problema;
 import ponto.Ver;
+import ponto.model.Company;
 import ponto.model.Entry;
 import ponto.model.Note;
 import ponto.model.NoteFile;
@@ -85,6 +86,11 @@ public final class Web {
         app.get("/api/export/{kind}", this::export);
         app.get("/api/config", ctx -> ctx.json(svc.config()));
         app.put("/api/config", this::config);
+        app.get("/api/companies", this::companies);
+        app.post("/api/companies", this::companyCreate);
+        app.put("/api/companies/active", this::companyActive);
+        app.put("/api/companies/{id}", this::companyUpdate);
+        app.delete("/api/companies/{id}", this::companyDelete);
         app.get("/api/notes", this::notesList);
         app.get("/api/notes/{id}", this::noteOne);
         app.post("/api/notes", this::noteCreate);
@@ -228,6 +234,7 @@ public final class Web {
         out.put("from", Str.d(from));
         out.put("to", Str.d(to));
         out.put("who", r.h().who());
+        out.put("company", r.h().company());
         out.put("total", r.totalLabel());
         out.put("hours", r.totalDec());
         out.put("lines", r.lines().size());
@@ -310,6 +317,41 @@ public final class Web {
     private void config(Context ctx) {
         SaveReq r = ctx.bodyAsClass(SaveReq.class);
         ctx.json(svc.setConfig(r.who(), r.off(), r.daily(), r.flag(r.vacuum()), s -> { }));
+    }
+
+    private void companies(Context ctx) {
+        Company act = svc.companies().active();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("activeId", act.id());
+        out.put("companies", svc.companies().list().stream().map(Json::json).toList());
+        ctx.json(out);
+    }
+
+    private void companyCreate(Context ctx) {
+        CompanyReq r = ctx.bodyAsClass(CompanyReq.class);
+        Company c = svc.companies().create(nz(r.name()), r.off(), r.daily());
+        ctx.status(HttpStatus.CREATED).json(Json.json(c));
+    }
+
+    private void companyUpdate(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        CompanyReq r = ctx.bodyAsClass(CompanyReq.class);
+        ctx.json(Json.json(svc.companies().update(id, r.name(), r.off(), r.daily())));
+    }
+
+    private void companyDelete(Context ctx) {
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        svc.companies().delete(id);
+        ctx.json(Map.of("ok", true, "id", id));
+    }
+
+    private void companyActive(Context ctx) {
+        CompanyReq r = ctx.bodyAsClass(CompanyReq.class);
+        if (r.id() == null) throw new Bad("id required");
+        Company c = svc.activate(r.id());
+        Map<String, Object> out = new LinkedHashMap<>(Json.json(c));
+        out.put("activeId", c.id());
+        ctx.json(out);
     }
 
     private void notesList(Context ctx) {
@@ -507,4 +549,6 @@ public final class Web {
     record FolderReq(String name, Integer parent) { }
 
     record TagReq(String name, String color) { }
+
+    record CompanyReq(Integer id, String name, String off, String daily) { }
 }

@@ -78,7 +78,15 @@ public final class Db implements AutoCloseable {
           ctype   TEXT NOT NULL DEFAULT '',
           crea    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))
         )""",
-        "CREATE INDEX IF NOT EXISTS ix_note_file_note ON note_file(note_id)");
+        "CREATE INDEX IF NOT EXISTS ix_note_file_note ON note_file(note_id)",
+        """
+        CREATE TABLE IF NOT EXISTS company (
+          id     INTEGER PRIMARY KEY AUTOINCREMENT,
+          name   TEXT NOT NULL DEFAULT '',
+          off    TEXT NOT NULL DEFAULT '',
+          daily  TEXT NOT NULL DEFAULT '',
+          crea   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))
+        )""");
 
     private final Connection c;
     public final Path file;
@@ -100,6 +108,73 @@ public final class Db implements AutoCloseable {
         if (!hasColumn("note", "folder_id"))
             exec("ALTER TABLE note ADD COLUMN folder_id INTEGER");
         exec("CREATE INDEX IF NOT EXISTS ix_note_folder ON note(folder_id)");
+        migrateCompanies();
+    }
+
+    /**
+     * One active company per database file. Existing rows (and the old cfg
+     * off/daily) land on a seeded company so a production db keeps its data.
+     */
+    private void migrateCompanies() {
+        addColumn("ponto", "company_id");
+        addColumn("note", "company_id");
+        addColumn("folder", "company_id");
+        addColumn("tag", "company_id");
+        int id = seedCompany();
+        exec("UPDATE ponto SET company_id = " + id + " WHERE company_id IS NULL");
+        exec("UPDATE note SET company_id = " + id + " WHERE company_id IS NULL");
+        exec("UPDATE folder SET company_id = " + id + " WHERE company_id IS NULL");
+        exec("UPDATE tag SET company_id = " + id + " WHERE company_id IS NULL");
+        exec("CREATE INDEX IF NOT EXISTS ix_ponto_company ON ponto(company_id, dia)");
+        exec("CREATE INDEX IF NOT EXISTS ix_note_company ON note(company_id)");
+        exec("CREATE INDEX IF NOT EXISTS ix_folder_company ON folder(company_id)");
+        exec("CREATE INDEX IF NOT EXISTS ix_tag_company ON tag(company_id)");
+        if (!hasColumn("dia_flag", "company_id")) {
+            exec("""
+                CREATE TABLE dia_flag_new (
+                  company_id INTEGER NOT NULL,
+                  dia        TEXT NOT NULL,
+                  flag       TEXT NOT NULL DEFAULT 'falta',
+                  PRIMARY KEY (company_id, dia)
+                )""");
+            exec("INSERT INTO dia_flag_new(company_id, dia, flag) SELECT "
+                    + id + ", dia, flag FROM dia_flag");
+            exec("DROP TABLE dia_flag");
+            exec("ALTER TABLE dia_flag_new RENAME TO dia_flag");
+        }
+        if (cfg("company").isEmpty()) setCfg("company", String.valueOf(id));
+    }
+
+    private void addColumn(String table, String col) {
+        if (!hasColumn(table, col)) exec("ALTER TABLE " + table + " ADD COLUMN " + col + " INTEGER");
+    }
+
+    private int seedCompany() {
+        try (var q = c.prepareStatement("SELECT id FROM company ORDER BY id LIMIT 1");
+             var rs = q.executeQuery()) {
+            if (rs.next()) return rs.getInt(1);
+        } catch (SQLException e) { throw new Problema(clean(e.getMessage())); }
+        String name = cfg("who");
+        if (name.isEmpty()) name = "Empresa";
+        try (var q = c.prepareStatement("INSERT INTO company(name, off, daily) VALUES(?,?,?)",
+                                       java.sql.Statement.RETURN_GENERATED_KEYS)) {
+            q.setString(1, name);
+            q.setString(2, cfg("off"));
+            q.setString(3, cfg("daily"));
+            q.executeUpdate();
+            try (var ks = q.getGeneratedKeys()) {
+                if (ks.next()) return ks.getInt(1);
+            }
+        } catch (SQLException e) { throw new Problema(clean(e.getMessage())); }
+        throw new Problema("company seed");
+    }
+
+    /** The id stored in cfg `company`. Always set after {@link #migrateCompanies}. */
+    public int company() {
+        String v = cfg("company");
+        if (v.isEmpty()) throw new Problema("no company");
+        try { return Integer.parseInt(v); }
+        catch (NumberFormatException e) { throw new Problema("company: " + v); }
     }
 
     private boolean hasColumn(String table, String col) {

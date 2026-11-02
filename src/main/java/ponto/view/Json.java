@@ -1,5 +1,6 @@
 package ponto.view;
 
+import ponto.model.Company;
 import ponto.model.Dur;
 import ponto.model.Entry;
 import ponto.model.Holidays;
@@ -68,6 +69,16 @@ public final class Json {
         m.put("name", t.name());
         m.put("color", t.color());
         m.put("crea", t.crea());
+        return m;
+    }
+
+    public static Map<String, Object> json(Company c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", c.id());
+        m.put("name", c.name());
+        m.put("off", c.off());
+        m.put("daily", c.daily());
+        m.put("crea", c.crea());
         return m;
     }
 

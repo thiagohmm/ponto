@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { CompanyBar, CompanyProvider, useCompany } from "./Company";
 import { ConfirmProvider } from "./ui/Confirm";
 import { ConfigPage } from "./pages/Config";
 import { ExportPage } from "./pages/Export";
@@ -36,16 +37,10 @@ export function App() {
   return (
     <div className={vault ? "shell wide" : "shell"}>
       <ConfirmProvider>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/novo" element={<FormPage />} />
-        <Route path="/edit/:id" element={<FormPage />} />
-        <Route path="/soma" element={<SumPage />} />
-        <Route path="/notas" element={<NotesPage />} />
-        <Route path="/notas/:id" element={<NotesPage />} />
-        <Route path="/exportar" element={<ExportPage />} />
-        <Route path="/config" element={<ConfigPage />} />
-      </Routes>
+      <CompanyProvider>
+      <CompanyBar />
+      <Pages />
+      </CompanyProvider>
       </ConfirmProvider>
       <nav className="tabs" aria-label="seções">
         {TABS.map((t) => (
@@ -63,5 +58,21 @@ export function App() {
         ))}
       </nav>
     </div>
+  );
+}
+
+function Pages() {
+  const { active } = useCompany();
+  return (
+    <Routes key={active?.id ?? 0}>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/novo" element={<FormPage />} />
+      <Route path="/edit/:id" element={<FormPage />} />
+      <Route path="/soma" element={<SumPage />} />
+      <Route path="/notas" element={<NotesPage />} />
+      <Route path="/notas/:id" element={<NotesPage />} />
+      <Route path="/exportar" element={<ExportPage />} />
+      <Route path="/config" element={<ConfigPage />} />
+    </Routes>
   );
 }

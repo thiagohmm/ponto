@@ -1,4 +1,4 @@
-import type { Bank, Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteFile, NoteList, Sum, Tag } from "./types";
+import type { Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteFile, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 async function parse(r: Response): Promise<unknown> {
@@ -56,6 +56,15 @@ export const api = {
   config: () => req<Config>("/config"),
   saveConfig: (body: Record<string, unknown>) =>
     req<Config>("/config", { method: "PUT", body: JSON.stringify(body) }),
+  companies: () => req<CompanyList>("/companies"),
+  createCompany: (body: { name: string; off?: string; daily?: string }) =>
+    req<Company>("/companies", { method: "POST", body: JSON.stringify(body) }),
+  updateCompany: (id: number, body: { name?: string; off?: string; daily?: string }) =>
+    req<Company>("/companies/" + id, { method: "PUT", body: JSON.stringify(body) }),
+  removeCompany: (id: number) =>
+    req<{ ok: boolean }>("/companies/" + id, { method: "DELETE" }),
+  activateCompany: (id: number) =>
+    req<Company & { activeId: number }>("/companies/active", { method: "PUT", body: JSON.stringify({ id }) }),
   exportUrl: (kind: string, from: string, to: string) =>
     "/api/export/" + kind + "?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to),
   notes: (q?: string) =>

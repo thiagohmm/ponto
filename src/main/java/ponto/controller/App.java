@@ -94,7 +94,11 @@ public final class App {
         String plan = (String) h.get("planLabel");
         String saldoNote = (saldoMins < 0 ? "! banco negativo " : "saldo do mês ") + h.get("saldo")
                 + (plan.isEmpty() ? "" : "   ·   plano " + plan);
-        out.home((String) h.get("who"), records, mins, (String) h.get("db"), openNote, saldoNote);
+        String who = (String) h.get("who");
+        String company = (String) h.get("company");
+        String label = company == null || company.isEmpty() ? who
+                : who.isEmpty() ? company : who + "  ·  " + company;
+        out.home(label, records, mins, (String) h.get("db"), openNote, saldoNote);
     }
 
     private void setup() {
@@ -532,6 +536,9 @@ public final class App {
         out.note("db      " + c.get("db"));
         String who = (String) c.get("who");
         out.note("user    " + (who.isEmpty() ? "-" : who));
+        var act = svc.companies().active();
+        for (var co : svc.companies().list())
+            out.note((co.id() == act.id() ? "* " : "  ") + co.id() + "  " + co.name());
         out.note("records " + c.get("records") + "   " + range(c));
         out.note("csv     sep '" + Csv.SEP + "'  (PONTO_CSV_SEP)");
         out.note("java    " + c.get("java") + "   sqlite " + c.get("sqlite"));
@@ -540,6 +547,22 @@ public final class App {
         String daily = (String) c.get("daily");
         out.note("daily   " + (daily.isEmpty() ? "8" : daily) + " h/day");
         for (Object s : (List<?>) c.get("nextOff")) out.note("day off " + s);
+        String pick = in.text("empresa", String.valueOf(act.id()));
+        if (!pick.isEmpty() && !pick.equals("-") && !pick.equals(String.valueOf(act.id()))) {
+            if (pick.chars().allMatch(Character::isDigit)) {
+                svc.activate(Integer.parseInt(pick));
+                out.ok("empresa #" + pick);
+            } else {
+                String name = pick.startsWith("+") ? pick.substring(1) : pick;
+                var made = svc.companies().create(name, "", "");
+                svc.activate(made.id());
+                out.ok("empresa #" + made.id() + "  " + made.name());
+            }
+        }
+        c = svc.config();
+        who = (String) c.get("who");
+        off = (String) c.get("off");
+        daily = (String) c.get("daily");
         String w = in.text("user", who.isEmpty() ? "-" : who);
         svc.setConfig(w, null, false);
         out.ok("user " + (w.equals("-") ? "-" : w));

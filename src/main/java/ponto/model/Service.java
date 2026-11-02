@@ -30,6 +30,7 @@ public final class Service {
     private final Db db;
     private final Repo repo;
     private final Notes notes;
+    private final Companies companies;
     private final Object lock = new Object();
     private Files files;
     private Minio storage;
@@ -38,10 +39,14 @@ public final class Service {
         this.db = db;
         this.repo = new Repo(db);
         this.notes = new Notes(db, lock);
+        this.companies = new Companies(db, lock);
     }
 
     /** Markdown notes: same SQLite file, unrelated to the timesheet. */
     public Notes notes() { return notes; }
+
+    /** Workplaces: punches, notes, jornada and folgas of the active one. */
+    public Companies companies() { return companies; }
 
     /** Files attached to notes: index in SQLite, bytes in S3 (MinIO). */
     public Files files() {
@@ -63,7 +68,17 @@ public final class Service {
     /** Weekend/user-off registration for the two modes' startup. */
     public void registerOff() { registerOff(s -> { }); }
 
-    public void registerOff(Consumer<String> bad) { Holidays.extra(offDates(db.cfg("off"), bad)); }
+    public void registerOff(Consumer<String> bad) {
+        synchronized (lock) { applyOff(bad); }
+    }
+
+    private void applyOff() { applyOff(s -> { }); }
+
+    private void applyOff(Consumer<String> bad) {
+        Holidays.extra(offDates(companyLocked().off(), bad));
+    }
+
+    private Company companyLocked() { return companies.active(); }
 
     public int count() { synchronized (lock) { return repo.count(); } }
 
@@ -85,8 +100,8 @@ public final class Service {
 
     public String dbPath() { synchronized (lock) { return db.file.toString(); } }
 
-    /** cfg `off` as saved (the terminal edits + echoes it verbatim). */
-    public String rawOff() { synchronized (lock) { return db.cfg("off"); } }
+    /** Active company's `off` as saved (the terminal edits + echoes it verbatim). */
+    public String rawOff() { synchronized (lock) { return companyLocked().off(); } }
 
     /** cfg `who` as saved (without the $PONTO_USER fallback of who()). */
     public String rawWho() { synchronized (lock) { return db.cfg("who", ""); } }
@@ -140,7 +155,7 @@ public final class Service {
     public Entry create(LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean closeOpen, boolean confirmMidnight, boolean confirmOverlap) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             if (tin == null && tout == null && (just == null || just.isBlank()))
                 throw new Bad("nada digitado");
             List<Entry> same = repo.on(dia);
@@ -163,7 +178,7 @@ public final class Service {
     public Entry update(int id, LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean confirmMidnight, boolean confirmOverlap) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             Entry e = repo.byId(id);
             String j = just == null ? "" : just;
             Entry now = new Entry(e.id(), dia, tin, tout, j, e.crea());
@@ -186,7 +201,7 @@ public final class Service {
 
     public Map<String, Object> home() {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             LocalDate from = LocalDate.now().withDayOfMonth(1);
             LocalDate to = LocalDate.now();
             long mins = 0;
@@ -196,8 +211,11 @@ public final class Service {
             if (!half.isEmpty() && half.getFirst().dia().isBefore(from))
                 since = Str.d(half.getFirst().dia());
             LocalDate min = repo.min(), max = repo.max();
+            Company c = companyLocked();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("who", who());
+            m.put("company", c.name());
+            m.put("companyId", c.id());
             m.put("records", repo.count());
             m.put("monthMins", mins);
             m.put("monthLabel", Dur.hm(mins));
@@ -289,7 +307,7 @@ public final class Service {
     /** The tolerance-aware bank of the range, never past today. */
     public long overtimeBetween(LocalDate from, LocalDate to) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             return saldoBetween(from, to);
         }
     }
@@ -333,8 +351,7 @@ public final class Service {
      */
     public int dailyMinutes() {
         synchronized (lock) {
-            String raw = db.cfg("daily");
-            try { return parseDailyMins(raw); }
+            try { return parseDailyMins(companyLocked().daily()); }
             catch (Bad e) { return DEFAULT_DAILY_MINS; }
         }
     }
@@ -379,7 +396,7 @@ public final class Service {
      */
     public long overtime(String q, String filter) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             long daily = dailyMinutes();
             List<Entry> rows = rows(q, filter);
             Map<LocalDate, Long> mins = dayMins(rows);
@@ -445,7 +462,7 @@ public final class Service {
     /** The month's saldo: every day of the month up to today, the whole month when closed. */
     public long monthSaldo(YearMonth ym) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             return saldoBetween(ym.atDay(1), ym.atEndOfMonth());
         }
     }
@@ -464,7 +481,7 @@ public final class Service {
 
     public Bank bank(YearMonth ym) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             long saldo = saldoBetween(ym.atDay(1), ym.atEndOfMonth());
             LocalDate today = LocalDate.now();
             int remaining = 0;
@@ -502,7 +519,7 @@ public final class Service {
      */
     public List<BankDay> bankDays(YearMonth ym) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             LocalDate today = LocalDate.now();
             LocalDate from = ym.atDay(1), to = ym.atEndOfMonth();
             if (from.isAfter(today)) return List.of();
@@ -531,7 +548,7 @@ public final class Service {
     /** The last `n` months ending at `ym`, oldest first. */
     public List<MonthSaldo> history(YearMonth ym, int n) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             List<MonthSaldo> out = new ArrayList<>();
             for (int i = n - 1; i >= 0; i--) {
                 YearMonth m = ym.minusMonths(i);
@@ -582,7 +599,7 @@ public final class Service {
      */
     public String normalWarn(LocalDate d) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             if (repo.flagOn(d, "falta")) return "o dia também tem falta — a falta ganha";
             if (Holidays.off(d).isEmpty()) return "o dia não é dia off (sem efeito)";
             return "batidas pagam a jornada (não somam banco)";
@@ -596,7 +613,7 @@ public final class Service {
      */
     public String faltaWarn(LocalDate d) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             String off = Holidays.off(d);
             if (!off.isEmpty()) return "dia off (" + off + ")   ·   a falta deduz a jornada";
             for (Entry e : repo.on(d)) if (e.closed()) return "o dia já tem batidas (a falta não muda o saldo)";
@@ -620,14 +637,14 @@ public final class Service {
 
     public String holiday(LocalDate d) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             return Holidays.off(d);
         }
     }
 
     public Report report(LocalDate from, LocalDate to) {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
             Period p = new Period(from, to);
             long saldo = saldoBetween(from, to);
             int faltas = 0;
@@ -635,18 +652,21 @@ public final class Service {
                 if (!d.isBefore(from) && !d.isAfter(to)) faltas++;
             LocalDate today = LocalDate.now();
             String plano = (!from.isAfter(today) && !to.isBefore(today)) ? bank().planLabel() : "";
-            return new Report(new Report.Head(who(), db.file.toString(), p, stamp()),
+            return new Report(new Report.Head(who(), companyLocked().name(), db.file.toString(), p, stamp()),
                               repo.between(from, to), saldo, faltas, plano);
         }
     }
 
     public Map<String, Object> config() {
         synchronized (lock) {
-            Holidays.extra(offDates(db.cfg("off")));
+            applyOff();
+            Company c = companyLocked();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("who", who());
-            m.put("off", db.cfg("off"));
-            m.put("daily", db.cfg("daily"));
+            m.put("company", c.name());
+            m.put("companyId", c.id());
+            m.put("off", c.off());
+            m.put("daily", c.daily());
             m.put("dailyMins", dailyMinutes());
             m.put("db", db.file.toString());
             m.put("records", repo.count());
@@ -677,18 +697,23 @@ public final class Service {
     public Map<String, Object> setConfig(String who, String off, String daily, boolean vacuum, Consumer<String> bad) {
         synchronized (lock) {
             if (who != null) db.setCfg("who", who.equals("-") ? "" : who);
-            if (off != null) {
-                db.setCfg("off", off.equals("-") ? "" : off);
-                Holidays.extra(offDates(off, bad));
-            }
-            if (daily != null) {
-                String d = daily.trim();
-                if (d.isEmpty() || d.equals("-")) db.setCfg("daily", "");
-                else db.setCfg("daily", dailyLabel(parseDailyMins(d)));
-            }
+            Company cur = companyLocked();
+            String nextOff = off == null ? null : (off.equals("-") ? "" : off);
+            String nextDaily = daily;
+            if (nextOff != null || nextDaily != null)
+                companies.update(cur.id(), cur.name(), nextOff, nextDaily);
+            if (nextOff != null) Holidays.extra(offDates(nextOff, bad));
             db.setCfg("asked", "1");
             if (vacuum) db.vacuum();
             return config();
+        }
+    }
+
+    public Company activate(int id) {
+        synchronized (lock) {
+            companies.activate(id);
+            applyOff();
+            return companyLocked();
         }
     }
 

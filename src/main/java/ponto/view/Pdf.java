@@ -80,6 +80,8 @@ public final class Pdf {
         pg.gap(13);
         pg.text(0, "user      " + dash(r.h().who()), REG, 10);
         pg.gap(13);
+        pg.text(0, "company   " + dash(r.h().company()), REG, 10);
+        pg.gap(13);
         pg.text(0, "database  " + r.h().db(), REG, 8);
         pg.gap(11);
         pg.text(0, "lines     " + r.lines().size() + "   incomplete  " + r.openLines(), REG, 10);
@@ -115,6 +117,8 @@ public final class Pdf {
         pg.text(0, "Relatório de pontos  |  " + r.h().periodo(), REG, 10);
         pg.gap(13);
         pg.text(0, "user     " + (r.h().who().isEmpty() ? "-" : r.h().who()), REG, 10);
+        pg.gap(13);
+        pg.text(0, "company  " + dash(r.h().company()), REG, 10);
         pg.gap(13);
         pg.text(0, "generated " + r.h().generated(), REG, 8);
         pg.gap(16);

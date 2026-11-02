@@ -33,24 +33,29 @@ public final class Notes {
 
     Notes(Db db, Object lock) { this.db = db; this.lock = lock; }
 
+    private int cid() { return db.company(); }
+
     public List<Note> list(String q) {
         synchronized (lock) {
+            int c = cid();
             if (q == null || q.isBlank())
-                return attachTags(rows("SELECT " + COLS + " FROM note" + ORDER));
+                return attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?" + ORDER, c));
             String like = "%" + q.trim().replace('%', ' ').replace('_', ' ') + "%";
             return attachTags(rows(
                 "SELECT DISTINCT note.id, note.title, note.body, note.crea, note.upd, note.folder_id"
                 + " FROM note LEFT JOIN note_tag ON note_tag.note_id = note.id"
                 + " LEFT JOIN tag ON tag.id = note_tag.tag_id"
-                + " WHERE note.title LIKE ? COLLATE NOCASE OR note.body LIKE ? COLLATE NOCASE"
-                + " OR tag.name LIKE ? COLLATE NOCASE"
-                + " ORDER BY note.upd DESC, note.id DESC", like, like, like));
+                + " WHERE note.company_id = ? AND (note.title LIKE ? COLLATE NOCASE"
+                + " OR note.body LIKE ? COLLATE NOCASE"
+                + " OR (tag.company_id = ? AND tag.name LIKE ? COLLATE NOCASE))"
+                + " ORDER BY note.upd DESC, note.id DESC", c, like, like, c, like));
         }
     }
 
     public Note byId(int id) {
         synchronized (lock) {
-            List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ?", id));
+            List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ? AND company_id = ?",
+                                          id, cid()));
             if (r.isEmpty()) throw new Problema("no note with id " + id);
             return r.getFirst();
         }
@@ -60,8 +65,9 @@ public final class Notes {
     public Note byTitle(String title) {
         synchronized (lock) {
             if (title == null || title.isBlank()) return null;
-            List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE title = ? COLLATE NOCASE"
-                                + ORDER + " LIMIT 1", title.trim()));
+            List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?"
+                                + " AND title = ? COLLATE NOCASE" + ORDER + " LIMIT 1",
+                                cid(), title.trim()));
             return r.isEmpty() ? null : r.getFirst();
         }
     }
@@ -76,8 +82,8 @@ public final class Notes {
         synchronized (lock) {
             Integer fid = folder(folderId);
             if (fid != null) mustFolder(fid);
-            int id = insert("INSERT INTO note(title, body, folder_id) VALUES(?,?,?)",
-                            nz(title), nz(body), fid);
+            int id = insert("INSERT INTO note(title, body, folder_id, company_id) VALUES(?,?,?,?)",
+                            nz(title), nz(body), fid, cid());
             putTags(id, tagIds);
             return must(id);
         }
@@ -87,8 +93,8 @@ public final class Notes {
         synchronized (lock) {
             must(id);
             write("UPDATE note SET title=?, body=?,"
-                  + " upd=strftime('%Y-%m-%d %H:%M','now','localtime') WHERE id=?",
-                  nz(title), nz(body), id);
+                  + " upd=strftime('%Y-%m-%d %H:%M','now','localtime') WHERE id=? AND company_id=?",
+                  nz(title), nz(body), id, cid());
             return must(id);
         }
     }
@@ -98,7 +104,7 @@ public final class Notes {
             must(id);
             Integer fid = folder(folderId);
             if (fid != null) mustFolder(fid);
-            write("UPDATE note SET folder_id=? WHERE id=?", fid, id);
+            write("UPDATE note SET folder_id=? WHERE id=? AND company_id=?", fid, id, cid());
             return must(id);
         }
     }
@@ -106,7 +112,7 @@ public final class Notes {
     public void delete(int id) {
         synchronized (lock) {
             write("DELETE FROM note_tag WHERE note_id=?", id);
-            int n = write("DELETE FROM note WHERE id=?", id);
+            int n = write("DELETE FROM note WHERE id=? AND company_id=?", id, cid());
             if (n == 0) throw new Problema("no note with id " + id);
         }
     }
@@ -131,7 +137,7 @@ public final class Notes {
 
     public List<Tag> tags() {
         synchronized (lock) {
-            return tags("SELECT " + TCOLS + " FROM tag ORDER BY name COLLATE NOCASE, id");
+            return tags("SELECT " + TCOLS + " FROM tag WHERE company_id = ? ORDER BY name COLLATE NOCASE, id", cid());
         }
     }
 
@@ -139,10 +145,11 @@ public final class Notes {
         synchronized (lock) {
             String n = name == null ? "" : name.trim();
             if (n.isEmpty()) n = "Tag";
-            List<Tag> same = tags("SELECT " + TCOLS + " FROM tag WHERE name = ? COLLATE NOCASE", n);
+            List<Tag> same = tags("SELECT " + TCOLS + " FROM tag WHERE company_id = ? AND name = ? COLLATE NOCASE",
+                                 cid(), n);
             if (!same.isEmpty()) return same.getFirst();
             String c = colorOf(color);
-            int id = insert("INSERT INTO tag(name, color) VALUES(?,?)", n, c);
+            int id = insert("INSERT INTO tag(name, color, company_id) VALUES(?,?,?)", n, c, cid());
             return mustTag(id);
         }
     }
@@ -153,7 +160,7 @@ public final class Notes {
             String n = name == null ? cur.name() : name.trim();
             if (n.isEmpty()) throw new Bad("tag name required");
             String c = color == null || color.isBlank() ? cur.color() : colorOf(color);
-            write("UPDATE tag SET name=?, color=? WHERE id=?", n, c, id);
+            write("UPDATE tag SET name=?, color=? WHERE id=? AND company_id=?", n, c, id, cid());
             return mustTag(id);
         }
     }
@@ -162,13 +169,13 @@ public final class Notes {
         synchronized (lock) {
             mustTag(id);
             write("DELETE FROM note_tag WHERE tag_id=?", id);
-            write("DELETE FROM tag WHERE id=?", id);
+            write("DELETE FROM tag WHERE id=? AND company_id=?", id, cid());
         }
     }
 
     public List<Folder> folders() {
         synchronized (lock) {
-            return folders("SELECT " + FCOLS + " FROM folder ORDER BY name COLLATE NOCASE, id");
+            return folders("SELECT " + FCOLS + " FROM folder WHERE company_id = ? ORDER BY name COLLATE NOCASE, id", cid());
         }
     }
 
@@ -178,7 +185,7 @@ public final class Notes {
             if (p != null) mustFolder(p);
             String n = name == null ? "" : name.trim();
             if (n.isEmpty()) n = "Pasta";
-            int id = insert("INSERT INTO folder(parent, name) VALUES(?,?)", p, n);
+            int id = insert("INSERT INTO folder(parent, name, company_id) VALUES(?,?,?)", p, n, cid());
             return mustFolder(id);
         }
     }
@@ -188,7 +195,7 @@ public final class Notes {
             mustFolder(id);
             String n = name == null ? "" : name.trim();
             if (n.isEmpty()) throw new Bad("folder name required");
-            write("UPDATE folder SET name=? WHERE id=?", n, id);
+            write("UPDATE folder SET name=? WHERE id=? AND company_id=?", n, id, cid());
             return mustFolder(id);
         }
     }
@@ -206,7 +213,7 @@ public final class Notes {
                     walk = mustFolder(walk).parent();
                 }
             }
-            write("UPDATE folder SET parent=? WHERE id=?", p, id);
+            write("UPDATE folder SET parent=? WHERE id=? AND company_id=?", p, id, cid());
             return mustFolder(id);
         }
     }
@@ -215,20 +222,21 @@ public final class Notes {
     public void deleteFolder(int id) {
         synchronized (lock) {
             Folder f = mustFolder(id);
-            write("UPDATE note SET folder_id=? WHERE folder_id=?", f.parent(), id);
-            write("UPDATE folder SET parent=? WHERE parent=?", f.parent(), id);
-            write("DELETE FROM folder WHERE id=?", id);
+            write("UPDATE note SET folder_id=? WHERE folder_id=? AND company_id=?", f.parent(), id, cid());
+            write("UPDATE folder SET parent=? WHERE parent=? AND company_id=?", f.parent(), id, cid());
+            write("DELETE FROM folder WHERE id=? AND company_id=?", id, cid());
         }
     }
 
     private Note must(int id) {
-        List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ?", id));
+        List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ? AND company_id = ?",
+                                      id, cid()));
         if (r.isEmpty()) throw new Problema("no note with id " + id);
         return r.getFirst();
     }
 
     private Tag mustTag(int id) {
-        List<Tag> r = tags("SELECT " + TCOLS + " FROM tag WHERE id = ?", id);
+        List<Tag> r = tags("SELECT " + TCOLS + " FROM tag WHERE id = ? AND company_id = ?", id, cid());
         if (r.isEmpty()) throw new Problema("no tag with id " + id);
         return r.getFirst();
     }
@@ -245,14 +253,15 @@ public final class Notes {
     private String colorOf(String color) {
         if (color != null && color.matches("#[0-9A-Fa-f]{6}")) return color.toLowerCase();
         int n = 0;
-        try (var q = prep("SELECT COUNT(*) FROM tag")) {
+        try (var q = prep("SELECT COUNT(*) FROM tag WHERE company_id = ?")) {
+            q.setInt(1, cid());
             try (var rs = q.executeQuery()) { if (rs.next()) n = rs.getInt(1); }
         } catch (SQLException e) { throw new Problema(clean(e)); }
         return TAG_COLORS[n % TAG_COLORS.length];
     }
 
     private Folder mustFolder(int id) {
-        List<Folder> r = folders("SELECT " + FCOLS + " FROM folder WHERE id = ?", id);
+        List<Folder> r = folders("SELECT " + FCOLS + " FROM folder WHERE id = ? AND company_id = ?", id, cid());
         if (r.isEmpty()) throw new Problema("no folder with id " + id);
         return r.getFirst();
     }

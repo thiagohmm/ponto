@@ -29,8 +29,23 @@ export type EntryList = {
   entries: Entry[];
 };
 
+export type Company = {
+  id: number;
+  name: string;
+  off: string;
+  daily: string;
+  crea: string;
+};
+
+export type CompanyList = {
+  activeId: number;
+  companies: Company[];
+};
+
 export type Home = {
   who: string;
+  company: string;
+  companyId: number;
   records: number;
   monthMins: number;
   monthLabel: string;
@@ -74,6 +89,7 @@ export type Sum = {
   from: string;
   to: string;
   who: string;
+  company?: string;
   total: string;
   hours: string;
   lines: number;
@@ -118,6 +134,8 @@ export type Bank = {
 
 export type Config = {
   who: string;
+  company: string;
+  companyId: number;
   off: string;
   daily: string;
   dailyMins: number;

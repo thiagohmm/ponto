@@ -8,7 +8,7 @@ import java.util.List;
 /** Aggregates for the on-screen summary and for every exported report. */
 public final class Report {
 
-    public record Head(String who, String db, Period p, String generated) {
+    public record Head(String who, String company, String db, Period p, String generated) {
         public String title() { return "Relatório de pontos"; }
         public String periodo() { return Str.d(p.from()) + " - " + Str.d(p.to()); }
     }
