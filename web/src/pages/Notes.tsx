@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { NoteBody, type Look, type NoteBodyHandle } from "../NoteBody";
 import { excerpt, NOTE_COLORS, NOTE_FONTS, NotePreview, todoStats, toggleTodoLine } from "../md";
+import { useConfirm } from "../ui/Confirm";
 import type { Folder, Note, NoteFile, Tag } from "../types";
 
 const TAG_PATH = "M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42zM8.7 7.5a1.2 1.2 0 1 1-2.4 0 1.2 1.2 0 0 1 2.4 0z";
@@ -70,6 +71,7 @@ function isInside(folders: Folder[], id: number, dest: number | null): boolean {
 export function NotesPage() {
   const { id } = useParams();
   const nav = useNavigate();
+  const confirm = useConfirm();
   const currentId = id ? Number(id) : 0;
 
   const [notes, setNotes] = useState<Note[]>([]);
@@ -295,7 +297,12 @@ export function NotesPage() {
   }
 
   async function removeFile(f: NoteFile) {
-    if (!currentId || !confirm("apagar o arquivo “" + f.name + "”?")) return;
+    if (!currentId || !(await confirm({
+      title: "Apagar arquivo",
+      message: "O arquivo “" + f.name + "” sai da nota e do armazenamento. Sem volta.",
+      ok: "Apagar",
+      tone: "stamp",
+    }))) return;
     setErr("");
     try {
       await api.removeFile(currentId, f.id);
@@ -321,7 +328,13 @@ export function NotesPage() {
   }
 
   async function remove() {
-    if (!currentId || !confirm("apagar esta nota?")) return;
+    const cur = notesRef.current.find((n) => n.id === currentId);
+    if (!currentId || !(await confirm({
+      title: "Apagar nota",
+      message: "“" + (cur ? fileName(cur) : "esta nota") + "” sai do banco, com os anexos. Sem volta.",
+      ok: "Apagar",
+      tone: "stamp",
+    }))) return;
     boundId.current = 0;
     setErr("");
     try {
@@ -359,7 +372,12 @@ export function NotesPage() {
   }
 
   async function removeTag(t: Tag) {
-    if (!confirm("apagar a tag “" + t.name + "”? ela some das notas.")) return;
+    if (!(await confirm({
+      title: "Apagar tag",
+      message: "A tag “" + t.name + "” some de todas as notas. Sem volta.",
+      ok: "Apagar",
+      tone: "stamp",
+    }))) return;
     try {
       await api.removeTag(t.id);
       setTags((list) => list.filter((x) => x.id !== t.id));
@@ -405,7 +423,12 @@ export function NotesPage() {
   }
 
   async function removeFolder(f: Folder) {
-    if (!confirm("apagar a pasta “" + f.name + "”? as notas sobem um nível.")) return;
+    if (!(await confirm({
+      title: "Apagar pasta",
+      message: "A pasta “" + f.name + "” sai da lista e as notas sobem um nível. Sem volta.",
+      ok: "Apagar",
+      tone: "stamp",
+    }))) return;
     try {
       await api.removeFolder(f.id);
       const parent = f.parent && f.parent > 0 ? f.parent : null;

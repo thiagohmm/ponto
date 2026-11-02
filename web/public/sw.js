@@ -1,7 +1,7 @@
 // Ponto PWA: hand-written, no build plugin.
 // cache-first for /assets/* (hashed names), network-first for navigation and
 // /api/* — offline the page shows its own network error, as it does today.
-const CACHE = "ponto-v1";
+const CACHE = "ponto-v2";
 const CORE = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {

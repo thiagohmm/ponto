@@ -147,7 +147,7 @@ public final class App {
         Optional<LocalTime> tout = in.time("out", punchNow(tin, dia));
         String just = in.text("just", "");
 
-        if (tin.isEmpty() && tout.isEmpty() && just.isEmpty()) { out.warn("nothing typed"); return; }
+        if (tin.isEmpty() && tout.isEmpty() && just.isEmpty()) { out.warn("nada digitado"); return; }
         if (tout.isPresent() && tin.isEmpty() && !open.isEmpty()) {
             out.warn("#" + open.getFirst().id() + " is already open with the same day");
         }

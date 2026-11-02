@@ -142,7 +142,7 @@ public final class Service {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
             if (tin == null && tout == null && (just == null || just.isBlank()))
-                throw new Bad("nothing typed");
+                throw new Bad("nada digitado");
             List<Entry> same = repo.on(dia);
             List<Entry> open = same.stream().filter(e -> e.tin() != null && e.tout() == null).toList();
             if (closeOpen && open.size() == 1 && tout != null) {
@@ -258,8 +258,74 @@ public final class Service {
         public String hours() { return Dur.dec(mins); }
     }
 
+    // ---- date-range filter (the web toolbar: from one month through another)
+    // Same shapes as the pattern-filter methods above; the list/count cover the
+    // whole span and the bank reuses saldoBetween, so the legal tolerance, the
+    // falta/normal/off rules and the "never past today" cap all apply as-is.
+
+    /** Paged rows of a date range, newest first (same shape as {@link #list}). */
+    public List<Entry> listBetween(LocalDate from, LocalDate to, int n, int skip) {
+        synchronized (lock) { return repo.between(from, to, n, skip); }
+    }
+
+    /** How many records inside the date range. */
+    public int countBetween(LocalDate from, LocalDate to) {
+        synchronized (lock) { return repo.countBetween(from, to); }
+    }
+
+    /** Closed-line minutes of the whole range, incomplete lines as 0. */
+    public Totals totalsBetween(LocalDate from, LocalDate to) {
+        synchronized (lock) {
+            long mins = 0;
+            int open = 0;
+            for (Entry e : repo.between(from, to)) {
+                if (e.min() > 0) mins += e.min();
+                if (!e.closed()) open++;
+            }
+            return new Totals(mins, open);
+        }
+    }
+
+    /** The tolerance-aware bank of the range, never past today. */
+    public long overtimeBetween(LocalDate from, LocalDate to) {
+        synchronized (lock) {
+            Holidays.extra(offDates(db.cfg("off")));
+            return saldoBetween(from, to);
+        }
+    }
+
     /** Default workday in minutes when the user has not set a daily hours. */
     public static final int DEFAULT_DAILY_MINS = 8 * 60;
+
+    /**
+     * Legal clock tolerance, CLT art. 58 §1º + TST Súmula 366: variations of
+     * up to 5 minutes in a marking are neither counted as overtime nor
+     * discounted; past the 5th minute the whole day balance counts, first
+     * minutes included. The 10-minute daily cap is the sum of two 5-minute
+     * markings — this app compares the whole day (batido - jornada), so the
+     * trigger here is the 5th minute, symmetric in both directions.
+     */
+    public static final int TOLERANCE_MINS = 5;
+
+    /** A day balance within the legal tolerance (±5 min) counts as 0. */
+    private static long tolerated(long raw) {
+        return Math.abs(raw) <= TOLERANCE_MINS ? 0 : raw;
+    }
+
+    /**
+     * One day's bank contribution, the same for {@link #overtime} and
+     * {@link #saldoBetween}: a falta keeps batido - jornada untouched (the
+     * explicit flag, the jornada is owed); a day off banks everything worked
+     * unless marked normal; where the rule is "batido - jornada" the legal
+     * tolerance ({@link #TOLERANCE_MINS}) applies. A day without punches
+     * contributes nothing.
+     */
+    private static long bankDay(long m, long daily, boolean flt, boolean normal, boolean off, boolean hasPunch) {
+        if (flt) return m - daily;
+        if (normal) return hasPunch ? tolerated(m - daily) : 0;
+        if (off) return m;
+        return hasPunch ? tolerated(m - daily) : 0;
+    }
 
     /**
      * The configured workday in minutes (cfg `daily`, decimal hours like "8" or
@@ -306,7 +372,8 @@ public final class Service {
      * jornada, even on an empty day); a day off marked normal (the web toggle)
      * is ruled as a working day (worked - jornada, empty is ignored); a day
      * off credits everything worked (worked - 0); a working day with a closed
-     * line counts worked - jornada; an empty working day is ignored. A month
+     * line counts worked - jornada minus the legal tolerance (±5 min counts
+     * as zero, art. 58 §1º); an empty working day is ignored. A month
      * filter therefore walks the whole month, not only the days that have
      * lines. Never past today.
      */
@@ -328,10 +395,8 @@ public final class Service {
             long sum = 0;
             for (LocalDate d : days) {
                 long m = mins.getOrDefault(d, 0L);
-                if (fl.contains(d)) sum += m - daily;
-                else if (nm.contains(d)) { if (mins.containsKey(d)) sum += m - daily; }
-                else if (!Holidays.off(d).isEmpty()) sum += m;
-                else if (mins.containsKey(d)) sum += m - daily;
+                sum += bankDay(m, daily, fl.contains(d), nm.contains(d),
+                               !Holidays.off(d).isEmpty(), mins.containsKey(d));
             }
             return sum;
         }
@@ -357,7 +422,9 @@ public final class Service {
 
     /**
      * The bank balance of a stretch of days, walking every day of it (a falta
-     * counts even on a day without punches), never past today.
+     * counts even on a day without punches), never past today. Where the rule
+     * is "batido - jornada" the legal tolerance applies
+     * ({@link #TOLERANCE_MINS}).
      */
     private long saldoBetween(LocalDate from, LocalDate to) {
         LocalDate end = to.isAfter(LocalDate.now()) ? LocalDate.now() : to;
@@ -369,10 +436,8 @@ public final class Service {
         long sum = 0;
         for (LocalDate d = from; !d.isAfter(end); d = d.plusDays(1)) {
             long m = mins.getOrDefault(d, 0L);
-            if (fl.contains(d)) sum += m - daily;
-            else if (nm.contains(d)) { if (mins.containsKey(d)) sum += m - daily; }
-            else if (!Holidays.off(d).isEmpty()) sum += m;
-            else if (mins.containsKey(d)) sum += m - daily;
+            sum += bankDay(m, daily, fl.contains(d), nm.contains(d),
+                           !Holidays.off(d).isEmpty(), mins.containsKey(d));
         }
         return sum;
     }
@@ -429,14 +494,18 @@ public final class Service {
     /** One day of the month chart: worked minutes, the falta mark, the day kind. */
     public record BankDay(LocalDate dia, long mins, boolean falta, boolean normal, String kind) { }
 
-    /** Every day of the month up to today, for the daily bar chart. */
+    /**
+     * Every day of the month, for the daily bar chart and the flag strip. The
+     * days from today on stay in with their flags: a future day off flagged
+     * normal re-enters the plan, a future falta leaves it. Zero minutes mean
+     * no bars on the chart; the chips use the whole row set.
+     */
     public List<BankDay> bankDays(YearMonth ym) {
         synchronized (lock) {
             Holidays.extra(offDates(db.cfg("off")));
             LocalDate today = LocalDate.now();
             LocalDate from = ym.atDay(1), to = ym.atEndOfMonth();
             if (from.isAfter(today)) return List.of();
-            if (to.isAfter(today)) to = today;
             Map<LocalDate, Long> mins = dayMins(repo.between(from, to));
             Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
             Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"));

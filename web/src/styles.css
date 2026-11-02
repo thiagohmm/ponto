@@ -8,10 +8,57 @@
   --ok: #34c759;
   --warn: #ff9f0a;
   --warn-bg: #fff4d6;
+  --warn-line: #ffe0a3;
+  --warn-ink: #9a6b00;
+  --ok-bg: #e4f8ea;
+  --ok-line: #b7ebc6;
+  --ok-ink: #1f7a38;
+  --err-line: #ffc7c2;
   --card: #ffffff;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+  --overlay: rgba(0, 0, 0, 0.35);
   --accent: #007aff;
+  --sub: #f2f2f7;
+  --tabs: #f2f2f7;
+  --input: #e5e5ea;
+  --cell-line: #f0f0f2;
+  --bar: #fafafa;
+  --drop-bg: #eef5ff;
   --mac: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+
+/* tema escuro: a mesma semântica, paleta iOS dark. Escolha em data-tema
+   no <html>, escrita por web/src/theme.ts antes da primeira pintura. */
+:root[data-tema="escuro"] {
+  --paper: #1c1c1e;
+  --ink: #f2f2f7;
+  --muted: #98989d;
+  --line: rgba(255, 255, 255, 0.16);
+  --stamp: #ff453a;
+  --stamp-soft: rgba(255, 69, 58, 0.16);
+  --ok: #30d158;
+  --warn: #ff9f0a;
+  --warn-bg: #33270e;
+  --warn-line: #6b5410;
+  --warn-ink: #ffd166;
+  --ok-bg: #16281c;
+  --ok-line: #2c5c3a;
+  --ok-ink: #7ce8a4;
+  --err-line: #5c2e29;
+  --card: #2c2c2e;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --accent: #0a84ff;
+  --sub: #3a3a3c;
+  --tabs: #232325;
+  --input: #3a3a3c;
+  --cell-line: #3a3a3c;
+  --bar: #232325;
+  --drop-bg: #14263a;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -21,7 +68,7 @@ html, body, #root { min-height: 100%; }
 html, body, html.mac, html.mac body, body.mac {
   margin: 0;
   color: var(--ink);
-  background: #e8e8ed !important;
+  background: var(--paper) !important;
   font-family: var(--mac);
 }
 
@@ -63,7 +110,7 @@ button, input, textarea {
   grid-template-columns: repeat(6, 1fr);
   gap: 0;
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
-  background: #f2f2f7;
+  background: var(--tabs);
   border-top: 1px solid var(--line);
 }
 
@@ -102,7 +149,96 @@ button, input, textarea {
   color: var(--stamp);
 }
 
+.btn.ok {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* controle segmentado (tema na página Config) */
+.seg {
+  display: flex;
+  padding: 2px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--input);
+}
+
+.seg button {
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 5px 11px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.seg button.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--card-shadow);
+}
+
+/* botão lua/sol do tema, na toolbar */
+.btn.tema {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 9px;
+}
+
+.btn.tema svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--overlay);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px 20px 16px;
+}
+
+.dialog h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.dialog p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 .stats {
   display: grid;
@@ -114,7 +250,7 @@ button, input, textarea {
 .stat {
   background: var(--card);
   border: 1px solid var(--line);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--card-shadow);
   border-radius: 10px;
   padding: 12px 14px;
 }
@@ -138,7 +274,7 @@ button, input, textarea {
   flex: 1;
   min-width: 160px;
   border: 0;
-  background: #e5e5ea;
+  background: var(--input);
   padding: 9px 12px;
   border-radius: 8px;
   outline: none;
@@ -149,6 +285,14 @@ button, input, textarea {
 }
 
 .toolbar input.mes { flex: 0 1 150px; min-width: 132px; }
+
+/* separador "até" entre os dois seletors de mês da faixa */
+.faixa-sep {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 0 2px;
+}
 
 .toolbar .push { margin-left: auto; }
 
@@ -211,8 +355,47 @@ button, input, textarea {
   color: #fff;
 }
 
+.day-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.chip {
+  min-width: 27px;
+  padding: 2px 3px;
+  font-size: 11px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chip.c-work { border-color: var(--accent); color: var(--accent); }
+
+.chip.c-falta { border-color: var(--stamp); color: var(--stamp); }
+
+.chip.c-normal { border-color: var(--ok); color: var(--ok); }
+
+.chip.sel { box-shadow: 0 0 0 2px var(--ink); color: var(--ink); }
+
+.chip.sel.c-falta { color: var(--stamp); box-shadow: 0 0 0 2px var(--stamp); }
+
+.chip.sel.c-normal { color: var(--ok); box-shadow: 0 0 0 2px var(--ok); }
+
+.chip-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 tr.day-head td {
-  background: #f2f2f7;
+  background: var(--sub);
   border-bottom: 1px solid var(--line);
   padding: 12px 8px 8px;
   font-family: var(--mac);
@@ -235,7 +418,7 @@ tr.day-head td {
 .card {
   background: var(--card);
   border: 1px solid var(--line);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--card-shadow);
   border-radius: 10px;
   padding: 16px;
 }
@@ -259,7 +442,7 @@ th {
 
 td {
   padding: 10px 6px;
-  border-bottom: 1px solid #f0f0f2;
+  border-bottom: 1px solid var(--cell-line);
   vertical-align: top;
 }
 
@@ -274,9 +457,9 @@ tr.note td { color: var(--muted); }
   border: 1px solid;
 }
 
-.warn { background: var(--warn-bg); border-color: #ffe0a3; color: #9a6b00; }
-.err { background: var(--stamp-soft); border-color: #ffc7c2; color: var(--stamp); }
-.ok { background: #e4f8ea; border-color: #b7ebc6; color: #1f7a38; }
+.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.err { background: var(--stamp-soft); border-color: var(--err-line); color: var(--stamp); }
+.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok-ink); }
 
 .form {
   display: grid;
@@ -294,11 +477,27 @@ tr.note td { color: var(--muted); }
 
 .form input, .form textarea {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   padding: 10px;
   color: var(--ink);
   border-radius: 8px;
   outline: none;
+}
+
+/* campos de hora mascarados: o input ocupa a linha, o botão `agora` fica junto */
+.form .row .hora {
+  flex: 1;
+  min-width: 0;
+}
+
+.form input.hora {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: center;
+}
+
+.form input.hora.bad {
+  border-color: var(--stamp);
+  background: var(--stamp-soft);
 }
 
 .form input:focus, .form textarea:focus {
@@ -359,6 +558,8 @@ tr.note td { color: var(--muted); }
   --v-muted: #6e6e73;
   --v-line: rgba(0, 0, 0, 0.08);
   --v-hover: rgba(0, 0, 0, 0.05);
+  --v-hover-on: #dcdce2;
+  --v-drop-ink: #003d99;
   --v-active: #007aff;
   --v-drop: #d6e8ff;
   --v-accent: #007aff;
@@ -369,11 +570,26 @@ tr.note td { color: var(--muted); }
   grid-template-columns: 280px 1fr;
   min-height: calc(100vh - 88px - env(safe-area-inset-bottom, 0px));
   background: var(--v-page);
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
   overflow: hidden;
   font-family: var(--mac);
+}
+
+:root[data-tema="escuro"] .vault {
+  --v-side: #1c1c1e;
+  --v-ink: #f2f2f7;
+  --v-muted: #98989d;
+  --v-line: rgba(255, 255, 255, 0.12);
+  --v-hover: rgba(255, 255, 255, 0.06);
+  --v-hover-on: #3a3a3c;
+  --v-drop-ink: #9ecbff;
+  --v-active: #0a84ff;
+  --v-drop: rgba(10, 132, 255, 0.28);
+  --v-accent: #0a84ff;
+  --v-page: #1c1c1e;
+  --v-input: #2c2c2e;
 }
 
 .vault-side {
@@ -430,7 +646,7 @@ tr.note td { color: var(--muted); }
 }
 
 .vault-icon:hover {
-  background: #dcdce2;
+  background: var(--v-hover-on);
   border-color: transparent;
 }
 
@@ -490,7 +706,7 @@ tr.note td { color: var(--muted); }
 
 .vault-root.drop, .vault-folder.drop {
   background: var(--v-drop);
-  color: #003d99;
+  color: var(--v-drop-ink);
   box-shadow: none;
 }
 
@@ -536,7 +752,7 @@ tr.note td { color: var(--muted); }
   align-items: center;
   gap: 5px;
   border: 0;
-  background: color-mix(in srgb, var(--tag, #007aff) 14%, #fff);
+  background: color-mix(in srgb, var(--tag, #007aff) 14%, var(--card));
   color: var(--tag, #007aff);
   border-radius: 999px;
   padding: 4px 8px 4px 7px;
@@ -591,7 +807,7 @@ tr.note td { color: var(--muted); }
   align-items: center;
   padding: 1px 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--tag, #007aff) 16%, #fff);
+  background: color-mix(in srgb, var(--tag, #007aff) 16%, var(--card));
   color: var(--tag, #007aff);
   font-size: 10px;
   line-height: 1.4;
@@ -620,8 +836,8 @@ tr.note td { color: var(--muted); }
   min-width: 160px;
   padding: 4px;
   border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: var(--card);
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
 }
@@ -751,24 +967,24 @@ tr.note td { color: var(--muted); }
   align-items: center;
   padding: 10px 14px;
   border-bottom: 1px solid var(--v-line);
-  background: #fafafa;
+  background: var(--bar);
 }
 
 .vault-status {
   margin-right: auto;
   font-size: 12px;
   letter-spacing: 0;
-  color: #34c759;
+  color: var(--ok);
 }
 
-.vault-status.dirty { color: #ff9f0a; }
+.vault-status.dirty { color: var(--warn); }
 
 .vault-seg {
   display: flex;
   padding: 2px;
   border: 0;
   border-radius: 8px;
-  background: #e5e5ea;
+  background: var(--input);
 }
 
 .vault-seg button {
@@ -778,13 +994,13 @@ tr.note td { color: var(--muted); }
   padding: 5px 11px;
   cursor: pointer;
   font-size: 12px;
-  color: #6e6e73;
+  color: var(--muted);
 }
 
 .vault-seg button.on {
-  background: #fff;
-  color: #1d1d1f;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--card-shadow);
 }
 
 .vault-title {
@@ -796,27 +1012,27 @@ tr.note td { color: var(--muted); }
   font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.03em;
-  color: #1d1d1f;
+  color: var(--ink);
   outline: none;
 }
 
 .vault .btn {
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: #fff;
-  color: #1d1d1f;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
   border-radius: 8px;
 }
 
 .vault .btn.primary {
-  background: #007aff;
-  border-color: #007aff;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 
 .vault .btn.danger {
   background: transparent;
   border-color: transparent;
-  color: #ff3b30;
+  color: var(--stamp);
 }
 
 .vault-body, .vault-preview {
@@ -841,7 +1057,7 @@ tr.note td { color: var(--muted); }
 
 .vault-body > div[data-placeholder]::before {
   content: attr(data-placeholder);
-  color: #aeaeb2;
+  color: var(--muted);
   pointer-events: none;
   white-space: pre-wrap;
 }
@@ -864,18 +1080,18 @@ tr.note td { color: var(--muted); }
   height: 22px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--line);
   cursor: pointer;
 }
 
 .vault-swatch.on {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #007aff;
+  box-shadow: 0 0 0 2px var(--v-page), 0 0 0 4px var(--v-accent);
 }
 
 .vault-fonts {
   padding: 2px;
   border-radius: 8px;
-  background: #e5e5ea;
+  background: var(--input);
 }
 
 .vault-fonts button {
@@ -885,12 +1101,12 @@ tr.note td { color: var(--muted); }
   padding: 4px 7px;
   cursor: pointer;
   font-size: 12px;
-  color: #1d1d1f;
+  color: var(--ink);
 }
 
 .vault-fonts button.on {
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--card);
+  box-shadow: var(--card-shadow);
 }
 
 .md-run .wiki {
@@ -914,7 +1130,7 @@ tr.note td { color: var(--muted); }
   letter-spacing: 0.04em;
   text-transform: none;
   font-size: 12px;
-  color: #86868b;
+  color: var(--muted);
 }
 
 .vault-empty-main h2 {
@@ -942,7 +1158,7 @@ tr.note td { color: var(--muted); }
 
 .note-preview hr {
   border: 0;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--line);
   margin: 12px 0;
 }
 
@@ -962,7 +1178,7 @@ tr.note td { color: var(--muted); }
 
 .md-todo input {
   margin-top: 0.35em;
-  accent-color: #007aff;
+  accent-color: var(--accent);
 }
 
 .md-todo.done span { color: var(--muted); text-decoration: line-through; }
@@ -981,16 +1197,16 @@ tr.note td { color: var(--muted); }
 .note-preview code, .vault-empty-main code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.92em;
-  background: #f2f2f7;
+  background: var(--sub);
   padding: 0 4px;
   border-radius: 4px;
 }
 
 .wiki {
   border: 0;
-  border-bottom: 1px solid #007aff;
+  border-bottom: 1px solid var(--accent);
   background: transparent;
-  color: #007aff;
+  color: var(--accent);
   padding: 0;
   cursor: pointer;
   font: inherit;
@@ -1025,12 +1241,12 @@ tr.note td { color: var(--muted); }
   padding: 10px 12px;
   border: 1px dashed transparent;
   border-radius: 10px;
-  background: #fafafa;
+  background: var(--bar);
 }
 
 .vault-attach.drop {
   border-color: var(--accent);
-  background: #eef5ff;
+  background: var(--drop-bg);
 }
 
 .vault-attach-btn {
@@ -1059,9 +1275,9 @@ tr.note td { color: var(--muted); }
   gap: 6px;
   max-width: 100%;
   padding: 4px 6px 4px 8px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   font-size: 12.5px;
 }
 

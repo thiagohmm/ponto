@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { savedTema, setTema, type Tema } from "../theme";
 import type { Config } from "../types";
+
+const TEMAS: { id: Tema; label: string }[] = [
+  { id: "sistema", label: "Sistema" },
+  { id: "claro", label: "Claro" },
+  { id: "escuro", label: "Escuro" },
+];
 
 export function ConfigPage() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [who, setWho] = useState("");
   const [off, setOff] = useState("");
   const [daily, setDaily] = useState("");
+  const [tema, setTemaState] = useState<Tema>(() => savedTema());
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,6 +76,18 @@ jornada em uso: {cfg.dailyMins / 60} h/dia · vazio = 8 h</p>
               {cfg.nextOff.map((s) => <p key={s} className="warn">{s}</p>)}
             </div>
           )}
+          <div className="row" style={{ marginTop: 16 }}>
+            <span className="muted">Tema</span>
+            <div className="seg">
+              {TEMAS.map((t) => (
+                <button key={t.id}
+                  className={tema === t.id ? "on" : ""}
+                  onClick={() => { setTemaState(t.id); setTema(t.id); }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="row" style={{ marginTop: 16 }}>
             <button className="btn primary" disabled={busy} onClick={() => void save(false)}>Salvar</button>
             <button className="btn" disabled={busy} onClick={() => void save(true)}>Vacuum</button>

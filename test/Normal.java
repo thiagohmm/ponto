@@ -57,6 +57,22 @@ public final class Normal {
             check("warn em dia útil", s.normalWarn(LocalDate.of(2025, 1, 2)).contains("não é dia off"));
             check("warn em dia off", s.normalWarn(eve).contains("pagam a jornada"));
 
+            // tolerância legal (CLT art. 58 §1º + TST Súmula 366), simétrica:
+            // saldo do dia dentro de ±5 min vale 0; passou do 5º, os inteiros contam
+            s.create(LocalDate.of(2015, 1, 5), LocalTime.of(8, 0), LocalTime.of(16, 4), "8h04", false, true, true);
+            check("+4 min é tolerância: nada de extra", s.monthSaldo(YearMonth.of(2015, 1)) == 0);
+            s.create(LocalDate.of(2015, 1, 6), LocalTime.of(8, 0), LocalTime.of(16, 7), "8h07", false, true, true);
+            check("+7 min: os 7 inteiros (regra do 6º minuto)", s.monthSaldo(YearMonth.of(2015, 1)) == 7);
+            s.create(LocalDate.of(2015, 1, 7), LocalTime.of(8, 0), LocalTime.of(15, 55), "7h55", false, true, true);
+            check("-5 min é tolerância: nada descontado", s.monthSaldo(YearMonth.of(2015, 1)) == 7);
+            s.create(LocalDate.of(2015, 1, 8), LocalTime.of(8, 0), LocalTime.of(15, 54), "7h54", false, true, true);
+            check("-6 min: os 6 inteiros descontados", s.monthSaldo(YearMonth.of(2015, 1)) == 1);
+            LocalDate faltaMin = LocalDate.of(2015, 1, 12);
+            s.create(faltaMin, LocalTime.of(8, 0), LocalTime.of(15, 56), "7h56", false, true, true);
+            s.falta(faltaMin, true);
+            check("falta: sem tolerância (batido - jornada)", s.monthSaldo(YearMonth.of(2015, 1)) == 1 - 4);
+            check("overtime() seguiu a mesma regra", s.overtime(null, "01/2015") == 1 - 4);
+
             // the plan counts a flagged day off as a workday again
             YearMonth ym = YearMonth.now();
             long before = s.bank(ym).remaining();
@@ -69,6 +85,10 @@ public final class Normal {
             }
             check("plano: " + flagged + " dia(s) off marcado(s) entram em remaining",
                   flagged == 0 || s.bank(ym).remaining() == before + flagged);
+
+            // the flag strip needs the whole month, future days included
+            check("bankDays traz o mês inteiro (futuro incluso)",
+                  s.bankDays(ym).size() == ym.lengthOfMonth());
         }
         if (bad > 0) { System.out.println("FAIL  normal  " + bad + " check(s) falharam"); System.exit(1); }
         System.out.println("PASS  normal  " + ok + " checks");

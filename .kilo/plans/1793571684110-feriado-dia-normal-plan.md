@@ -1,77 +1,97 @@
-# Feature: toggle "dia normal" nos dias off (feriado/weekend/off) + deploy
+# Pop-up de confirmação padronizado (modal estilo macOS)
 
 ## Objetivo
 
-Todo dia que o app marca como dia off (weekend, `holiday:`, `optional:`, `off` do usuário) ganha um toggle **"dia normal"** na web, como o botão "falta" de hoje:
+Substituir o `confirm()` nativo do navegador pelo do sistema: um modal React
+padronizado, no visual do app (macOS-like: `-apple-system`, `--card`,
+`--shadow`, bordas arredondadas). Escopo confirmado: **todas as caixas** —
+7 usos:
 
-- **Flag desmarcada (default):** regra atual — tudo o que foi batido no dia vira banco de horas (`batido − 0`).
-- **Flag marcada:** o dia conta exatamente como um dia útil normal — `batido − jornada` (10h batidas → +2:00 no banco; 8h → 0; dia vazio → ignorado, 0). Também passa a contar como dia útil nos "dias úteis restantes" do plano do mês.
-- **Precedência:** a falta continua ganhando de tudo (mesmo primeiro em toda cadeia de regras).
-- Depois dos testes passando, **deploy em `thiagohmm@192.168.0.8`** com o script existente `./deploy/deploy.sh` (host já é o default dele, serviço em `http://192.168.0.8:8090`).
+- `web/src/pages/Home.tsx:146` — apagar registro (`confirm("apagar #id?")`)
+- `web/src/pages/Home.tsx:161` — toggle falta/normal (chips + header do dia,
+  via `toggleFlag`)
+- `web/src/pages/Notes.tsx:298` — apagar arquivo anexado
+- `web/src/pages/Notes.tsx:324` — apagar nota
+- `web/src/pages/Notes.tsx:362` — apagar tag
+- `web/src/pages/Notes.tsx:408` — apagar pasta
 
-## Decisões confirmadas com o usuário
+Depois dos builds passando, **deploy de novo em `thiagohmm@192.168.0.8`**
+(instrução permanente do usuário: testes OK → `./deploy/deploy.sh`).
 
-1. Flag marcada = **batido − jornada** (não é crédito de jornada). Dia vazio não contribui, muda só o plano/remaining.
-2. Escopo do toggle: **todos os dia off** (weekend incluso), não só feriado.
+## Design do componente
 
-## Decisões de implementação
+- **Arquivo novo:** `web/src/ui/Confirm.tsx`
+  - `ConfirmProvider` + contexto; modal montado uma vez no `App.tsx`
+    (posicionamento `fixed`, sem portal — nenhum ancestral tem transform).
+  - `useConfirm()` retorna `(opts) => Promise<boolean>`; os fluxos atuais
+    viram `if (!(await confirm({ ... }))) return;` — mesmo comportamento,
+    assíncrono, não-bloqueante.
+  - `ConfirmOpts`: `{ title: string; message?: string; ok?: string; cancel?: string; tone?: "accent" | "ok" | "stamp" }`
+    (`ok` default "Confirmar", `cancel` default "Cancelar", `tone` default "accent").
+- **Visual (CSS em `web/src/styles.css`, usando as vars existentes):**
+  - overlay `fixed inset 0; background rgba(0,0,0,.35); backdrop-filter blur(3px); z-index 100`
+    (o `.tabs` usa z 20 — fica por baixo), centrado em flex;
+  - card: `--card`, radius 16px, `--shadow`, largura `min(420px, 100vw - 32px)`,
+    padding ~18/20px; `h3` título 15px; `p` mensagem em `--muted` 13px;
+  - ações: linha à direita (estilo macOS) com `.btn` "Cancelar" (texto) e o
+    botão de ação com o tom: `accent` → `.btn.primary`, `stamp` →
+    `.btn.danger` (já existe), `ok` → `.btn.ok` (**classe nova, verde, ao lado
+    de `.btn.danger` no CSS**).
+- **Teclado e foco:** Esc = cancelar, Enter = confirmar, foco inicial no botão
+  de ação; clique no overlay = cancelar. Acessível: `role="dialog"`,
+  `aria-modal`.
+- **Estados dos botões (mensagens concretas):**
+  - falta ON (chips e header): título "Falta", msg
+    `marcar a falta de {dia} — desconta a jornada do banco de horas`,
+    ok "Marcar falta", tone `stamp`
+  - falta OFF: título "Falta", msg `retirar a falta de {dia}`, ok "Retirar",
+    tone `accent`
+  - normal ON: título "Dia normal", msg
+    `marcar {dia} como dia normal — as batidas pagam a jornada (não somam banco)`,
+    ok "Marcar normal", tone `ok`
+  - normal OFF: título "Dia normal", msg
+    `desmarcar o dia normal de {dia} — as batidas voltam a somar ao banco`,
+    ok "Desmarcar", tone `accent`
+  - apagar registro: título "Apagar #id", msg "O registro {id} sai do banco.
+    Sem volta.", ok "Apagar", tone `stamp`
+  - Notas (4): título "Apagar", ok "Apagar", tone `stamp`, mensagens iguais às
+    atuais (arquivo "…" · nota · tag "…" · pasta "…").
 
-- Flag nova no schema existente `dia_flag(dia, flag)`: `flag = 'normal'` — sem migration, a tabela já aceita qualquer flag.
-- Default desmarcado **não pode** alterar o cálculo → o digest de `test/expected.txt` não muda.
-- Fora de escopo: menu do terminal (feature só web), telas Sum/Form/Export, mudança nos writers PDF/XLS/CSV (o saldo deles já sai corrigido automaticamente, pois usam `saldoBetween`).
+## Tarefas
 
-## Tarefas — ordem
+1. `web/src/ui/Confirm.tsx`: provider + hook + view (estado interno do
+   provider: `{ opts, resolve }` do diálogo aberto).
+2. `web/src/App.tsx`: envolver o conteúdo (`shell`) com `<ConfirmProvider>`.
+3. `web/src/styles.css`: `.overlay`, `.dialog`, `.dialog h3/p`,
+   `.dialog-actions`, `.btn.ok` (nada de outros seletores muda).
+4. `Home.tsx`: trocar os 2 `confirm()` por `useConfirm()` (o `setBusy`/
+   treatment de erro do fluxo atual fica como está).
+5. `Notes.tsx`: trocar os 4 `confirm()` (mesmo padrão).
+6. Validação local: `npm --prefix web run build` (tsc + vite), 
+   `./test/smoke.sh` PASS (backend intocado — digest não muda).
+7. Deploy: `./deploy/deploy.sh` (host default `thiagohmm@192.168.0.8`,
+   rebuild do container + health em `:8090`).
+8. Verificação ao vivo: bundle novo servido (hash do asset muda no `index.html`)
+   e conferência visual do modal nos cliques falta/normal (usuário válida).
 
-1. **`src/main/java/ponto/model/Service.java`** — espelhar a API de falta com a flag "normal":
-   - `normal(LocalDate d)` → `repo.flagOn(d, "normal")`; `normal(LocalDate d, boolean on)` → `flagSet`/`flagClear`; `normais()` → `repo.flags("normal", "%")`.
-   - `normalWarn(LocalDate d)` (estilo `faltaWarn`): dia com falta → "o dia também tem falta — a falta ganha"; dia com `Holidays.off(d)` vazio → "o dia não é dia off (sem efeito)"; senão "".
-   - Regra do banco (em **`saldoBetween`** e **`overtime`** — mesmas regras, um por dia), carregar `Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"))` e inserir entre falta e off:
-     ```java
-     if (fl.contains(d)) sum += m - daily;
-     else if (nm.contains(d)) { if (mins.containsKey(d)) sum += m - daily; }  // marcado: dia útil normal
-     else if (!Holidays.off(d).isEmpty()) sum += m;                          // day off: tudo banco
-     else if (mins.containsKey(d)) sum += m - daily;
-     ```
-   - **`bank()`** — `remaining`: pular o dia só se `(off && !nm.contains(d)) || fl.contains(d)`; dia off marcado como normal passa a contar como dia útil.
-   - **`bankDays()`** — record `BankDay` ganha `boolean normal`; `kind` do dia off marcado = `"work"` (barra azul no gráfico).
-2. **`src/main/java/ponto/controller/Web.java`**:
-   - `PUT /api/days/{dia}/normal` (espelho do handler `falta`): body `{ "on": true|false }`, resposta `{ok, dia, diaIso, normal, warn}` (warn = `svc.normalWarn(d)` só quando ligar).
-   - `GET /api/day`: adicionar `"normal"` (`svc.normal(d)`).
-   - `GET /api/entries`: adicionar `"normais"` (lista de dias ISO, espelho de `"faltas"`).
-3. **`src/main/java/ponto/view/Json.java`** (contrato de `types.ts` — só CHAVES NOVAS, nada quebrado):
-   - `json(Entry)`: adicionar `"off"` = `Holidays.off(e.dia())` (o handler de list já chama `svc.list` antes, então o cache de `Holidays.extra` está aquecido).
-   - `jsonBankDay`: adicionar `"normal"`.
-4. **`web/src/types.ts`**: `Entry.off: string`; `EntryList.normais: string[]`; `DayInfo.normal: boolean`; `BankDay.normal: boolean`.
-5. **`web/src/api.ts`**: `setNormal(dia, on)` → `PUT /days/{dia}/normal` (espelho de `setFalta`).
-6. **`web/src/pages/Home.tsx`**:
-   - State `normais: Set<string>` carregado de `list.normais`; `DayGroup` ganha `off` (do primeiro entry do grupo).
-   - No day-head-row, ao lado do botão falta: botão **"normal"** / `normal ✓`, visível somente quando `g.off !== ""`; `title="dia normal: as batidas pagam a jornada (não somam banco de horas)"`; confirm + warn em `msg`, como no `toggleFalta`.
-   - Cor do gráfico: nada a fazer — `kind="work"` do backend já deixa a barra azul (`dayColor`).
-7. **`web/src/styles.css`**: ao lado de `.btn.falta-on` (linha ~202), adicionar `.btn.normal-on` (mesma estrutura; cor neutra/verde `var(--ok)` para distinguir da falta).
-8. **Testes**:
-   - Novo `test/Normal.java` (harness que roda com o mesmo classpath do `Verify`, estilo do smoke): db em `/tmp`, `Service` direto, datas **passadas fixas** (ex.: 25/12/2024 feriado nacional, um sábado qualquer 2024) porque `saldoBetween` nunca passa de hoje. Casos:
-     a) feriado com batida 08:00–18:00: desmarcado → `+10:00`; marcado → `+2:00`.
-     b) dia off marcado sem batidas → não muda o saldo (contribui 0).
-     c) marcado + falta no mesmo dia → a falta ganha (dia vazio → `−8:00`).
-     d) remaining: com `YearMonth.now()`, marcar como normal os dias off que restam do mês e conferir que `remaining` aumenta (comparação relativa, à prova de fim de mês).
-   - **`test/smoke.sh`**: compilar `Normal.java` junto do `Verify.java` e rodar após o digest; manter `PASS` na saída. `expected.txt` e `feed*.txt` ficam intactos.
-9. **Validação local, nesta ordem, tudo PASS antes de partir pro deploy**:
-   - `./test/smoke.sh`
-   - `npm --prefix web run build` (tsc -b + vite; valida os tipos novos)
-   - (o próprio deploy roda `mvn package`, mas conferir build do jar isolado se houver dúvida)
-10. **Deploy** — `./deploy/deploy.sh`, que já faz: `npm ci/build` + `mvn package`, recusa-se a enviar `.db`, rsync de `Dockerfile`+`docker-compose.yml`+`ponto.jar` para `thiagohmm@192.168.0.8:/home/thiagohmm/ponto-web`, backup do db remoto (`ponto.db.bak-web-<data>`), `docker compose up --build -d` e health check em `:8090/api/home`.
-11. **Verificação pós-deploy** (sem tocar no banco real sem querer): `PUT /api/days/<algum feriado real>/normal {"on":true}` → `GET /api/bank` → conferir saldo/remaining recalculados → `{"on":false}` para desfazer. Checar `GET /api/entries` (chaves novas) e o toggle na UI.
+## Fora de escopo
+
+- Toasts/nítidos do resultado (o `warn` pós-ação continua onde está: linha
+  `.warn` da home).
+- Mudança no backend, testes Java ou textos dos warns da API.
+- Diálogos na tela do terminal.
 
 ## Riscos
 
-- Digest do smoke: só muda se a regra default (desmarcada) for alterada — os casos de teste (a–d) usam flag explícita, então `expected.txt` continua igual.
-- Deploy reinicia o container (segundos de downtime); script espera até 90s por health.
-- SSH precisa da chave do host carregada; lang do remote é Fi (Pi). `_só se falhar:` re-running `deploy.sh` é idempotente.
-- `Holidays.off()` no `json(Entry)` é custo O(1) (map em cache por ano) — sem risco de performance no list de 500 linhas.
+- Overlay cobre a tab bar (z 100 > 20) — intencional, scroll do fundo pode
+  "vazar": travar scroll em `body` enquanto aberto (`overflow: hidden`).
+- PWA cache: nova hash do asset — um refresh traz a versão nova (sw.js é
+  network-first para navegação).
+- Nenhum risco de dados: mudança só no front.
 
 ## Done
 
-- Toggle "dia normal" funcionando em dia off na web, cálculo batido−jornada quando marcado, banco intocado quando desmarcado, falta com precedência.
-- `./test/smoke.sh` PASS com o novo harness.
-- `http://192.168.0.8:8090` servindo a versão nova com o toggle visível.
-- Sem commit/push (não foi pedido); working tree fica com a feature pronta, deploy roda da tree.
+- Nenhum `confirm(` nativo restante em `web/src` (grep zerado).
+- Modal padronizado em todas as caixas de confirmação, com Esc/Enter/clique
+  no overlay funcionando.
+- tsc + vite build limpos, smoke PASS, deploy em `192.168.0.8:8090` atualizado.

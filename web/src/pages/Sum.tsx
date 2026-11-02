@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import type { Home, Sum } from "../types";
+import type { Sum } from "../types";
+
+/** ISO date, local time. */
+function iso(d: Date): string {
+  return d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+}
 
 export function SumPage() {
   const [from, setFrom] = useState("");
@@ -10,10 +17,10 @@ export function SumPage() {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    api.home().then((h: Home) => {
-      setFrom(h.min || new Date().toISOString().slice(0, 10));
-      setTo(h.max || new Date().toISOString().slice(0, 10));
-    }).catch((e: unknown) => setErr(e instanceof Error ? e.message : "erro"));
+    // defaults to the current month: the 1st up to today
+    const now = new Date();
+    setFrom(iso(new Date(now.getFullYear(), now.getMonth(), 1)));
+    setTo(iso(now));
   }, []);
 
   async function run(nextFrom = from, nextTo = to) {

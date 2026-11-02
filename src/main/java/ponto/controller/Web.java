@@ -113,24 +113,46 @@ public final class Web {
     private void list(Context ctx) {
         String q = ctx.queryParam("q");
         String dia = ctx.queryParam("dia");
+        String fromRaw = ctx.queryParam("from");
+        String toRaw = ctx.queryParam("to");
         int n = intParam(ctx, "n", 40);
         int skip = intParam(ctx, "skip", 0);
-        List<Entry> rows = svc.list(q, dia, n, skip);
-        Service.Totals tot = svc.listTotals(q, dia);
+        boolean range = !isBlank(fromRaw) && !isBlank(toRaw);
+        List<Entry> rows;
+        Service.Totals tot;
+        long total;
+        long ot;
+        if (range) {
+            LocalDate from = Service.parseDate(fromRaw, null);
+            LocalDate to = Service.parseDate(toRaw, null);
+            if (from == null || to == null) throw new Bad("from/to: use a date like 2026-09-01");
+            if (to.isBefore(from)) { LocalDate x = from; from = to; to = x; }
+            rows = svc.listBetween(from, to, n, skip);
+            tot = svc.totalsBetween(from, to);
+            total = svc.countBetween(from, to);
+            ot = svc.overtimeBetween(from, to);
+        } else {
+            rows = svc.list(q, dia, n, skip);
+            tot = svc.listTotals(q, dia);
+            total = svc.count(q, dia);
+            ot = svc.overtime(q, dia);
+        }
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", svc.count(q, dia));
+        out.put("total", total);
         out.put("shown", rows.size());
         out.put("skip", skip);
         out.put("mins", tot.mins());
         out.put("dur", tot.dur());
         out.put("hours", tot.hours());
         out.put("open", tot.open());
-        out.put("overtime", svc.overtime(q, dia));
+        out.put("overtime", ot);
         out.put("faltas", svc.faltas().stream().map(Str::iso).toList());
         out.put("normais", svc.normais().stream().map(Str::iso).toList());
         out.put("entries", rows.stream().map(Json::json).toList());
         ctx.json(out);
     }
+
+    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
 
     private void one(Context ctx) {
         ctx.json(Json.json(svc.byId(ctx.pathParamAsClass("id", Integer.class).get())));

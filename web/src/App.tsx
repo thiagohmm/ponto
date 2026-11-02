@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { ConfirmProvider } from "./ui/Confirm";
 import { ConfigPage } from "./pages/Config";
 import { ExportPage } from "./pages/Export";
 import { FormPage } from "./pages/Form";
@@ -34,6 +35,7 @@ export function App() {
   }, []);
   return (
     <div className={vault ? "shell wide" : "shell"}>
+      <ConfirmProvider>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/novo" element={<FormPage />} />
@@ -44,6 +46,7 @@ export function App() {
         <Route path="/exportar" element={<ExportPage />} />
         <Route path="/config" element={<ConfigPage />} />
       </Routes>
+      </ConfirmProvider>
       <nav className="tabs" aria-label="seções">
         {TABS.map((t) => (
           <NavLink

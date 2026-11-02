@@ -97,6 +97,20 @@ public final class Repo {
         return rows("SELECT " + COLS + " FROM ponto WHERE dia BETWEEN ? AND ?" + ORDER, a, b);
     }
 
+    /** Paged window of a date range, newest first (the web list over a month span). */
+    public List<Entry> between(LocalDate a, LocalDate b, int n, int skip) {
+        return rows("SELECT " + COLS + " FROM ponto WHERE dia BETWEEN ? AND ?" + ORDER
+                  + " LIMIT ? OFFSET ?", a, b, n, Math.max(0, skip));
+    }
+
+    /** How many rows inside the date range (the `de M` of the web footer). */
+    public int countBetween(LocalDate a, LocalDate b) {
+        try (var q = prep("SELECT count(*) FROM ponto WHERE dia BETWEEN ? AND ?")) {
+            bind(q, new Object[]{a, b});
+            try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
     public List<Entry> on(LocalDate d) { return between(d, d); }
 
     /** Ids in range, most recent first (used by the list/summary tables). */

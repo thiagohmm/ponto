@@ -42,6 +42,12 @@ The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (defau
 
 The web app is a **PWA**: open `http://host:8090` in the phone's browser and "add to home screen" installs it like an app (standalone, icons, offline shell — `web/public/sw.js`, registered in production only).
 
+In the form the times are masked as `NN:NN` (digits only, `830` types
+`08:30`, an `agora` button fills the clock), and **Salvar e lançar outra**
+keeps the day on screen: register several in/out pairs of the same day
+without reopening the page — the balance asks for confirmation over
+overlapping pairs.
+
 ```sh
 npm --prefix web ci && npm --prefix web run build   # writes src/main/resources/public
 mvn package
@@ -174,8 +180,19 @@ The bank is **monthly**. One rule per day, never past today:
 | marked as **falta** (`f`) | batido − jornada — the day enters the math even empty, and it wins over every other rule |
 | **day off marked as normal** (web toggle) | batido − jornada — the punches pay the jornada, nothing banks; an empty flagged day stays 0, and the day re-enters the dias úteis restantes |
 | **day off** (weekend, holiday, optional, your `off`) | batido − 0 — everything worked is banked |
-| working day with a closed punch | batido − jornada |
+| working day with a closed punch | batido − jornada, with the legal tolerance of ±5 minutes |
 | empty working day | ignored (a missed punch is not a falta) |
+
+**Tolerância legal (CLT art. 58 §1º · TST Súmula 366).** Where the rule is
+"batido − jornada" (working day and day off marked normal), a day balance
+within **±5 minutes counts as 0** — neither computed as hora extra nor
+discounted. Past the 5th minute the **whole** day balance counts, the first
+minutes included: 8h07 → +7; 8h04 → 0; 7h55 → 0; 7h54 → −6. The daily cap of
+10 minutes is the sum of the 5-minute tolerance of the two markings; the app
+compares the whole day (batido − jornada), so the effective trigger here is
+the 5th minute. A falta keeps batido − jornada untouched (the jornada is owed),
+and a day off without the *normal* flag banks everything worked — no jornada,
+nothing to tolerate.
 
 `f` toggles the flag for the whole day (it lives in `dia_flag`, never on a punch
 line). Marking a falta on a working day that already has closed punches is a
@@ -188,6 +205,15 @@ banks everything punched; marked, the day is ruled like a normal working day
 (batido − jornada), so a holiday worked as an ordinary shift stops feeding the
 bank, and the monthly plan counts the day again. A falta on the same day still
 wins.
+
+The web **shows the current month by default**; the toolbar month picker covers
+one month, and the pair **"do … até"** selects a **span of months** (the list,
+its totals and the hours of the span follow the whole range). The
+`dia, mês ou ano` input still stands for a single day/month/year search and
+overrides the span while it has text. The appearance has a **claro/escuro**
+theme — the moon/sun toggle on the toolbar switches on the spot, and Config
+keeps *Sistema/Claro/Escuro* (first access follows the system; the choice
+stays in the browser's `localStorage`).
 
 The header prints `saldo do mês +5:02 · plano 40 min a menos/dia`: the plan is
 `saldo / dias úteis restantes` (from today on, without days off and without

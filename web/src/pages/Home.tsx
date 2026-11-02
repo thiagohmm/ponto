@@ -12,6 +12,8 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../api";
+import { useConfirm } from "../ui/Confirm";
+import { isEscuro, toggleTema } from "../theme";
 import type { Bank, BankDay, Entry, Home } from "../types";
 import { ApiError } from "../types";
 
@@ -31,6 +33,17 @@ function dec(mins: number): string {
   return (mins / 60).toFixed(2);
 }
 
+function Ico({ path }: { path: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={path} />
+    </svg>
+  );
+}
+
+const MOON = "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z";
+const SUN = "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42 1.42";
+
 /** Overtime value with sign: "+5:02" / "-1:05". */
 function otVal(mins: number): string {
   const a = Math.abs(mins);
@@ -43,7 +56,7 @@ function otCap(mins: number): string {
   return (Math.abs(mins) / 60).toFixed(2) + " h " + (mins < 0 ? "banco de horas" : "extras");
 }
 
-/** "2026-10" for the month picker, when the dia filter is "10/2026" or "2026-10". */
+/** "2026-09" para o seletor, a partir de "09/2026" ou "2026-09" (dia textual). */
 function mesFromDia(d: string): string {
   const t = d.trim();
   let y = "", m = "";
@@ -53,6 +66,18 @@ function mesFromDia(d: string): string {
   else if (b) { y = b[1]; m = b[2]; }
   else return "";
   return y + "-" + m.padStart(2, "0");
+}
+
+/** "2026-11" para o seletor de mês; o mês corrente é o padrão. */
+function mesPickerAtual(): string {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
+
+/** Último dia do mês "YYYY-MM" em ISO. */
+function lastDiaIso(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return ym + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0");
 }
 
 type DayGroup = {
@@ -81,11 +106,22 @@ function groupByDay(rows: Entry[]): DayGroup[] {
 /** Bar colour of one day of the bank chart: falta red, days off grey, workdays blue. */
 function dayColor(d: BankDay): string {
   if (d.falta) return "#ff3b30";
-  if (d.kind !== "work") return "#c7c7cc";
+  if (d.kind !== "work") return "#98989d";
   return "#007aff";
 }
 
+/** What the day is today, in one line: the kind plus the flags on it. */
+function kindLabel(d: BankDay): string {
+  const base = d.kind === "work" ? "dia útil"
+             : d.kind === "weekend" ? "fim de semana"
+             : d.kind === "holiday" ? "feriado"
+             : d.kind === "optional" ? "opcional"
+             : "seu dia off";
+  return base + (d.falta ? " · falta" : "") + (d.normal ? " · normal" : "");
+}
+
 export function HomePage() {
+  const confirm = useConfirm();
   const [home, setHome] = useState<Home | null>(null);
   const [rows, setRows] = useState<Entry[]>([]);
   const [total, setTotal] = useState(0);
@@ -97,18 +133,28 @@ export function HomePage() {
   const [normais, setNormais] = useState<Set<string>>(new Set());
   const [bank, setBank] = useState<Bank | null>(null);
   const [msg, setMsg] = useState("");
+  const [sel, setSel] = useState("");
   const [q, setQ] = useState("");
-  const [dia, setDia] = useState("");
+  const [dia, setDia] = useState("");            // texto (dia/mês/ano): sobrepõe a faixa
+  const [de, setDe] = useState(mesPickerAtual);  // faixa "do mês" até
+  const [ate, setAte] = useState(mesPickerAtual);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [escuro, setEscuro] = useState(() => isEscuro());
 
-  async function load(nextQ = q, nextDia = dia) {
+  async function load(nextQ = q, nextDia = dia, nextDe = de, nextAte = ate) {
     setErr("");
+    // faixa ativa quando não há filtro de texto; pickers travam de <= até no estado
+    const useRange = !nextDia && nextDe && nextAte;
+    const deV = useRange && nextAte < nextDe ? nextAte : nextDe;
+    const ateV = useRange && nextAte < nextDe ? nextDe : nextAte;
     try {
       const [h, list, bk] = await Promise.all([
         api.home(),
-        api.entries({ q: nextQ, dia: nextDia, n: 500 }),
-        api.bank(),
+        useRange
+          ? api.entriesRange(deV + "-01", lastDiaIso(ateV))
+          : api.entries({ q: nextQ, dia: nextDia, n: 500 }),
+        api.bank(useRange ? ateV : (mesFromDia(nextDia) || undefined)),
       ]);
       setHome(h);
       setRows(list.entries);
@@ -129,9 +175,15 @@ export function HomePage() {
 
   const groups = useMemo(() => groupByDay(rows), [rows]);
   const pageMins = useMemo(() => rows.reduce((s, e) => s + minsOf(e), 0), [rows]);
+  const selDay = bank?.days.find((d) => d.diaIso === sel) ?? null;
 
   async function del(id: number) {
-    if (!confirm("apagar #" + id + "?")) return;
+    if (!(await confirm({
+      title: "Apagar #" + id,
+      message: "O registro " + id + " sai do banco. Sem volta.",
+      ok: "Apagar",
+      tone: "stamp",
+    }))) return;
     setBusy(true);
     try {
       await api.remove(id);
@@ -143,13 +195,29 @@ export function HomePage() {
     }
   }
 
-  async function toggleFalta(g: DayGroup) {
-    const on = !faltas.has(g.key);
-    if (!confirm((on ? "marcar" : "retirar") + " a falta de " + g.dia + "?")) return;
+  async function toggleFlag(diaIso: string, dia: string, what: "falta" | "normal") {
+    const on = !(what === "falta" ? faltas : normais).has(diaIso);
+    if (!(await confirm(what === "falta"
+      ? {
+          title: "Falta",
+          message: on
+            ? "Marcar a falta de " + dia + " — desconta a jornada do banco de horas."
+            : "Retirar a falta de " + dia + " — o dia volta à regra normal.",
+          ok: on ? "Marcar falta" : "Retirar falta",
+          tone: on ? "stamp" : "accent",
+        }
+      : {
+          title: "Dia normal",
+          message: on
+            ? "Marcar " + dia + " como dia normal — as batidas pagam a jornada (não somam banco)."
+            : "Desmarcar o dia normal de " + dia + " — as batidas voltam a somar ao banco.",
+          ok: on ? "Marcar normal" : "Desmarcar",
+          tone: on ? "ok" : "accent",
+        }))) return;
     setBusy(true);
     setMsg("");
     try {
-      const r = await api.setFalta(g.key, on);
+      const r = what === "falta" ? await api.setFalta(diaIso, on) : await api.setNormal(diaIso, on);
       setMsg(r.warn);
       await load();
     } catch (e) {
@@ -159,23 +227,7 @@ export function HomePage() {
     }
   }
 
-  async function toggleNormal(g: DayGroup) {
-    const on = !normais.has(g.key);
-    if (!confirm((on ? "marcar" : "retirar") + " o dia normal de " + g.dia + "?")) return;
-    setBusy(true);
-    setMsg("");
-    try {
-      const r = await api.setNormal(g.key, on);
-      setMsg(r.warn);
-      await load();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "não marcou");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const filtered = Boolean(q.trim() || dia.trim());
+  const filtered = Boolean(q.trim() || dia.trim() || de !== ate);
 
   return (
     <>
@@ -191,19 +243,34 @@ export function HomePage() {
       <div className="toolbar">
         <input placeholder="buscar justificativa (ex. atestado)" value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void load(q, dia); }} />
+          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} />
         <input placeholder="dia, mês ou ano (oct, 10/2026, hoje)" value={dia}
           onChange={(e) => setDia(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void load(q, dia); }} />
-        <input type="month" className="mes" title="selecionar mês (horas extras daquele mês)"
-          value={mesFromDia(dia)}
+          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} />
+        <input type="month" className="mes" title="do mês — a lista abre no mês corrente e aceita um período"
+          value={de} max={ate || undefined} disabled={Boolean(dia)}
           onChange={(e) => {
-            const v = e.target.value; // "2026-10" or ""
-            const nd = v ? v.replace(/^(\d{4})-(\d{2})$/, "$2/$1") : "";
-            setDia(nd);
-            void load(q, nd);
+            const v = e.target.value;
+            if (!v) return;
+            const a = ate && v > ate ? v : ate;
+            setDe(v); setAte(a); setDia(""); setSel("");
+            void load(q, "", v, a);
           }} />
-        <button className="btn" onClick={() => void load(q, dia)}>Filtrar</button>
+        <span className="faixa-sep">até</span>
+        <input type="month" className="mes" title="até mês — com o outro selecionado, vale o período inteiro"
+          value={ate} min={de || undefined} disabled={Boolean(dia)}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) return;
+            const d2 = de && v < de ? v : de;
+            setAte(v); setDe(d2); setDia(""); setSel("");
+            void load(q, "", d2, v);
+          }} />
+        <button className="btn tema" title="tema claro/escuro" aria-label="alternar tema"
+          onClick={() => { toggleTema(); setEscuro(isEscuro()); }}>
+          {escuro ? <Ico path={SUN} /> : <Ico path={MOON} />}
+        </button>
+        <button className="btn" onClick={() => void load()}>Filtrar</button>
         <Link className="btn primary push" to="/novo">Novo</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
       </div>
@@ -269,7 +336,7 @@ export function HomePage() {
                           className={"btn" + (faltas.has(g.key) ? " falta-on" : "")}
                           disabled={busy}
                           title="falta: desconta a jornada do banco de horas"
-                          onClick={() => void toggleFalta(g)}
+                          onClick={() => void toggleFlag(g.key, g.dia, "falta")}
                         >
                           {faltas.has(g.key) ? "falta ✓" : "falta"}
                         </button>
@@ -278,7 +345,7 @@ export function HomePage() {
                             className={"btn" + (normais.has(g.key) ? " normal-on" : "")}
                             disabled={busy}
                             title="dia normal: as batidas pagam a jornada (não somam banco de horas)"
-                            onClick={() => void toggleNormal(g)}
+                            onClick={() => void toggleFlag(g.key, g.dia, "normal")}
                           >
                             {normais.has(g.key) ? "normal ✓" : "normal"}
                           </button>
@@ -333,6 +400,35 @@ export function HomePage() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            {bank.days.length > 0 && (
+              <div className="day-chips" title="clique num dia para marcar falta ou dia normal (vale para dia vazio e futuro)">
+                {bank.days.map((d) => (
+                  <button key={d.diaIso}
+                    className={"chip" + (d.falta ? " c-falta" : d.normal ? " c-normal" : d.kind === "work" ? " c-work" : " c-off")
+                             + (sel === d.diaIso ? " sel" : "")}
+                    title={d.dia + " · " + kindLabel(d)}
+                    onClick={() => setSel(sel === d.diaIso ? "" : d.diaIso)}>
+                    {d.diaIso.slice(8, 10)}
+                  </button>
+                ))}
+              </div>
+            )}
+            {selDay && (
+              <div className="chip-actions">
+                <b>{selDay.dia}</b>
+                <span className="muted">{kindLabel(selDay)}</span>
+                <button className={"btn" + (faltas.has(selDay.diaIso) ? " falta-on" : "")} disabled={busy}
+                  title="falta: desconta a jornada do banco de horas"
+                  onClick={() => void toggleFlag(selDay.diaIso, selDay.dia, "falta")}>
+                  {faltas.has(selDay.diaIso) ? "falta ✓" : "falta"}
+                </button>
+                <button className={"btn" + (normais.has(selDay.diaIso) ? " normal-on" : "")} disabled={busy}
+                  title="dia normal: as batidas pagam a jornada (não somam banco de horas)"
+                  onClick={() => void toggleFlag(selDay.diaIso, selDay.dia, "normal")}>
+                  {normais.has(selDay.diaIso) ? "normal ✓" : "normal"}
+                </button>
+              </div>
+            )}
           </div>
           <div className="card">
             <p className="muted">banco de horas · últimos 12 meses</p>
@@ -343,7 +439,7 @@ export function HomePage() {
                 <YAxis tick={{ fontSize: 10 }} width={40} tickLine={false} axisLine={false}
                   tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
                 <Tooltip formatter={(v) => otVal(Number(v))} />
-                <ReferenceLine y={0} stroke="rgba(0,0,0,0.3)" />
+                <ReferenceLine y={0} stroke="rgba(127,127,127,0.6)" />
                 <Bar dataKey="saldoMins" isAnimationActive={false}>
                   {bank.months.map((m) => (
                     <Cell key={m.ym} fill={m.saldoMins < 0 ? "#ff3b30" : "#34c759"} />

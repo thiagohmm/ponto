@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import { maskTime, nowHm, timeOk } from "../mask";
 import type { DayInfo, Entry } from "../types";
 import { ApiError } from "../types";
 
@@ -28,6 +29,7 @@ export function FormPage() {
   const [need, setNeed] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const tinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -47,15 +49,40 @@ export function FormPage() {
     }).catch(() => setDay(null));
   }, [dia, editing]);
 
-  async function save() {
+  async function save(outro = false) {
     setErr("");
     setNeed("");
+    const badIn = timeOk(tin), badOut = timeOk(tout);
+    if (badIn || badOut) {
+      setErr("entrada" + (badIn ? " " + badIn : "") + (badIn && badOut ? " · " : "")
+        + "saída" + (badOut ? " " + badOut : "") + " — corrija antes de salvar");
+      return;
+    }
     setBusy(true);
     const body = { dia, tin, tout, just, closeOpen, confirmMidnight, confirmOverlap };
     try {
-      if (editing) await api.update(Number(id), body);
-      else await api.create(body);
-      nav("/");
+      if (editing) {
+        await api.update(Number(id), body);
+        nav("/");
+        return;
+      }
+      await api.create(body);
+      if (!outro) {
+        nav("/");
+        return;
+      }
+      // cadastro contínuo: o mesmo dia, o par limpo, o foco de volta na entrada
+      setTin("");
+      setTout("");
+      setJust("");
+      setNeed("");
+      setConfirmMidnight(false);
+      setConfirmOverlap(false);
+      const d = await api.day(dia);
+      setDay(d);
+      setCloseOpen(d.open.length > 0);
+      if (d.lastOut) setTin(d.lastOut);
+      tinRef.current?.focus();
     } catch (e) {
       if (e instanceof ApiError && e.need) {
         setNeed(e.need);
@@ -83,10 +110,22 @@ export function FormPage() {
           <input type="date" value={dia} onChange={(e) => setDia(e.target.value)} />
         </label>
         <label>Entrada
-          <input placeholder="07:30 · now" value={tin} onChange={(e) => setTin(e.target.value)} />
+          <div className="row">
+            <input ref={tinRef} className={"hora" + (timeOk(tin) ? " bad" : "")} placeholder="07:30" value={tin}
+              inputMode="numeric" autoComplete="off"
+              onChange={(e) => setTin(maskTime(e.target.value, tin))} />
+            <button className="btn" type="button" tabIndex={-1} title="usar a hora do relógio"
+              onClick={() => setTin(nowHm())}>agora</button>
+          </div>
         </label>
         <label>Saída
-          <input placeholder="12:00 · now" value={tout} onChange={(e) => setTout(e.target.value)} />
+          <div className="row">
+            <input className={"hora" + (timeOk(tout) ? " bad" : "")} placeholder="12:00" value={tout}
+              inputMode="numeric" autoComplete="off"
+              onChange={(e) => setTout(maskTime(e.target.value, tout))} />
+            <button className="btn" type="button" tabIndex={-1} title="usar a hora do relógio"
+              onClick={() => setTout(nowHm())}>agora</button>
+          </div>
         </label>
         <label className="span2">Justificativa
           <textarea rows={3} value={just} onChange={(e) => setJust(e.target.value)} />
@@ -114,7 +153,12 @@ export function FormPage() {
       )}
 
       <div className="row" style={{ marginTop: 18 }}>
-        <button className="btn primary" disabled={busy} onClick={() => void save()}>Salvar</button>
+        <button className="btn primary" disabled={busy} onClick={() => void save(false)}>Salvar</button>
+        {!editing && (
+          <button className="btn" disabled={busy}
+            title="salva o par e continua neste dia para lançar o próximo"
+            onClick={() => void save(true)}>Lançar outra</button>
+        )}
         <Link className="btn" to="/">Cancelar</Link>
       </div>
     </div>
