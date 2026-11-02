@@ -50,6 +50,7 @@ export function FormPage() {
   }, [dia, editing]);
 
   async function save(outro = false) {
+    if (busy) return;
     setErr("");
     setNeed("");
     const badIn = timeOk(tin), badOut = timeOk(tout);
@@ -101,9 +102,9 @@ export function FormPage() {
 
   return (
     <div className="card">
-      <h2>{editing ? "Editar #" + id : "Novo ponto"}</h2>
+      <h2>{editing ? "Editar #" + id : "Dados do registro"}</h2>
       {day?.holiday && <p className="warn">{day.dia} {day.d3} · {day.holiday}</p>}
-      {err && <p className="err">{err}</p>}
+      {err && <p role="alert" className="err">{err}</p>}
 
       <div className="form">
         <label>Dia
@@ -113,19 +114,19 @@ export function FormPage() {
           <div className="row">
             <input ref={tinRef} className={"hora" + (timeOk(tin) ? " bad" : "")} placeholder="07:30" value={tin}
               inputMode="numeric" autoComplete="off"
-              onChange={(e) => setTin(maskTime(e.target.value, tin))} />
-            <button className="btn" type="button" tabIndex={-1} title="usar a hora do relógio"
-              onClick={() => setTin(nowHm())}>agora</button>
-          </div>
+              aria-invalid={Boolean(timeOk(tin))} aria-describedby="entrada-erro" onChange={(e) => setTin(maskTime(e.target.value, tin))} />
+            <button className="btn" type="button" title="usar a hora do relógio"
+              onClick={() => setTin(nowHm())}>Agora</button>
+          </div><small id="entrada-erro" className="field-error">{timeOk(tin)}</small>
         </label>
         <label>Saída
           <div className="row">
             <input className={"hora" + (timeOk(tout) ? " bad" : "")} placeholder="12:00" value={tout}
               inputMode="numeric" autoComplete="off"
-              onChange={(e) => setTout(maskTime(e.target.value, tout))} />
-            <button className="btn" type="button" tabIndex={-1} title="usar a hora do relógio"
-              onClick={() => setTout(nowHm())}>agora</button>
-          </div>
+              aria-invalid={Boolean(timeOk(tout))} aria-describedby="saida-erro" onChange={(e) => setTout(maskTime(e.target.value, tout))} />
+            <button className="btn" type="button" title="usar a hora do relógio"
+              onClick={() => setTout(nowHm())}>Agora</button>
+          </div><small id="saida-erro" className="field-error">{timeOk(tout)}</small>
         </label>
         <label className="span2">Justificativa
           <textarea rows={3} value={just} onChange={(e) => setJust(e.target.value)} />
@@ -153,11 +154,11 @@ export function FormPage() {
       )}
 
       <div className="row" style={{ marginTop: 18 }}>
-        <button className="btn primary" disabled={busy} onClick={() => void save(false)}>Salvar</button>
+        <button className="btn primary" disabled={busy} onClick={() => void save(false)}>{busy ? "Salvando…" : "Salvar registro"}</button>
         {!editing && (
           <button className="btn" disabled={busy}
             title="salva o par e continua neste dia para lançar o próximo"
-            onClick={() => void save(true)}>Lançar outra</button>
+            onClick={() => void save(true)}>Salvar e adicionar outro</button>
         )}
         <Link className="btn" to="/">Cancelar</Link>
       </div>

@@ -33,8 +33,8 @@ export const api = {
     return req<EntryList>("/entries" + (qs ? "?" + qs : ""));
   },
   /** A date range (several months) instead of one day/month filter. */
-  entriesRange: (from: string, to: string, n = 500) =>
-    req<EntryList>("/entries?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to) + "&n=" + n),
+  entriesRange: (from: string, to: string, n = 500, q = "") =>
+    req<EntryList>("/entries?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to) + "&n=" + n + "&q=" + encodeURIComponent(q)),
   entry: (id: number) => req<Entry>("/entries/" + id),
   create: (body: Record<string, unknown>) =>
     req<Entry>("/entries", { method: "POST", body: JSON.stringify(body) }),

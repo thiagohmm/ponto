@@ -133,10 +133,15 @@ public final class Web {
             LocalDate to = Service.parseDate(toRaw, null);
             if (from == null || to == null) throw new Bad("from/to: use a date like 2026-09-01");
             if (to.isBefore(from)) { LocalDate x = from; from = to; to = x; }
+            if (!isBlank(q)) {
+                var result = svc.filteredRange(from, to, q, n, skip);
+                rows = result.entries(); tot = result.totals(); total = result.total(); ot = result.overtime();
+            } else {
             rows = svc.listBetween(from, to, n, skip);
             tot = svc.totalsBetween(from, to);
             total = svc.countBetween(from, to);
             ot = svc.overtimeBetween(from, to);
+            }
         } else {
             rows = svc.list(q, dia, n, skip);
             tot = svc.listTotals(q, dia);

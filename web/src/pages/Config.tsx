@@ -126,16 +126,12 @@ export function ConfigPage() {
 
   return (
     <div className="card">
-      <h2>Config</h2>
-      {err && <p className="err">{err}</p>}
-      {msg && <p className="ok">{msg}</p>}
+      <h2>Preferências do workspace</h2>
+      {err && <p role="alert" className="err">{err}</p>}
+      {msg && <p role="status" className="ok">{msg}</p>}
       {cfg && (
         <>
-          <p className="muted">banco {cfg.db}</p>
-          <p className="muted">{cfg.records} registros · {cfg.from} … {cfg.to} · java {cfg.java} · sqlite {cfg.sqlite}</p>
-          <p className={cfg.storage ? "ok" : "warn"}>
-            arquivos das notas: {cfg.storage ? "armazenamento S3 respondendo" : "armazenamento S3 fora do ar — PONTO_S3_ENDPOINT"}
-          </p>
+          <h3>Perfil</h3>
           <div className="form" style={{ marginTop: 12 }}>
             <label>Nome
               <input value={who} onChange={(e) => setWho(e.target.value)} />
@@ -143,7 +139,7 @@ export function ConfigPage() {
           </div>
           <div className="row" style={{ marginTop: 16 }}>
             <button className="btn primary" disabled={busy} onClick={() => void saveWho(false)}>Salvar</button>
-            <button className="btn" disabled={busy} onClick={() => void saveWho(true)}>Vacuum</button>
+
           </div>
 
           <h3 style={{ marginTop: 28 }}>Empresas</h3>
@@ -202,7 +198,7 @@ export function ConfigPage() {
             </div>
           )}
           <div className="row" style={{ marginTop: 16 }}>
-            <span className="muted">Tema</span>
+            <h3>Aparência</h3>
             <div className="seg">
               {TEMAS.map((t) => (
                 <button key={t.id}
@@ -213,6 +209,12 @@ export function ConfigPage() {
               ))}
             </div>
           </div>
+          <details className="maintenance"><summary>Manutenção</summary><p className="muted">Otimize o espaço do banco de dados sem remover registros.</p>          <p className="muted">banco {cfg.db}</p>
+          <p className="muted">{cfg.records} registros · {cfg.from} … {cfg.to} · java {cfg.java} · sqlite {cfg.sqlite}</p>
+          <p className={cfg.storage ? "ok" : "warn"}>
+            arquivos das notas: {cfg.storage ? "armazenamento S3 respondendo" : "armazenamento S3 fora do ar — PONTO_S3_ENDPOINT"}
+          </p>
+<button className="btn" disabled={busy} onClick={() => void saveWho(true)}>Otimizar banco de dados</button></details>
         </>
       )}
     </div>

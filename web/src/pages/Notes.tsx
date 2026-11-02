@@ -679,7 +679,7 @@ export function NotesPage() {
           if (e.dataTransfer.files.length) void upload(e.dataTransfer.files);
         }}
       >
-        {err && <p className="err">{err}</p>}
+        {err && <p role="alert" className="err">{err}</p>}
         {!currentId && (
           <div className="vault-empty-main">
             <p className="vault-kicker">Notas</p>
@@ -699,7 +699,7 @@ export function NotesPage() {
         {currentId > 0 && (
           <>
             <div className="vault-bar">
-              <button className="btn vault-back" onClick={() => nav("/notas")}>notas</button>
+              <button className="btn vault-back" onClick={() => nav("/notas")}>← Voltar às notas</button>
               <span className={"vault-status" + (dirty ? " dirty" : "")}>
                 {busy ? "salvando…" : dirty ? "não salvo" : msg || "salvo"}
               </span>

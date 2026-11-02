@@ -1,4 +1,4 @@
-// tema claro/escuro: choice in localStorage, "sistema" follows the OS.
+// Explicit preference in localStorage; new workspaces default to dark.
 export type Tema = "sistema" | "claro" | "escuro";
 
 const KEY = "ponto.tema";
@@ -6,7 +6,7 @@ export type Pref = "claro" | "escuro";
 
 export function savedTema(): Tema {
   const v = localStorage.getItem(KEY);
-  return v === "claro" || v === "escuro" ? v : "sistema";
+  return v === "claro" || v === "escuro" || v === "sistema" ? v : "escuro";
 }
 
 function systemDark(): boolean {
@@ -23,13 +23,12 @@ export function applyTema(t: Tema) {
   const p = pref(t);
   document.documentElement.dataset.tema = p;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", p === "escuro" ? "#1c1c1e" : "#e8e8ed");
+  if (meta) meta.setAttribute("content", p === "escuro" ? "#10151e" : "#f3f5f9");
 }
 
 /** Saves and applies; "sistema" removes the stored choice. */
 export function setTema(t: Tema) {
-  if (t === "sistema") localStorage.removeItem(KEY);
-  else localStorage.setItem(KEY, t);
+  localStorage.setItem(KEY, t);
   applyTema(t);
 }
 

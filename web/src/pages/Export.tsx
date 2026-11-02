@@ -25,11 +25,15 @@ export function ExportPage() {
 
   useEffect(() => {
     if (!from || !to) return;
-    api.sum(from, to).then(setSum).catch((e: unknown) => setErr(e instanceof Error ? e.message : "erro"));
+    let ignore = false;
+    setSum(null); setErr("");
+    api.sum(from, to).then(value => { if (!ignore) setSum(value); })
+      .catch((e: unknown) => { if (!ignore) setErr(e instanceof Error ? e.message : "Não foi possível carregar o período."); });
+    return () => { ignore = true; };
   }, [from, to]);
 
   async function download(kind: string) {
-    if (!from || !to) return;
+    if (!from || !to || from > to || busy) return;
     setErr("");
     setMsg("");
     setBusy(kind);
@@ -59,19 +63,19 @@ export function ExportPage() {
   return (
     <div className="card">
       <h2>Exportar</h2>
-      <p className="muted">Mesmo relatório do terminal: teclas 7 PDF · 8 XLS · 9 CSV</p>
+      <p className="muted">Selecione o período e escolha o formato para baixar seu relatório.</p>
       <div className="toolbar">
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <label>Data inicial<input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label>Data final<input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></label>
       </div>
-      {err && <p className="err">{err}</p>}
-      {msg && <p className="ok">{msg}</p>}
+      {err && <p role="alert" className="err">{err}</p>}
+      {msg && <p role="status" className="ok">{msg}</p>}
       {sum && (
         <p className="muted">{sum.from} — {sum.to} · {sum.lines} linhas · {sum.total} ({sum.hours} h)</p>
       )}
       <div className="export-grid">
         {KINDS.map((k) => (
-          <button key={k.kind} className="btn primary" disabled={!from || !to || Boolean(busy)}
+          <button key={k.kind} className="btn primary" disabled={!from || !to || from > to || Boolean(busy)}
             onClick={() => void download(k.kind)}>
             <strong>{busy === k.kind ? "gerando…" : k.label}</strong>
             <span>{k.hint}</span>

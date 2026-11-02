@@ -238,7 +238,7 @@ public final class Service {
 
     public List<Entry> list(String q, String filter, int n, int skip) {
         synchronized (lock) {
-            if (q != null && !q.isBlank()) return repo.search(q);
+            if (q != null && !q.isBlank()) return rows(q, filter);
             if (filter != null && !filter.isBlank()) {
                 Parse.Like f = Parse.like(filter);
                 return repo.byDay(f.pattern(), n, skip);
@@ -249,7 +249,7 @@ public final class Service {
 
     public int count(String q, String filter) {
         synchronized (lock) {
-            if (q != null && !q.isBlank()) return repo.search(q).size();
+            if (q != null && !q.isBlank()) return rows(q, filter).size();
             if (filter != null && !filter.isBlank()) return repo.countDay(Parse.like(filter).pattern());
             return repo.count();
         }
@@ -284,6 +284,29 @@ public final class Service {
     /** Paged rows of a date range, newest first (same shape as {@link #list}). */
     public List<Entry> listBetween(LocalDate from, LocalDate to, int n, int skip) {
         synchronized (lock) { return repo.between(from, to, n, skip); }
+    }
+
+    public record FilteredRange(List<Entry> entries, Totals totals, long total, long overtime) {}
+
+    public FilteredRange filteredRange(LocalDate from, LocalDate to, String query, int n, int skip) {
+        synchronized (lock) {
+            applyOff();
+            var matches = repo.search(query).stream()
+                .filter(e -> !e.dia().isBefore(from) && !e.dia().isAfter(to)).toList();
+            long minutes = matches.stream().mapToLong(e -> Math.max(0, e.min())).sum();
+            int open = (int) matches.stream().filter(e -> !e.closed()).count();
+            var mins = dayMins(matches);
+            var faltas = new HashSet<>(repo.flags("falta", "%"));
+            var normais = new HashSet<>(repo.flags("normal", "%"));
+            long overtime = 0;
+            for (var day : mins.entrySet()) {
+                if (!day.getKey().isAfter(LocalDate.now()))
+                    overtime += bankDay(day.getValue(), dailyMinutes(), faltas.contains(day.getKey()),
+                        normais.contains(day.getKey()), !Holidays.off(day.getKey()).isEmpty(), true);
+            }
+            return new FilteredRange(matches.stream().skip(Math.max(0, skip)).limit(Math.max(0, n)).toList(),
+                new Totals(minutes, open), matches.size(), overtime);
+        }
     }
 
     /** How many records inside the date range. */
@@ -622,7 +645,12 @@ public final class Service {
     }
 
     private List<Entry> rows(String q, String filter) {
-        if (q != null && !q.isBlank()) return repo.search(q);
+        if (q != null && !q.isBlank()) {
+            var matches = repo.search(q);
+            if (filter == null || filter.isBlank()) return matches;
+            String pattern = Parse.like(filter).pattern();
+            return matches.stream().filter(e -> like(pattern, e.dia())).toList();
+        }
         if (filter != null && !filter.isBlank()) return repo.byDay(Parse.like(filter).pattern());
         return repo.all();
     }

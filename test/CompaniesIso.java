@@ -33,7 +33,22 @@ public final class CompaniesIso {
             if (s.dailyMinutes() != 360) die("A daily " + s.dailyMinutes());
             try { s.companies().delete(a.id()); die("deleted company with data"); } catch (Bad ignored) {}
             try { s.companies().delete(b.id()); die("deleted other company with data"); } catch (Bad ignored) {}
-            System.out.println("PASS  companies isolation");
+            var day = LocalDate.of(2026, 6, 1);
+            s.create(day, LocalTime.of(10, 0), LocalTime.of(11, 0), "matching", false, true, true);
+            s.create(day.plusDays(1), LocalTime.of(10, 0), LocalTime.of(11, 0), "matching", false, true, true);
+            if (s.count("matching", "2026-06-01") != 1 || s.listTotals("matching", "2026-06-01").mins() != 60)
+                die("combined text date and search");
+            var filtered = s.filteredRange(day, day, "matching", 1, 0);
+            if (filtered.total() != 1 || filtered.entries().size() != 1 || filtered.totals().mins() != 60)
+                die("combined range and search totals");
+            var paged = s.filteredRange(day, day.plusDays(1), "matching", 1, 1);
+            if (paged.total() != 2 || paged.entries().size() != 1 || paged.totals().mins() != 120)
+                die("filtered totals must cover all pages");
+            if (s.filteredRange(day, day, "missing", 10, 0).total() != 0) die("empty search");
+            s.activate(b.id());
+            if (s.filteredRange(day, day.plusDays(1), "matching", 10, 0).total() != 0)
+                die("filtered range leaked another company");
+            System.out.println("PASS  companies isolation + combined filters");
         }
     }
 

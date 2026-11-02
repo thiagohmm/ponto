@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Bar,
@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../api";
-import { CompanyStat, useCompany } from "../Company";
+import { useCompany } from "../Company";
 import { useConfirm } from "../ui/Confirm";
 import { isEscuro, toggleTema } from "../theme";
 import type { Bank, BankDay, Entry, Home } from "../types";
@@ -124,6 +124,8 @@ function kindLabel(d: BankDay): string {
 export function HomePage() {
   const confirm = useConfirm();
   const { active } = useCompany();
+  const request = useRef(0);
+  const [loading, setLoading] = useState(true);
   const [home, setHome] = useState<Home | null>(null);
   const [rows, setRows] = useState<Entry[]>([]);
   const [total, setTotal] = useState(0);
@@ -145,6 +147,8 @@ export function HomePage() {
   const [escuro, setEscuro] = useState(() => isEscuro());
 
   async function load(nextQ = q, nextDia = dia, nextDe = de, nextAte = ate) {
+    const current = ++request.current;
+    setLoading(true);
     setErr("");
     // faixa ativa quando não há filtro de texto; pickers travam de <= até no estado
     const useRange = !nextDia && nextDe && nextAte;
@@ -154,10 +158,11 @@ export function HomePage() {
       const [h, list, bk] = await Promise.all([
         api.home(),
         useRange
-          ? api.entriesRange(deV + "-01", lastDiaIso(ateV))
+          ? api.entriesRange(deV + "-01", lastDiaIso(ateV), 500, nextQ)
           : api.entries({ q: nextQ, dia: nextDia, n: 500 }),
         api.bank(useRange ? ateV : (mesFromDia(nextDia) || undefined)),
       ]);
+      if (current !== request.current) return;
       setHome(h);
       setRows(list.entries);
       setTotal(list.total);
@@ -169,8 +174,8 @@ export function HomePage() {
       setNormais(new Set(list.normais));
       setBank(bk);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "erro");
-    }
+      if (current === request.current) setErr(e instanceof Error ? e.message : "Não foi possível carregar os registros.");
+    } finally { if (current === request.current) setLoading(false); }
   }
 
   useEffect(() => { void load(); }, [active?.id]);
@@ -235,7 +240,7 @@ export function HomePage() {
     <>
       {home && (
         <section className="stats">
-          <CompanyStat />
+          <div className="stat"><b>{home.monthHours} h</b><span>Horas trabalhadas neste mês</span></div>
           <div className="stat"><b>{home.monthLabel}</b><span>este mês · {home.monthHours} h</span></div>
           <div className="stat"><b>{home.open}</b><span>abertos{home.openSince ? " desde " + home.openSince : ""}</span></div>
           <div className="stat"><b>{home.records}</b><span>{home.from} … {home.to}</span></div>
@@ -243,13 +248,13 @@ export function HomePage() {
       )}
 
       <div className="toolbar">
-        <input placeholder="buscar justificativa (ex. atestado)" value={q}
+        <label>Buscar justificativa<input placeholder="Ex.: atestado" value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} />
-        <input placeholder="dia, mês ou ano (oct, 10/2026, hoje)" value={dia}
+          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} /></label>
+        <details className="advanced-filter"><summary>Mais filtros</summary><label>Data específica<input placeholder="Dia, mês ou ano" value={dia}
           onChange={(e) => setDia(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} />
-        <input type="month" className="mes" title="do mês — a lista abre no mês corrente e aceita um período"
+          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} /></label><small>Quando preenchida, esta data substitui o intervalo de meses.</small></details>
+        <label>Do mês<input type="month" className="mes" title="do mês — a lista abre no mês corrente e aceita um período"
           value={de} max={ate || undefined} disabled={Boolean(dia)}
           onChange={(e) => {
             const v = e.target.value;
@@ -257,9 +262,8 @@ export function HomePage() {
             const a = ate && v > ate ? v : ate;
             setDe(v); setAte(a); setDia(""); setSel("");
             void load(q, "", v, a);
-          }} />
-        <span className="faixa-sep">até</span>
-        <input type="month" className="mes" title="até mês — com o outro selecionado, vale o período inteiro"
+          }} /></label>
+        <label>Até o mês<input type="month" className="mes" title="até mês — com o outro selecionado, vale o período inteiro"
           value={ate} min={de || undefined} disabled={Boolean(dia)}
           onChange={(e) => {
             const v = e.target.value;
@@ -267,16 +271,20 @@ export function HomePage() {
             const d2 = de && v < de ? v : de;
             setAte(v); setDe(d2); setDia(""); setSel("");
             void load(q, "", d2, v);
-          }} />
+          }} /></label>
         <button className="btn tema" title="tema claro/escuro" aria-label="alternar tema"
           onClick={() => { toggleTema(); setEscuro(isEscuro()); }}>
           {escuro ? <Ico path={SUN} /> : <Ico path={MOON} />}
         </button>
-        <button className="btn" onClick={() => void load()}>Filtrar</button>
-        <Link className="btn primary push" to="/novo">Novo</Link>
+        <button className="btn" disabled={loading} onClick={() => void load()}>Aplicar filtros</button>
+        <button className="btn" onClick={() => { const m = mesPickerAtual(); setQ(""); setDia(""); setDe(m); setAte(m); setSel(""); void load("", "", m, m); }}>Limpar filtros</button>
+        <Link className="btn primary push" to="/novo">+ Novo registro</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
       </div>
 
+      {dia && <p className="warn">Data específica ativa: {dia}. O intervalo de meses está desativado.</p>}
+      {loading && <p role="status" className="muted">Carregando registros…</p>}
+      <h2 className="section-title">Resultado do filtro</h2>
       <div className="filter-sum" title="total do filtro · horas extras do período · banco do mês">
         <div className="fs-item">
           <b>{filterDur}</b>
@@ -304,19 +312,19 @@ export function HomePage() {
         <p className="warn">{filterOpen} linha(s) incompleta(s) fora da soma</p>
       )}
       {msg && <p className="warn">{msg}</p>}
-      {err && <p className="err">{err}</p>}
+      {err && <p role="alert" className="err">{err}</p>}
       <div className="card">
         <p className="muted">
           {rows.length} na página{rows.length !== total ? " de " + total : ""}
           {" · "}{hm(pageMins)} ({dec(pageMins)} h)
         </p>
-        <table>
+        <div className="table-scroll"><table>
           <thead>
             <tr>
               <th>ID</th>
-              <th>IN</th>
-              <th>OUT</th>
-              <th>DUR</th>
+              <th>Entrada</th>
+              <th>Saída</th>
+              <th>Duração</th>
               <th>HORAS</th>
               <th>JUSTIFICATIVA</th>
               <th></th>
@@ -365,20 +373,20 @@ export function HomePage() {
                     <td>{e.hours || "—"}</td>
                     <td>{e.just}</td>
                     <td>
-                      <div className="actions">
+                      <details className="record-actions"><summary>Ações</summary><div className="actions">
                         <Link className="btn" to={"/edit/" + e.id}>editar</Link>
                         <button className="btn danger" disabled={busy} onClick={() => void del(e.id)}>apagar</button>
-                      </div>
+                      </div></details>
                     </td>
                   </tr>
                 ))}
               </Fragment>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={7} className="muted">nada neste filtro</td></tr>
+              <tr><td colSpan={7} className="muted">Nenhum registro encontrado. Ajuste os filtros ou crie um novo registro.</td></tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {bank && (
@@ -394,7 +402,7 @@ export function HomePage() {
                 <XAxis dataKey="dnum" tick={{ fontSize: 10 }} interval={1} tickLine={false} />
                 <YAxis tick={{ fontSize: 10 }} width={34} tickLine={false} axisLine={false}
                   tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
-                <Tooltip formatter={(v) => hm(Number(v))}
+                <Tooltip contentStyle={{ background: "var(--card)", borderColor: "var(--line)", color: "var(--ink)" }} formatter={(v) => hm(Number(v))}
                   labelFormatter={(l, p) => String(p?.[0]?.payload?.dia ?? l)} />
                 <ReferenceLine y={bank.dailyMins + bank.planMins} stroke="#ff9f0a" strokeDasharray="4 4" />
                 <Bar dataKey="mins" isAnimationActive={false}>
@@ -440,7 +448,7 @@ export function HomePage() {
                 <XAxis dataKey="mes" tick={{ fontSize: 10 }} interval={0} tickLine={false} />
                 <YAxis tick={{ fontSize: 10 }} width={40} tickLine={false} axisLine={false}
                   tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
-                <Tooltip formatter={(v) => otVal(Number(v))} />
+                <Tooltip contentStyle={{ background: "var(--card)", borderColor: "var(--line)", color: "var(--ink)" }} formatter={(v) => otVal(Number(v))} />
                 <ReferenceLine y={0} stroke="rgba(127,127,127,0.6)" />
                 <Bar dataKey="saldoMins" isAnimationActive={false}>
                   {bank.months.map((m) => (

@@ -11,11 +11,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <script>
-      // tema antes da primeira pintura: escolha salva, senão o sistema
+      // tema antes da primeira pintura: escolha salva, senão escuro
       (function () {
         try {
           var t = localStorage.getItem("ponto.tema");
-          if (t !== "claro" && t !== "escuro")
+          if (!t) t = "escuro";
+          if (t === "sistema")
             t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "escuro" : "claro";
           document.documentElement.dataset.tema = t;
         } catch (e) { }
