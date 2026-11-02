@@ -77,6 +77,7 @@ public final class Web {
         app.delete("/api/entries/{id}", this::delete);
         app.delete("/api/days/{dia}", this::deleteDay);
         app.put("/api/days/{dia}/falta", this::falta);
+        app.put("/api/days/{dia}/normal", this::normal);
         app.get("/api/day", this::day);
         app.get("/api/holiday", this::holiday);
         app.get("/api/bank", this::bank);
@@ -126,6 +127,7 @@ public final class Web {
         out.put("open", tot.open());
         out.put("overtime", svc.overtime(q, dia));
         out.put("faltas", svc.faltas().stream().map(Str::iso).toList());
+        out.put("normais", svc.normais().stream().map(Str::iso).toList());
         out.put("entries", rows.stream().map(Json::json).toList());
         ctx.json(out);
     }
@@ -183,6 +185,7 @@ public final class Web {
         out.put("d3", Str.d3(d));
         out.put("holiday", svc.holiday(d));
         out.put("falta", svc.falta(d));
+        out.put("normal", svc.normal(d));
         out.put("lastOut", lastOut);
         out.put("open", open.stream().map(Json::json).toList());
         out.put("entries", rows.stream().map(Json::json).toList());
@@ -243,6 +246,23 @@ public final class Web {
         out.put("dia", Str.d(d));
         out.put("diaIso", Str.iso(d));
         out.put("falta", on);
+        out.put("warn", warn);
+        ctx.json(out);
+    }
+
+    /** Mark or clear the whole-day "dia normal" flag (`{ "on": true|false }`). */
+    private void normal(Context ctx) {
+        LocalDate d = Service.parseDate(ctx.pathParam("dia"), null);
+        if (d == null) throw new Bad("date required");
+        FlagReq r = ctx.bodyAsClass(FlagReq.class);
+        boolean on = Boolean.TRUE.equals(r.on());
+        String warn = on ? svc.normalWarn(d) : "";
+        svc.normal(d, on);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("dia", Str.d(d));
+        out.put("diaIso", Str.iso(d));
+        out.put("normal", on);
         out.put("warn", warn);
         ctx.json(out);
     }
@@ -457,6 +477,8 @@ public final class Web {
     }
 
     record FaltaReq(Boolean on) { }
+
+    record FlagReq(Boolean on) { }
 
     record NoteReq(String title, String body, Integer folderId, Integer tagId, List<Integer> tagIds) { }
 

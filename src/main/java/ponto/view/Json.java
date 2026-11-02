@@ -2,6 +2,7 @@ package ponto.view;
 
 import ponto.model.Dur;
 import ponto.model.Entry;
+import ponto.model.Holidays;
 import ponto.model.Folder;
 import ponto.model.Note;
 import ponto.model.NoteFile;
@@ -25,6 +26,7 @@ public final class Json {
         m.put("dia", Str.d(e.dia()));
         m.put("diaIso", Str.iso(e.dia()));
         m.put("d3", Str.d3(e.dia()));
+        m.put("off", Holidays.off(e.dia()));
         m.put("tin", Str.t(e.tin()));
         m.put("tout", Str.t(e.tout()));
         m.put("just", e.just());
@@ -113,6 +115,7 @@ public final class Json {
         m.put("dur", Dur.hm(d.mins()));
         m.put("hours", Str.n(d.mins() / 60.0));
         m.put("falta", d.falta());
+        m.put("normal", d.normal());
         m.put("kind", d.kind());
         return m;
     }

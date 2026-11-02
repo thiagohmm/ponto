@@ -81,8 +81,10 @@ and adds `--enable-native-access=ALL-UNNAMED` so the SQLite driver stays quiet.
 
 * Database: `$PONTO_DB`, default `~/.local/share/ponto/ponto.db` (or `--db=path`).
 * One table, `ponto`: `id, dia, tin, tout, just, crea`.
-* One flag table, `dia_flag`: `dia, flag` — the whole-day **falta** of the banco
-  de horas (`f` / the web button). A flag of the day, never of a punch line.
+* One flag table, `dia_flag`: `dia, flag` — whole-day flags: the banco de
+  horas **falta** (`f` / the web button) and **normal** (a day off ruled as a
+  normal working day — the web toggle). A flag of the day, never of a punch
+  line.
 * Any row can be edited or deleted at any time — nothing is locked to "today".
 * A line may hold one clock (an open punch) or none at all (just a note).
 
@@ -170,6 +172,7 @@ The bank is **monthly**. One rule per day, never past today:
 | the day | what counts |
 |---|---|
 | marked as **falta** (`f`) | batido − jornada — the day enters the math even empty, and it wins over every other rule |
+| **day off marked as normal** (web toggle) | batido − jornada — the punches pay the jornada, nothing banks; an empty flagged day stays 0, and the day re-enters the dias úteis restantes |
 | **day off** (weekend, holiday, optional, your `off`) | batido − 0 — everything worked is banked |
 | working day with a closed punch | batido − jornada |
 | empty working day | ignored (a missed punch is not a falta) |
@@ -178,6 +181,13 @@ The bank is **monthly**. One rule per day, never past today:
 line). Marking a falta on a working day that already has closed punches is a
 no-op for the balance and says so; marking one on a day off deducts the jornada
 and warns in yellow — a warning, never a wall.
+
+The web mirrors it with the **normal** toggle: every day off, weekend included,
+shows a `normal` button beside the falta one. Unmarked — the default — the day
+banks everything punched; marked, the day is ruled like a normal working day
+(batido − jornada), so a holiday worked as an ordinary shift stops feeding the
+bank, and the monthly plan counts the day again. A falta on the same day still
+wins.
 
 The header prints `saldo do mês +5:02 · plano 40 min a menos/dia`: the plan is
 `saldo / dias úteis restantes` (from today on, without days off and without

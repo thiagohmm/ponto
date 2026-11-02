@@ -36,7 +36,7 @@ CP="$root/target/classes:$(cat "$root/target/cp.txt")"
 
 cd "$root"
 "$JAVA_HOME/bin/javac" -Xlint:none -cp "$CP" -d target/classes $(find src/main/java -name '*.java')
-"$JAVA_HOME/bin/javac" -d target/test-out -cp "$CP" test/Verify.java
+"$JAVA_HOME/bin/javac" -Xlint:none -d target/test-out -cp "$CP" test/Verify.java test/Normal.java
 
 DB="$out/ponto.db"
 PONTO_DB="$DB" PONTO_USER=Ana "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP" ponto.Main < "$here/feed.txt" > "$out/session.txt" 2>&1
@@ -74,8 +74,14 @@ if [ "$off_ok" = no ]; then
     exit 1
 fi
 
+# ---- dia normal: a day off flagged as normal is ruled as a working day -----
+if ! "$JAVA_HOME/bin/java" -cp "$CP:$root/target/test-out" ponto.Normal "$out/normal.db"; then
+    print "FAIL  normal  checks above"
+    exit 1
+fi
+
 if diff -u "$here/expected.txt" "$out/digest.txt" > "$out/diff.txt" 2>&1; then
-    print "PASS  smoke   days off + digest, session and files in $out"
+    print "PASS  smoke   days off + digest + normal, session and files in $out"
 else
     print "FAIL  smoke   diff in $out/diff.txt"
     cat "$out/diff.txt"

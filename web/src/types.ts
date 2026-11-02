@@ -3,6 +3,7 @@ export type Entry = {
   dia: string;
   diaIso: string;
   d3: string;
+  off: string;
   tin: string;
   tout: string;
   just: string;
@@ -24,6 +25,7 @@ export type EntryList = {
   open: number;
   overtime: number;
   faltas: string[];
+  normais: string[];
   entries: Entry[];
 };
 
@@ -52,6 +54,7 @@ export type DayInfo = {
   d3: string;
   holiday: string;
   falta: boolean;
+  normal: boolean;
   lastOut: string;
   open: Entry[];
   entries: Entry[];
@@ -90,6 +93,7 @@ export type BankDay = {
   dur: string;
   hours: string;
   falta: boolean;
+  normal: boolean;
   kind: string;
 };
 

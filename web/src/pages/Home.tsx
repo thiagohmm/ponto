@@ -59,6 +59,7 @@ type DayGroup = {
   key: string;
   dia: string;
   d3: string;
+  off: string;
   entries: Entry[];
   mins: number;
 };
@@ -68,7 +69,7 @@ function groupByDay(rows: Entry[]): DayGroup[] {
   for (const e of rows) {
     const last = groups.at(-1);
     if (!last || last.key !== e.diaIso) {
-      groups.push({ key: e.diaIso, dia: e.dia, d3: e.d3, entries: [e], mins: minsOf(e) });
+      groups.push({ key: e.diaIso, dia: e.dia, d3: e.d3, off: e.off, entries: [e], mins: minsOf(e) });
     } else {
       last.entries.push(e);
       last.mins += minsOf(e);
@@ -93,6 +94,7 @@ export function HomePage() {
   const [filterOpen, setFilterOpen] = useState(0);
   const [filterOt, setFilterOt] = useState(0);
   const [faltas, setFaltas] = useState<Set<string>>(new Set());
+  const [normais, setNormais] = useState<Set<string>>(new Set());
   const [bank, setBank] = useState<Bank | null>(null);
   const [msg, setMsg] = useState("");
   const [q, setQ] = useState("");
@@ -116,6 +118,7 @@ export function HomePage() {
       setFilterOpen(list.open);
       setFilterOt(list.overtime);
       setFaltas(new Set(list.faltas));
+      setNormais(new Set(list.normais));
       setBank(bk);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "erro");
@@ -147,6 +150,22 @@ export function HomePage() {
     setMsg("");
     try {
       const r = await api.setFalta(g.key, on);
+      setMsg(r.warn);
+      await load();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "não marcou");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleNormal(g: DayGroup) {
+    const on = !normais.has(g.key);
+    if (!confirm((on ? "marcar" : "retirar") + " o dia normal de " + g.dia + "?")) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await api.setNormal(g.key, on);
       setMsg(r.warn);
       await load();
     } catch (e) {
@@ -242,7 +261,7 @@ export function HomePage() {
                     <div className="day-head-row">
                       <span>
                         <b>{g.dia}</b>
-                        <span className="muted"> {g.d3} · {g.entries.length} linha(s)</span>
+                        <span className="muted"> {g.d3} · {g.entries.length} linha(s){g.off && " · " + g.off}</span>
                       </span>
                       <span className="row">
                         <span className="hours">{hm(g.mins)} ({dec(g.mins)} h)</span>
@@ -254,6 +273,16 @@ export function HomePage() {
                         >
                           {faltas.has(g.key) ? "falta ✓" : "falta"}
                         </button>
+                        {g.off !== "" && (
+                          <button
+                            className={"btn" + (normais.has(g.key) ? " normal-on" : "")}
+                            disabled={busy}
+                            title="dia normal: as batidas pagam a jornada (não somam banco de horas)"
+                            onClick={() => void toggleNormal(g)}
+                          >
+                            {normais.has(g.key) ? "normal ✓" : "normal"}
+                          </button>
+                        )}
                       </span>
                     </div>
                   </td>
