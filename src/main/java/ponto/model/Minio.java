@@ -60,7 +60,7 @@ public final class Minio {
         String ep = nz(System.getenv(ENDPOINT));
         if (ep.isEmpty()) return null;
         if (!ep.startsWith("http://") && !ep.startsWith("https://"))
-            throw new Problema("s3: " + ENDPOINT + " needs http(s)");
+            throw new Problema("s3: " + ENDPOINT + " precisa de http(s)");
         String url = ep;
         while (url.endsWith("/")) url = url.substring(0, url.length() - 1);
         try {
@@ -70,7 +70,7 @@ public final class Minio {
                     nz(System.getenv(BUCKET), "ponto"),
                     nz(System.getenv(REGION), "us-east-1"));
         } catch (IllegalArgumentException e) {
-            throw new Problema("s3: " + ENDPOINT + " is not a URL");
+            throw new Problema("s3: " + ENDPOINT + " não é uma URL");
         }
     }
 

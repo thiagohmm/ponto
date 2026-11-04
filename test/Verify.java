@@ -79,7 +79,8 @@ public final class Verify {
         String user = System.getProperty("user.name");
         StringBuilder out = new StringBuilder();
         for (String ln : s.split("\n")) {
-            if (ln.toLowerCase().contains("generated") || ln.toLowerCase().contains("generado")) continue;
+            String low = ln.toLowerCase();
+            if (low.contains("generated") || low.contains("generado") || low.contains("gerado")) continue;
             int i = HIDE.isEmpty() ? -1 : ln.indexOf(HIDE);
             if (i >= 0) ln = ln.substring(0, i) + "TESTDIR/…";
             if (!user.isEmpty()) ln = ln.replace(user, "USER");

@@ -51,7 +51,7 @@ export function App() {
           <div className="sidebar-foot">Sua jornada, organizada.<small>Registros · Horas · Notas</small></div>
         </aside>
         <div className="workspace-body">
-          <header className="workspace-header"><span>Workspace <span className="muted">/ {title}</span></span><CompanyBar /></header>
+          <header className="workspace-header"><span>Espaço de trabalho <span className="muted">/ {title}</span></span><CompanyBar /></header>
           <main id="conteudo" className="page-content" tabIndex={-1}>
             <div className="page-heading"><div><p className="eyebrow">GESTÃO DE JORNADA</p><h1>{title}</h1>
               <p className="muted">{vault ? "Suas ideias, tarefas e arquivos em um só lugar." : "Organize sua rotina e acompanhe cada hora."}</p></div></div>

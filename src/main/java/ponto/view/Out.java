@@ -48,10 +48,10 @@ public final class Out {
         painted = true;
         rule();
         ps.println("  " + bold("P O N T O"));
-        ps.println("  " + dim(name.isEmpty() ? "no user" : name)
+        ps.println("  " + dim(name.isEmpty() ? "sem usuário" : name)
                    + " ".repeat(Math.max(1, 22 - name.length()))
-                   + dim(records + " records"));
-        ps.println("  " + dim("this month " + Dur.hm(mins) + "   " + openNote));
+                   + dim(records + " registros"));
+        ps.println("  " + dim("este mês " + Dur.hm(mins) + "   " + openNote));
         if (!saldoNote.isEmpty()) {
             boolean neg = saldoNote.startsWith("!");
             ps.println("  " + (neg ? yel(saldoNote) : dim(saldoNote)));
@@ -60,10 +60,10 @@ public final class Out {
         rule();
         // four keys per row, never wider than the rule above, so nothing can be
         // clipped or wrapped away on a narrow terminal
-        ps.println("  " + bold("1") + " new     " + bold("2") + " edit    " + bold("3") + " delete  " + bold("4") + " list");
-        ps.println("  " + bold("5") + " sum     " + bold("6") + " find    " + bold("7") + " pdf     " + bold("8") + " xls");
-        ps.println("  " + bold("9") + " csv     " + bold("d") + " date    " + bold("c") + " config  " + bold("f") + " falta");
-        ps.println("  " + bold("?") + " help    " + bold("x") + " clear   " + bold("0") + " quit");
+        ps.println("  " + bold("1") + " novo    " + bold("2") + " editar  " + bold("3") + " apagar  " + bold("4") + " lista");
+        ps.println("  " + bold("5") + " soma    " + bold("6") + " buscar  " + bold("7") + " pdf     " + bold("8") + " xls");
+        ps.println("  " + bold("9") + " csv     " + bold("d") + " data    " + bold("c") + " config  " + bold("f") + " falta");
+        ps.println("  " + bold("?") + " ajuda   " + bold("x") + " limpar  " + bold("0") + " sair");
         rule();
     }
 
@@ -94,5 +94,5 @@ public final class Out {
     void nl() { ps.println(); }
 
     /** Two-state message. */
-    public void done(boolean changed, String extra) { ok((changed ? "saved " : "kept   ") + extra); }
+    public void done(boolean changed, String extra) { ok((changed ? "salvo " : "mantido") + extra); }
 }

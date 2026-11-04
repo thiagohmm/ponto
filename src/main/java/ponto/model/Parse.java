@@ -15,14 +15,14 @@ public final class Parse {
 
     private static final Pattern ISO    = Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})");
     private static final Pattern DMY    = Pattern.compile("(\\d{1,2})[/\\-.](\\d{1,2})(?:[/\\-.](\\d{2,4}))?");
-    private static final Pattern MONTH  = Pattern.compile("(\\d{1,2})[ \\-.](jan|feb|mar|abr|mai|jun|jul|ago|set|oct|nov|dec)(?:[ \\-.](\\d{2,4}))?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MONTH  = Pattern.compile("(\\d{1,2})[ \\-.](jan|fev|feb|mar|abr|mai|jun|jul|ago|set|out|oct|nov|dez|dec)(?:[ \\-.](\\d{2,4}))?", Pattern.CASE_INSENSITIVE);
     private static final Pattern OFFSET = Pattern.compile("([+-])(\\d{1,3})");
     private static final Pattern DAY    = Pattern.compile("(\\d{1,2})");
     private static final Pattern TIME   = Pattern.compile("(\\d{1,2})[:.h]?(\\d{1,2})?[m]?([ap])?m?", Pattern.CASE_INSENSITIVE);
     private static final Pattern NUM    = Pattern.compile("\\d{1,8}");
 
-    private static final String[] MON = {"jan","feb","mar","abr","mai","jun","jul","ago","set","oct","nov","dec"};
-    private static final java.util.List<String> MONS = java.util.List.of("jan","feb","mar","abr","mai","jun","jul","ago","set","oct","nov","dec");
+    private static final String[] MON = {"jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"};
+    private static final java.util.List<String> MONS = java.util.List.of("jan","fev","feb","mar","abr","mai","jun","jul","ago","set","out","oct","nov","dez","dec");
 
     /**
      * A date: 08/10 · 08/10/2026 · 2026-10-08 · 5oct · today/h/hoje ·
@@ -31,7 +31,7 @@ public final class Parse {
     public static LocalDate date(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
         LocalDate today = LocalDate.now();
-        if (s.isEmpty()) throw new Bad("date required");
+        if (s.isEmpty()) throw new Bad("data obrigatória");
 
         if (s.equals("t") || s.equals("h") || s.equals("today") || s.equals("toda") || s.equals("hoje")) return today;
         if (s.equals("y") || s.equals("yesterday") || s.equals("ayer") || s.equals("yer")) return today.minusDays(1);
@@ -76,7 +76,7 @@ public final class Parse {
         if (s.equals("now") || s.equals("n") || s.equals("rn")) return LocalTime.now().withSecond(0).withNano(0);
 
         Matcher m = TIME.matcher(s);
-        if (!m.matches()) throw new Bad("time: '" + raw + "'  (07:30 · 07h30 · 0730 · 8 · now)");
+        if (!m.matches()) throw new Bad("hora: '" + raw + "'  (07:30 · 07h30 · 0730 · 8 · agora)");
         int h = num(m.group(1));
         String g2 = m.group(2);
         int mi = g2 == null || g2.isEmpty() ? 0 : num(g2);
@@ -98,7 +98,7 @@ public final class Parse {
 
     public static Like like(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
-        if (s.isEmpty()) throw new Bad("date: type 2026 · 10/2026 · oct · 01/10/2026");
+        if (s.isEmpty()) throw new Bad("data: digite 2026 · 10/2026 · out · 01/10/2026");
         LocalDate today = LocalDate.now();
 
         if (TODAY.contains(s)) return new Like(Str.iso(today), Str.d(today));
@@ -141,31 +141,31 @@ public final class Parse {
     private static final Pattern YEAR       = Pattern.compile("\\d{4}");
     private static final Pattern YM         = Pattern.compile("(\\d{1,2})[/\\-.](\\d{4})|(\\d{4})[/\\-.](\\d{1,2})");
     private static final Pattern MONTH_NAME = Pattern.compile(
-        "(jan|january|feb|february|mar|march|abr|april|apr|mai|may|jun|june|jul|july|ago|aug|august"
-        + "|set|sep|september|oct|october|nov|november|dec|december)[ ./-]*(\\d{2,4})?",
+        "(jan|janeiro|january|fev|february|fevereiro|mar|march|abr|april|apr|abril|mai|may|jun|june|junho|jul|july|julho"
+        + "|ago|aug|august|agosto|set|sep|september|setembro|out|oct|october|outubro|nov|november|novembro|dez|dec|december|dezembro)[ ./-]*(\\d{2,4})?",
         Pattern.CASE_INSENSITIVE);
     private static final java.util.Set<String> TODAY  = java.util.Set.of("t", "h", "today", "toda", "hoje");
     private static final java.util.Set<String> YESTER = java.util.Set.of("y", "yesterday", "ayer", "yer");
     private static final java.util.Map<String, Integer> ALIAS = java.util.Map.ofEntries(
-        java.util.Map.entry("jan", 1), java.util.Map.entry("january", 1),
-        java.util.Map.entry("feb", 2), java.util.Map.entry("february", 2),
+        java.util.Map.entry("jan", 1), java.util.Map.entry("janeiro", 1), java.util.Map.entry("january", 1),
+        java.util.Map.entry("fev", 2), java.util.Map.entry("feb", 2), java.util.Map.entry("february", 2), java.util.Map.entry("fevereiro", 2),
         java.util.Map.entry("mar", 3), java.util.Map.entry("march", 3),
-        java.util.Map.entry("abr", 4), java.util.Map.entry("apr", 4), java.util.Map.entry("april", 4),
+        java.util.Map.entry("abr", 4), java.util.Map.entry("apr", 4), java.util.Map.entry("april", 4), java.util.Map.entry("abril", 4),
         java.util.Map.entry("mai", 5), java.util.Map.entry("may", 5),
-        java.util.Map.entry("jun", 6), java.util.Map.entry("june", 6),
-        java.util.Map.entry("jul", 7), java.util.Map.entry("july", 7),
-        java.util.Map.entry("ago", 8), java.util.Map.entry("aug", 8), java.util.Map.entry("august", 8),
-        java.util.Map.entry("set", 9), java.util.Map.entry("sep", 9), java.util.Map.entry("september", 9),
-        java.util.Map.entry("oct", 10), java.util.Map.entry("october", 10),
-        java.util.Map.entry("nov", 11), java.util.Map.entry("november", 11),
-        java.util.Map.entry("dec", 12), java.util.Map.entry("december", 12));
+        java.util.Map.entry("jun", 6), java.util.Map.entry("june", 6), java.util.Map.entry("junho", 6),
+        java.util.Map.entry("jul", 7), java.util.Map.entry("july", 7), java.util.Map.entry("julho", 7),
+        java.util.Map.entry("ago", 8), java.util.Map.entry("aug", 8), java.util.Map.entry("august", 8), java.util.Map.entry("agosto", 8),
+        java.util.Map.entry("set", 9), java.util.Map.entry("sep", 9), java.util.Map.entry("september", 9), java.util.Map.entry("setembro", 9),
+        java.util.Map.entry("out", 10), java.util.Map.entry("oct", 10), java.util.Map.entry("october", 10), java.util.Map.entry("outubro", 10),
+        java.util.Map.entry("nov", 11), java.util.Map.entry("november", 11), java.util.Map.entry("novembro", 11),
+        java.util.Map.entry("dez", 12), java.util.Map.entry("dec", 12), java.util.Map.entry("december", 12), java.util.Map.entry("dezembro", 12));
 
     /** A positive integer (id, how many rows). */
     public static int num(String raw, String what) throws Bad {
         String s = raw.strip();
         if (!NUM.matcher(s).matches()) throw new Bad(what + ": '" + raw + "'");
         int v = (int) digits(s);
-        if (v <= 0) throw new Bad(what + ": must be 1 or more");
+        if (v <= 0) throw new Bad(what + ": tem que ser 1 ou mais");
         return v;
     }
 
@@ -178,13 +178,13 @@ public final class Parse {
     // ---- helpers ---------------------------------------------------------
 
     private static Bad bad(String s) {
-        return new Bad("date: '" + s + "'  (dd/mm · dd/mm/aaaa · aaaa-mm-dd · 5oct · today · y · -3)");
+        return new Bad("data: '" + s + "'  (dd/mm · dd/mm/aaaa · aaaa-mm-dd · 5out · hoje · ontem · -3)");
     }
 
-    private static Bad bad2(String raw) { return new Bad("time: '" + raw + "' out of range"); }
+    private static Bad bad2(String raw) { return new Bad("hora: '" + raw + "' fora do intervalo"); }
 
     /** A date-shaped value whose month or year is impossible. */
-    private static Bad badRange(String raw) { return new Bad("date: '" + raw + "'  (2026 · 10/2026 · oct · 01/10/2026)"); }
+    private static Bad badRange(String raw) { return new Bad("data: '" + raw + "'  (2026 · 10/2026 · out · 01/10/2026)"); }
 
     private static LocalDate day(long y, int mo, int d, String src) throws Bad {
         try { return LocalDate.of((int) y, mo, d); }
@@ -201,7 +201,7 @@ public final class Parse {
     private static long digits(String s) {
         long v = 0;
         for (char c : s.toCharArray()) {
-            if (c < '0' || c > '9') throw new Bad("number: '" + s + "'");
+                if (c < '0' || c > '9') throw new Bad("número: '" + s + "'");
             v = v * 10 + (c - '0');
         }
         return v;

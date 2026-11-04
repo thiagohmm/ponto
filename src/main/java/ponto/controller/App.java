@@ -43,7 +43,7 @@ public final class App {
 
     public void run() {
         setup();
-        svc.registerOff(s -> out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored"));
+        svc.registerOff(s -> out.warn("folga: '" + Str.cut(s, 24) + "'   ·   não é data, ignorado"));
         for (;;) {
             home();
             try {
@@ -78,7 +78,7 @@ public final class App {
             case "f" -> falta(c);
             case "x" -> out.clear();
             case "?" -> help();
-            default -> out.bad("unknown key '" + c.key() + "'   ·   ? help");
+            default -> out.bad("tecla desconhecida '" + c.key() + "'   ·   ? ajuda");
         }
     }
 
@@ -88,8 +88,8 @@ public final class App {
         int records = (Integer) h.get("records");
         int open = (Integer) h.get("open");
         String since = (String) h.get("openSince");
-        String openNote = open == 0 ? "open 0"
-                : "open " + open + (since.isEmpty() ? "" : "   since " + since);
+        String openNote = open == 0 ? "abertos 0"
+                : "abertos " + open + (since.isEmpty() ? "" : "   desde " + since);
         long saldoMins = (Long) h.get("saldoMins");
         String plan = (String) h.get("planLabel");
         String saldoNote = (saldoMins < 0 ? "! banco negativo " : "saldo do mês ") + h.get("saldo")
@@ -104,28 +104,28 @@ public final class App {
     private void setup() {
         if (svc.asked()) return;
         if (!Out.TTY) { svc.markAsked(); return; }
-        out.title("SET UP");
-        out.note("db    " + svc.dbPath());
-        String who = in.text("name", svc.rawWho());
+        out.title("CONFIGURAÇÃO");
+        out.note("banco " + svc.dbPath());
+        String who = in.text("nome", svc.rawWho());
         svc.setConfig(who, null, false);
-        if (!who.isEmpty()) out.ok("user " + who);
+        if (!who.isEmpty()) out.ok("usuário " + who);
     }
 
     private void emptyCheck() {
-        if (svc.count() == 0) throw new Problema("no records yet (1 = new)");
+        if (svc.count() == 0) throw new Problema("ainda sem registros (1 = novo)");
     }
 
     // ---- 1 new -----------------------------------------------------------
 
     private void novo() {
-        out.title("NEW");
-        LocalDate dia = in.date("day", LocalDate.now());
+        out.title("NOVO");
+        LocalDate dia = in.date("dia", LocalDate.now());
         offDay(dia, true);
         List<Entry> same = svc.on(dia);
 
         // the day you picked, as it stands right now: every line already on it
         if (!same.isEmpty()) {
-            out.note(Str.d(dia) + "   " + same.size() + " line(s) already on this day");
+            out.note(Str.d(dia) + "   " + same.size() + " linha(s) já neste dia");
             table(same);
             totalLine(minsOf(same), same.size(), openOf(same));
         }
@@ -134,9 +134,9 @@ public final class App {
         List<Entry> open = same.stream().filter(e -> e.tin() != null && e.tout() == null).toList();
         if (open.size() == 1) {
             Entry o = open.getFirst();
-            out.warn("open: #" + o.id() + "   in " + Str.t(o.tin()));
-            if (in.yes("close #" + o.id() + "?", true)) {
-                Optional<LocalTime> t = in.time("out", Str.t(LocalTime.now()));
+            out.warn("aberto: #" + o.id() + "   entrada " + Str.t(o.tin()));
+            if (in.yes("fechar #" + o.id() + "?", true)) {
+                Optional<LocalTime> t = in.time("saída", Str.t(LocalTime.now()));
                 if (t.isPresent()) {
                     Entry done = new Entry(o.id(), o.dia(), o.tin(), t.get(), o.just(), o.crea());
                     check(done, done.id());
@@ -147,20 +147,20 @@ public final class App {
             }
         }
 
-        Optional<LocalTime> tin = in.time("in", lastOut(same));
-        Optional<LocalTime> tout = in.time("out", punchNow(tin, dia));
-        String just = in.text("just", "");
+        Optional<LocalTime> tin = in.time("entrada", lastOut(same));
+        Optional<LocalTime> tout = in.time("saída", punchNow(tin, dia));
+        String just = in.text("justificativa", "");
 
         if (tin.isEmpty() && tout.isEmpty() && just.isEmpty()) { out.warn("nada digitado"); return; }
         if (tout.isPresent() && tin.isEmpty() && !open.isEmpty()) {
-            out.warn("#" + open.getFirst().id() + " is already open with the same day");
+            out.warn("#" + open.getFirst().id() + " já está aberto no mesmo dia");
         }
         Entry fresh = new Entry(0, dia, tin.orElse(null), tout.orElse(null), just, "");
         check(fresh, 0);
 
         Entry made = svc.create(dia, fresh.tin(), fresh.tout(), just, false, true, true);
         out.ok("#" + made.id() + "  " + Str.d(dia) + "  " + made.stamp() + "  " + made.dur());
-        if (made.open()) out.warn("half line: fill the other time later (2 = edit)");
+        if (made.open()) out.warn("linha incompleta: preencha a outra hora depois (2 = editar)");
     }
 
     /** Default for "out": now, but only when starting a punch today. */
@@ -178,25 +178,25 @@ public final class App {
     // ---- 2 edit ----------------------------------------------------------
 
     private void edit(int id) {
-        out.title("EDIT");
+        out.title("EDITAR");
         if (id <= 0) table(svc.recent(12, 0));
         Entry e = svc.byId(id > 0 ? id : in.num("id", 0));
 
         out.note("#" + e.id() + "  " + Str.d(e.dia()) + "  " + e.stamp() + "  " + Str.cut(e.just(), 44));
-        out.note("Enter keeps   ·   - clears");
+        out.note("Enter mantém   ·   - limpa");
 
-        LocalDate dia = patchDate(in.field("day", Str.d(e.dia())), e.dia());
+        LocalDate dia = patchDate(in.field("dia", Str.d(e.dia())), e.dia());
         offDay(dia, !dia.equals(e.dia()));
-        LocalTime tin = patchTime(in.field("in", Str.t(e.tin())), e.tin());
-        LocalTime tout = patchTime(in.field("out", Str.t(e.tout())), e.tout());
-        String just = patchText(in.field("just", e.just()), e.just());
+        LocalTime tin = patchTime(in.field("entrada", Str.t(e.tin())), e.tin());
+        LocalTime tout = patchTime(in.field("saída", Str.t(e.tout())), e.tout());
+        String just = patchText(in.field("justificativa", e.just()), e.just());
 
         Entry now = new Entry(e.id(), dia, tin, tout, just, e.crea());
-        if (now.open() && now.just().isEmpty()) throw new Bad("a half line needs a justification");
-        if (now.closed() && now.min() == 0) throw new Bad("in = out");
+        if (now.open() && now.just().isEmpty()) throw new Bad("linha incompleta precisa de justificativa");
+        if (now.closed() && now.min() == 0) throw new Bad("entrada = saída");
         check(now, now.id());
 
-        if (same(e, now)) { out.note("unchanged"); return; }
+        if (same(e, now)) { out.note("inalterado"); return; }
         Entry saved = svc.update(now.id(), dia, tin, tout, just, true, true);
         out.done(true, "#" + now.id() + "  " + Str.d(dia) + "  " + saved.stamp() + "  " + saved.dur());
     }
@@ -216,7 +216,7 @@ public final class App {
         for (;;) {
             if (v.keep()) return cur;
             try { return Parse.date(v.raw()); }
-            catch (Bad b) { out.bad(b.getMessage()); v = in.field("day", Str.d(cur)); }
+            catch (Bad b) { out.bad(b.getMessage()); v = in.field("dia", Str.d(cur)); }
         }
     }
 
@@ -225,7 +225,7 @@ public final class App {
             if (v.keep()) return cur;
             if (v.clear()) return null;
             try { return Parse.time(v.raw()); }
-            catch (Bad b) { out.bad(b.getMessage()); v = in.field("time", Str.t(cur)); }
+            catch (Bad b) { out.bad(b.getMessage()); v = in.field("hora", Str.t(cur)); }
         }
     }
 
@@ -238,13 +238,13 @@ public final class App {
     /** Midnight + overlap guard (shared by new and edit; `skip` excludes the row itself). */
     private void check(Entry e, int skip) {
         Service.Warn w = svc.inspect(e, skip);
-        if (w.sameTime()) throw new Bad("in = out");
-        if (w.midnight() && !in.yes("crosses midnight (" + w.midnightLabel() + ")?", true))
-            throw new Problema("cancelled");
+        if (w.sameTime()) throw new Bad("entrada = saída");
+        if (w.midnight() && !in.yes("cruza meia-noite (" + w.midnightLabel() + ")?", true))
+            throw new Problema("cancelado");
         if (w.overlap() != null) {
             Entry o = w.overlap();
-            if (!in.yes("overlaps #" + o.id() + " " + o.stamp() + " (" + o.dur() + ")?", false))
-                throw new Problema("cancelled");
+            if (!in.yes("sobreposto a #" + o.id() + " " + o.stamp() + " (" + o.dur() + ")?", false))
+                throw new Problema("cancelado");
         }
     }
 
@@ -259,29 +259,29 @@ public final class App {
      *   3 01/10      3 a          a whole day
      */
     private void del(In.Cmd c) {
-        out.title("DELETE");
+        out.title("APAGAR");
         if (!c.ids().isEmpty()) { delIds(c.ids()); return; }
 
         String rest = c.rest().toLowerCase();
-        if (rest.startsWith("a") || rest.startsWith("d")) { delDay(in.date("day", defaultDay())); return; }
+        if (rest.startsWith("a") || rest.startsWith("d")) { delDay(in.date("dia", defaultDay())); return; }
         LocalDate d = null;
         if (!rest.isEmpty()) { try { d = Parse.date(rest); } catch (Bad ignored) { } }
         if (d != null) { delDay(d); return; }
 
-        if (in.choice("all day or id", "ai", 'a') == 'a') delDay(in.date("day", defaultDay()));
+        if (in.choice("dia inteiro ou id", "ai", 'a') == 'a') delDay(in.date("dia", defaultDay()));
         else delIds(in.ids("id(s)", 0));
     }
 
     /** A whole day at once: every line of it goes, nothing else is touched. */
     private void delDay(LocalDate d) {
         List<Entry> rows = svc.on(d);
-        if (rows.isEmpty()) { out.note("nothing on " + Str.d(d)); return; }
-        out.note(Str.d(d) + "   " + rows.size() + " line(s)");
+        if (rows.isEmpty()) { out.note("nada em " + Str.d(d)); return; }
+        out.note(Str.d(d) + "   " + rows.size() + " linha(s)");
         table(rows);
         totalLine(minsOf(rows), rows.size(), openOf(rows));
-        if (!in.yes("delete all " + rows.size() + " of " + Str.d(d) + "?", false)) { out.note("cancelled"); return; }
+        if (!in.yes("apagar todos os " + rows.size() + " de " + Str.d(d) + "?", false)) { out.note("cancelado"); return; }
         int n = svc.deleteDay(d);
-        out.ok("deleted " + n + "   " + Str.d(d) + "   day is empty now");
+        out.ok("apagado " + n + "   " + Str.d(d) + "   o dia está vazio agora");
     }
 
     /** One or many ids; the ones that are not found are named, the rest go. */
@@ -291,12 +291,12 @@ public final class App {
         for (int id : ids) {
             try { hits.add(svc.byId(id)); } catch (Problema ignored) { missing.add(id); }
         }
-        if (hits.isEmpty()) { out.bad("no record: " + ids); return; }
+        if (hits.isEmpty()) { out.bad("sem registro: " + ids); return; }
         table(hits);
         totalLine(minsOf(hits), hits.size(), openOf(hits));
-        if (!in.yes("delete " + hits.size() + " line(s)?", false)) { out.note("cancelled"); return; }
+        if (!in.yes("apagar " + hits.size() + " linha(s)?", false)) { out.note("cancelado"); return; }
         for (Entry h : hits) svc.delete(h.id());
-        out.ok("deleted " + hits.size() + (missing.isEmpty() ? "" : "   not found: " + missing));
+        out.ok("apagado " + hits.size() + (missing.isEmpty() ? "" : "   não encontrado: " + missing));
     }
 
     /** Today if it has lines, otherwise the last day that has any. */
@@ -340,8 +340,8 @@ public final class App {
             mins += minsOf(rows); half += openOf(rows);
             // running total of the rows above: half lines and notes count as 0
             totalLine(mins, shown, half);
-            out.note("shown " + shown + " of " + total);
-            if (shown >= total || !in.yes("older", false)) return;
+            out.note("mostrando " + shown + " de " + total);
+            if (shown >= total || !in.yes("anteriores", false)) return;
         }
     }
 
@@ -350,7 +350,7 @@ public final class App {
      * `4 oct`, `4 01/10/2026` every record of that year, month or day.
      */
     private void list(In.Cmd c) {
-        out.title("LIST");
+        out.title("LISTA");
         String rest = c.rest().strip();
         if (rest.isEmpty()) { page(svc.count(), c.arg() > 0 ? c.arg() : 20, (n, s) -> svc.recent(n, s)); return; }
         if (countOnly(rest)) { page(svc.count(), Integer.parseInt(rest), (n, s) -> svc.recent(n, s)); return; }
@@ -361,10 +361,10 @@ public final class App {
 
     /** `d` — all the records of a day, month or year, asked for. */
     private void byDate(String rest) {
-        out.title("BY DATE");
+        out.title("POR DATA");
         String ask = rest.strip();
-        if (ask.isEmpty()) ask = in.text("day, month or year", "");
-        if (ask.isEmpty()) { out.note("type 2026 · 10/2026 · oct · 01/10/2026"); return; }
+        if (ask.isEmpty()) ask = in.text("dia, mês ou ano", "");
+        if (ask.isEmpty()) { out.note("digite 2026 · 10/2026 · out · 01/10/2026"); return; }
         Parse.Like f;
         try { f = Parse.like(ask); } catch (Bad e) { out.bad(e.getMessage()); return; }
         byFilter(f);
@@ -373,8 +373,8 @@ public final class App {
     /** Everything whose day matches the pattern, paged, with the running total. */
     private void byFilter(Parse.Like f) {
         int total = svc.countDay(f.pattern());
-        out.note("matching  " + f.label() + "   ·   " + total + " record(s)");
-        if (total == 0) { out.note("nothing in " + f.label()); return; }
+        out.note("coincidência  " + f.label() + "   ·   " + total + " registro(s)");
+        if (total == 0) { out.note("nada em " + f.label()); return; }
         page(total, 20, (n, s) -> svc.byDay(f.pattern(), n, s));
     }
 
@@ -386,24 +386,24 @@ public final class App {
 
     /** One total line: "h:mm" and decimal hours, the same pair the reports print. */
     private void totalLine(long mins, int lines, int half) {
-        out.note("total  " + Dur.hm(mins) + "   " + Str.n(mins / 60.0) + " h   ·   " + lines + " line(s)"
-                 + (half > 0 ? "   ·   " + half + " incomplete, not counted" : ""));
+        out.note("total  " + Dur.hm(mins) + "   " + Str.n(mins / 60.0) + " h   ·   " + lines + " linha(s)"
+                 + (half > 0 ? "   ·   " + half + " incompleta(s), fora da soma" : ""));
     }
 
     private void find(String rest) {
-        out.title("FIND");
-        String q = rest.isEmpty() ? in.text("text", "") : rest;
-        if (q.isEmpty()) { out.note("type some text"); return; }
+        out.title("BUSCAR");
+        String q = rest.isEmpty() ? in.text("texto", "") : rest;
+        if (q.isEmpty()) { out.note("digite um texto"); return; }
         List<Entry> rows = svc.search(q);
-        if (rows.isEmpty()) { out.note("no match for '" + q + "'"); return; }
+        if (rows.isEmpty()) { out.note("nenhuma coincidência para '" + q + "'"); return; }
         table(rows);
-        out.note("'" + q + "' -> " + rows.size() + " lines  ·  " + Dur.hm(totalOf(rows)));
+        out.note("'" + q + "' -> " + rows.size() + " linha(s)  ·  " + Dur.hm(totalOf(rows)));
     }
 
     private static final int JUST_W = 34;   // justification column; the full text follows below
 
     private void table(List<Entry> rows) {
-        out.note(cols("ID", "DATE", "DAY", "IN", "OUT", "DUR", "JUSTIFICATION"));
+        out.note(cols("ID", "DATA", "DIA", "ENTRADA", "SAÍDA", "DURAÇÃO", "JUSTIFICATIVA"));
         out.note("-".repeat(76));
         for (Entry e : rows) {
             out.note(cols("" + e.id(), Str.d(e.dia()), Str.d3(e.dia()), Str.t(e.tin()), Str.t(e.tout()),
@@ -416,7 +416,7 @@ public final class App {
     }
 
     private static String cols(String... v) {
-        int[] w = {5, 11, 4, 6, 6, 7, JUST_W};
+        int[] w = {5, 11, 4, 7, 5, 7, JUST_W};
         StringBuilder b = new StringBuilder();
         for (int i = 0; i < v.length; i++) b.append(i > 0 ? "  " : "").append(Str.fix(v[i], w[i]));
         return b.toString();
@@ -454,18 +454,18 @@ public final class App {
     // ---- 5 sum -----------------------------------------------------------
 
     private void sum() {
-        out.title("SUM");
+        out.title("SOMA");
         emptyCheck();
-        Period p = in.period("period", svc.min(), svc.max());
+        Period p = in.period("período", svc.min(), svc.max());
         Report r = svc.report(p.from(), p.to());
-        out.note(Str.fix("DATE", 12) + Str.fix("DAY", 6) + Str.fix("LINES", 8) + Str.fix("DURATION", 12));
+        out.note(Str.fix("DATA", 12) + Str.fix("DIA", 6) + Str.fix("LINHAS", 8) + Str.fix("DURAÇÃO", 12));
         out.note("-".repeat(38));
         for (Report.Day d : r.summary()) {
             out.note(Str.fix(Str.d(d.dia()), 12) + Str.fix(d.d3(), 6) + Str.fix("" + d.lines(), 8) + Str.fix(Dur.hm(d.mins()), 12));
         }
         out.note("-".repeat(38));
         out.note(boldRow("TOTAL", r));
-        if (r.openLines() > 0) out.warn(r.openLines() + " incomplete line(s) not counted");
+        if (r.openLines() > 0) out.warn(r.openLines() + " linha(s) incompleta(s), fora da soma");
         out.note("saldo período  " + r.saldoLabel()
                  + (r.faltas() > 0 ? "   ·   faltas: " + r.faltas() : ""));
         if (!r.planoLabel().isEmpty()) out.note("plano  " + r.planoLabel());
@@ -485,21 +485,21 @@ public final class App {
     // ---- 7 pdf / 8 xls / 9 csv ----------------------------------------
 
     private void export(String kind) {
-        out.title("EXPORT " + kind.toUpperCase());
+        out.title("EXPORTAR " + kind.toUpperCase());
         emptyCheck();
-        Period p = in.period("period", svc.min(), svc.max());
+        Period p = in.period("período", svc.min(), svc.max());
         Report r = svc.report(p.from(), p.to());
-        if (r.lines().isEmpty()) { out.bad("nothing between " + p.label()); return; }
+        if (r.lines().isEmpty()) { out.bad("nada entre " + p.label()); return; }
         Path dir = Path.of(System.getProperty("user.dir"));
         String base = Ver.NAME + "-" + Str.iso(p.from()) + "_" + Str.iso(p.to()) + "." + kind;
-        String typed = in.text("file", dir.resolve(base).toString());
+        String typed = in.text("arquivo", dir.resolve(base).toString());
         Path target = Path.of(typed);
         if (!target.isAbsolute()) target = dir.resolve(target);
         String name = target.getFileName().toString();
         if (!name.toLowerCase().endsWith("." + kind)) target = Path.of(target + "." + kind);
 
-        if (target.toFile().exists() && !in.yes("overwrite " + target.getFileName() + "?", true)) {
-            out.note("cancelled");
+        if (target.toFile().exists() && !in.yes("substituir " + target.getFileName() + "?", true)) {
+            out.note("cancelado");
             return;
         }
 
@@ -508,8 +508,8 @@ public final class App {
             case "xls" -> Xls.write(target, r);
             default -> Pdf.write(target, r);
         };
-        out.ok(target + "   " + human(bytes.length) + "   " + r.lines().size() + " lines   " + r.totalLabel());
-        if (in.yes("open it?", true)) openWith(target);
+        out.ok(target + "   " + human(bytes.length) + "   " + r.lines().size() + " linha(s)   " + r.totalLabel());
+        if (in.yes("abrir?", true)) openWith(target);
     }
 
     private static String human(int n) {
@@ -525,7 +525,7 @@ public final class App {
             pb.redirectErrorStream(true);
             pb.inheritIO();
             pb.start();
-        } catch (java.io.IOException e) { out.warn("could not open: " + e.getMessage()); }
+        } catch (java.io.IOException e) { out.warn("não abriu: " + e.getMessage()); }
     }
 
     // ---- c config --------------------------------------------------------
@@ -533,20 +533,20 @@ public final class App {
     private void config() {
         out.title("CONFIG");
         Map<String, Object> c = svc.config();
-        out.note("db      " + c.get("db"));
+        out.note("banco   " + c.get("db"));
         String who = (String) c.get("who");
-        out.note("user    " + (who.isEmpty() ? "-" : who));
+        out.note("usuário " + (who.isEmpty() ? "-" : who));
         var act = svc.companies().active();
         for (var co : svc.companies().list())
             out.note((co.id() == act.id() ? "* " : "  ") + co.id() + "  " + co.name());
-        out.note("records " + c.get("records") + "   " + range(c));
+        out.note("registros " + c.get("records") + "   " + range(c));
         out.note("csv     sep '" + Csv.SEP + "'  (PONTO_CSV_SEP)");
         out.note("java    " + c.get("java") + "   sqlite " + c.get("sqlite"));
         String off = (String) c.get("off");
-        out.note("off     " + (off.isEmpty() ? "-" : off));
+        out.note("folgas  " + (off.isEmpty() ? "-" : off));
         String daily = (String) c.get("daily");
-        out.note("daily   " + (daily.isEmpty() ? "8" : daily) + " h/day");
-        for (Object s : (List<?>) c.get("nextOff")) out.note("day off " + s);
+        out.note("jornada " + (daily.isEmpty() ? "8" : daily) + " h/dia");
+        for (Object s : (List<?>) c.get("nextOff")) out.note("folga   " + s);
         String pick = in.text("empresa", String.valueOf(act.id()));
         if (!pick.isEmpty() && !pick.equals("-") && !pick.equals(String.valueOf(act.id()))) {
             if (pick.chars().allMatch(Character::isDigit)) {
@@ -563,18 +563,18 @@ public final class App {
         who = (String) c.get("who");
         off = (String) c.get("off");
         daily = (String) c.get("daily");
-        String w = in.text("user", who.isEmpty() ? "-" : who);
+        String w = in.text("usuário", who.isEmpty() ? "-" : who);
         svc.setConfig(w, null, false);
-        out.ok("user " + (w.equals("-") ? "-" : w));
-        String o = in.text("off", off.isEmpty() ? "-" : off);
-        svc.setConfig(null, o, false, s -> out.warn("off: '" + Str.cut(s, 24) + "'   ·   not a date, ignored"));
-        out.ok("off " + (o.equals("-") ? "-" : Holidays.extra().size() + " day(s)"));
-        String d = in.text("daily", daily.isEmpty() ? "8" : daily);
+        out.ok("usuário " + (w.equals("-") ? "-" : w));
+        String o = in.text("folgas", off.isEmpty() ? "-" : off);
+        svc.setConfig(null, o, false, s -> out.warn("folga: '" + Str.cut(s, 24) + "'   ·   não é data, ignorado"));
+        out.ok("folgas " + (o.equals("-") ? "-" : Holidays.extra().size() + " dia(s)"));
+        String d = in.text("jornada", daily.isEmpty() ? "8" : daily);
         try {
             svc.setConfig(null, null, d, false, s -> { });
-            out.ok("daily " + (d.equals("-") ? "8 (default)" : d + " h"));
+            out.ok("jornada " + (d.equals("-") ? "8 (padrão)" : d + " h"));
         } catch (Bad b) { out.bad(b.getMessage()); }
-        if (in.yes("vacuum the db?", false)) { svc.setConfig(null, null, true); out.ok("vacuumed"); }
+        if (in.yes("otimizar o banco?", false)) { svc.setConfig(null, null, true); out.ok("banco otimizado"); }
     }
 
     private String range(Map<String, Object> c) {
@@ -583,15 +583,15 @@ public final class App {
     }
 
     private void help() {
-        out.title("KEYS");
-        out.note("1 new   2 edit [id]   3 delete [id id.. | a | dd/mm]   4 list [n]");
-        out.note("5 sum   6 find [text]   7 pdf   8 xls   9 csv   d by date");
-        out.note("c config   f falta [dia | lista]   x clear screen   ? help   0 quit");
-        out.note("falta  f marks today, f 03/11/2026 that day, f lista lists them (banco de horas)");
-        out.note("by date  2026 (year) · 10/2026 · oct · oct 2026 · 01/10/2026 · today");
-        out.note("         4 2026 works the same way as d 2026");
-        out.note("dates  08/10 · 08/10/2026 · 2026-10-08 · 5oct · today · y · -3");
-        out.note("times  07:30 · 07h30 · 0730 · 8 · now          '-' clears a field");
-        out.note("db     " + svc.dbPath() + "   (PONTO_DB / --db=path)");
+        out.title("TECLAS");
+        out.note("1 novo  2 editar [id]   3 apagar [id id.. | a | dd/mm]   4 lista [n]");
+        out.note("5 soma  6 buscar [texto]   7 pdf   8 xls   9 csv   d por data");
+        out.note("c config   f falta [dia | lista]   x limpar tela   ? ajuda   0 sair");
+        out.note("falta  f marca hoje, f 03/11/2026 marca aquele dia, f lista lista (banco de horas)");
+        out.note("por data  2026 (ano) · 10/2026 · out · out 2026 · 01/10/2026 · hoje");
+        out.note("         4 2026 funciona do mesmo jeito que d 2026");
+        out.note("datas  08/10 · 08/10/2026 · 2026-10-08 · 5out · hoje · ontem · -3");
+        out.note("horas  07:30 · 07h30 · 0730 · 8 · agora       '-' limpa um campo");
+        out.note("banco  " + svc.dbPath() + "   (PONTO_DB / --db=path)");
     }
 }

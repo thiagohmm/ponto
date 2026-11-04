@@ -88,7 +88,7 @@ public final class Companies {
 
     private Company must(int id) {
         List<Company> r = rows("SELECT " + COLS + " FROM company WHERE id = ?", id);
-        if (r.isEmpty()) throw new Problema("no company with id " + id);
+        if (r.isEmpty()) throw new Problema("empresa " + id + " não existe");
         return r.getFirst();
     }
 

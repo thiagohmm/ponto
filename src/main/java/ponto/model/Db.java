@@ -166,15 +166,15 @@ public final class Db implements AutoCloseable {
                 if (ks.next()) return ks.getInt(1);
             }
         } catch (SQLException e) { throw new Problema(clean(e.getMessage())); }
-        throw new Problema("company seed");
+        throw new Problema("empresa inicial");
     }
 
     /** The id stored in cfg `company`. Always set after {@link #migrateCompanies}. */
     public int company() {
         String v = cfg("company");
-        if (v.isEmpty()) throw new Problema("no company");
+        if (v.isEmpty()) throw new Problema("sem empresa");
         try { return Integer.parseInt(v); }
-        catch (NumberFormatException e) { throw new Problema("company: " + v); }
+        catch (NumberFormatException e) { throw new Problema("empresa: " + v); }
     }
 
     private boolean hasColumn(String table, String col) {
@@ -220,7 +220,7 @@ public final class Db implements AutoCloseable {
             q.setString(1, k);
             q.setString(2, v);
             q.executeUpdate();
-        } catch (SQLException e) { throw new Problema("cfg: " + clean(e.getMessage())); }
+        } catch (SQLException e) { throw new Problema("configuração: " + clean(e.getMessage())); }
     }
 
     void exec(String sql) {

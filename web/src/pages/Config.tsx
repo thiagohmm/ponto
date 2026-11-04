@@ -126,7 +126,7 @@ export function ConfigPage() {
 
   return (
     <div className="card">
-      <h2>Preferências do workspace</h2>
+      <h2>Preferências do espaço de trabalho</h2>
       {err && <p role="alert" className="err">{err}</p>}
       {msg && <p role="status" className="ok">{msg}</p>}
       {cfg && (

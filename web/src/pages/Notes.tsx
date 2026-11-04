@@ -739,7 +739,7 @@ export function NotesPage() {
                   <button type="button" className="btn" onClick={() => bodyRef.current?.apply({ clear: true })}>limpar</button>
                 </div>
               )}
-              <button className="btn" onMouseDown={(e) => e.preventDefault()} onClick={insertTodo} title="inserir tarefa">Todo</button>
+              <button className="btn" onMouseDown={(e) => e.preventDefault()} onClick={insertTodo} title="inserir tarefa">Tarefa</button>
               <button className="btn" disabled={busy || !dirty} onClick={() => void persist()}>Salvar</button>
               <button className="btn danger" disabled={busy} onClick={() => void remove()}>apagar</button>
             </div>

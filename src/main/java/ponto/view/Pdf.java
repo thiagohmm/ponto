@@ -35,9 +35,9 @@ public final class Pdf {
     private static final float TOP = 800, BOT = 74, LEAD = 10;
 
     // column offsets from the left margin, and the width of the last one
-    private static final float[] X = {0, 34, 94, 120, 154, 188, 232, 276};
-    private static final float JW = W - 276;
-    private static final String[] HEAD = {"ID", "DATE", "DAY", "IN", "OUT", "DUR", "HOURS", "JUSTIFICATION"};
+    private static final float[] X = {0, 34, 94, 120, 162, 196, 238, 278};
+    private static final float JW = W - 278;
+    private static final String[] HEAD = {"ID", "DATA", "DIA", "ENTRADA", "SAÍDA", "DURAÇÃO", "HORAS", "JUSTIFICATIVA"};
 
     private static final PDFont REG = new PDType1Font(FontName.HELVETICA);
     private static final PDFont BOLD = new PDType1Font(FontName.HELVETICA_BOLD);
@@ -76,19 +76,19 @@ public final class Pdf {
         pg.gap(22);
         pg.text(0, r.h().title(), REG, 12);
         pg.gap(14);
-        pg.text(0, "period    " + r.h().periodo(), REG, 10);
+        pg.text(0, "período   " + r.h().periodo(), REG, 10);
         pg.gap(13);
-        pg.text(0, "user      " + dash(r.h().who()), REG, 10);
+        pg.text(0, "usuário   " + dash(r.h().who()), REG, 10);
         pg.gap(13);
-        pg.text(0, "company   " + dash(r.h().company()), REG, 10);
+        pg.text(0, "empresa   " + dash(r.h().company()), REG, 10);
         pg.gap(13);
-        pg.text(0, "database  " + r.h().db(), REG, 8);
+        pg.text(0, "banco     " + r.h().db(), REG, 8);
         pg.gap(11);
-        pg.text(0, "lines     " + r.lines().size() + "   incomplete  " + r.openLines(), REG, 10);
+        pg.text(0, "linhas    " + r.lines().size() + "   incompletas  " + r.openLines(), REG, 10);
         pg.gap(13);
         pg.text(0, "total     " + r.totalLabel() + "  (" + r.totalDec() + " h)", BOLD, 10);
         pg.gap(13);
-        pg.text(0, "generated " + r.h().generated(), REG, 8);
+        pg.text(0, "gerado    " + r.h().generated(), REG, 8);
         pg.gap(16);
         pg.rule();
         pg.gap(6);
@@ -105,28 +105,28 @@ public final class Pdf {
         pg.text(X[0], "TOTAL", BOLD, 9, b);
         pg.text(X[5], r.totalLabel(), BOLD, 9, b);
         pg.text(X[6], r.totalDec(), BOLD, 9, b);
-        pg.text(X[7], r.lines().size() + " lines"
-              + (r.openLines() > 0 ? "  |  " + r.openLines() + " incomplete" : ""), REG, 9, b);
+        pg.text(X[7], r.lines().size() + " linhas"
+               + (r.openLines() > 0 ? "  |  " + r.openLines() + " incompletas" : ""), REG, 9, b);
     }
 
     private static void summary(Page pg, Report r) throws IOException {
         pg.page();
         float[] sx = colX();
-        pg.text(0, "SUMMARY BY DAY", BOLD, 13);
+        pg.text(0, "RESUMO POR DIA", BOLD, 13);
         pg.gap(20);
         pg.text(0, "Relatório de pontos  |  " + r.h().periodo(), REG, 10);
         pg.gap(13);
-        pg.text(0, "user     " + (r.h().who().isEmpty() ? "-" : r.h().who()), REG, 10);
+        pg.text(0, "usuário   " + (r.h().who().isEmpty() ? "-" : r.h().who()), REG, 10);
         pg.gap(13);
-        pg.text(0, "company  " + dash(r.h().company()), REG, 10);
+        pg.text(0, "empresa   " + dash(r.h().company()), REG, 10);
         pg.gap(13);
-        pg.text(0, "generated " + r.h().generated(), REG, 8);
+        pg.text(0, "gerado    " + r.h().generated(), REG, 8);
         pg.gap(16);
         pg.rule();
         pg.gap(6);
-        String[] hd = {"DATE", "DAY", "LINES", "DUR"};
+        String[] hd = {"DATA", "DIA", "LINHAS", "DURAÇÃO"};
         for (int i = 0; i < hd.length; i++) pg.text(sx[i], hd[i], BOLD, 8);
-        pg.right("HOURS", BOLD, 8, pg.y + 4);
+        pg.right("HORAS", BOLD, 8, pg.y + 4);
         pg.gap(17);
         pg.rule();
         pg.gap(6);
@@ -177,7 +177,7 @@ public final class Pdf {
             float keep = y;
             y = 34;
             text(0, "ponto " + Ver.N + "  |  " + System.getProperty("user.name", ""), REG, 7);
-            text(X[7], "page " + no, REG, 7);
+            text(X[7], "página " + no, REG, 7);
             y = keep;
         }
 
@@ -247,8 +247,8 @@ public final class Pdf {
 
     /** The summary page columns: wide enough for the widest cell of each. */
     private static float[] colX() {
-        String[] hd = {"DATE", "DAY", "LINES", "DUR"};
-        String[] sm = {"15/05/2026", "MON", "88", "88:88"};
+        String[] hd = {"DATA", "DIA", "LINHAS", "DURAÇÃO"};
+        String[] sm = {"15/05/2026", "seg", "88", "88:88"};
         float[] sx = new float[hd.length];
         float acc = 0;
         for (int i = 0; i < hd.length; i++) {

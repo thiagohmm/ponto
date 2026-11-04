@@ -30,9 +30,9 @@ import org.apache.poi.ss.usermodel.Workbook;
  */
 public final class Xls {
 
-    private static final String[] COLS = {"ID", "DATE", "DAY", "IN", "OUT", "DURATION", "HOURS", "JUSTIFICATION"};
-    private static final String[] SCOLS = {"DATE", "DAY", "LINES", "DURATION", "HOURS"};
-    private static final int[] CW = {6, 11, 5, 6, 6, 9, 8, 62};
+    private static final String[] COLS = {"ID", "DATA", "DIA", "ENTRADA", "SAÍDA", "DURAÇÃO", "HORAS", "JUSTIFICATIVA"};
+    private static final String[] SCOLS = {"DATA", "DIA", "LINHAS", "DURAÇÃO", "HORAS"};
+    private static final int[] CW = {6, 11, 5, 8, 6, 9, 8, 62};
     private static final int[] SW = {11, 5, 7, 10, 8};
 
     public static byte[] write(Path f, Report r) {
@@ -79,27 +79,27 @@ public final class Xls {
     /** TOTAL under the table: every value in its own column, nothing spilled sideways. */
     private static void totalRow(Sheet sh, St st, String[] head, Report r, int at) {
         Row row = sh.createRow(at);
-        int lines = col(head, "LINES");
+        int lines = col(head, "LINHAS");
         for (int i = 0; i < head.length; i++) {
             if (i == 0) { cell(sh, row, i, "TOTAL", st.total); continue; }
-            if (head[i].equals("LINES")) { number(sh, row, i, r.lines().size(), st.totalNum); continue; }
-            if (head[i].equals("DURATION")) { cell(sh, row, i, r.totalLabel(), st.total); continue; }
-            if (head[i].equals("HOURS")) { cell(sh, row, i, r.totalDec(), st.total); continue; }
+            if (head[i].equals("LINHAS")) { number(sh, row, i, r.lines().size(), st.totalNum); continue; }
+            if (head[i].equals("DURAÇÃO")) { cell(sh, row, i, r.totalLabel(), st.total); continue; }
+            if (head[i].equals("HORAS")) { cell(sh, row, i, r.totalDec(), st.total); continue; }
             cell(sh, row, i, "", st.total);
         }
         if (r.openLines() > 0) {
-            cell(sh, sh.createRow(at + 1), 0, r.openLines() + " incomplete line(s): no pair, not counted", st.meta);
+            cell(sh, sh.createRow(at + 1), 0, r.openLines() + " linha(s) incompleta(s): sem par, fora da soma", st.meta);
         }
     }
 
     private static void title(Sheet sh, St st, Report r) {
         cell(sh, sh.createRow(0), 0, r.h().title(), st.big);
         cell(sh, sh.createRow(1), 0, r.h().periodo(), st.meta);
-        cell(sh, sh.createRow(2), 0, "user " + dash(r.h().who()) + "   ·   company " + dash(r.h().company())
-                + "   ·   database " + r.h().db(), st.meta);
+        cell(sh, sh.createRow(2), 0, "usuário " + dash(r.h().who()) + "   ·   empresa " + dash(r.h().company())
+                + "   ·   banco " + r.h().db(), st.meta);
         cell(sh, sh.createRow(3), 0, saldoLine(r), st.meta);
-        cell(sh, sh.createRow(4), 0, "lines " + r.lines().size() + "   ·   incomplete " + r.openLines(), st.meta);
-        cell(sh, sh.createRow(5), 0, "generated " + r.h().generated(), st.meta);
+        cell(sh, sh.createRow(4), 0, "linhas " + r.lines().size() + "   ·   incompletas " + r.openLines(), st.meta);
+        cell(sh, sh.createRow(5), 0, "gerado " + r.h().generated(), st.meta);
     }
 
     /** Banco de horas of the period: saldo, faltas when there are any, plan when still running. */

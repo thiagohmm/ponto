@@ -51,17 +51,17 @@ mv -f ponto-*.pdf ponto-*.xls ponto-*.csv "$out/"
 DB2="$out/off.db"
 PONTO_DB="$DB2" PONTO_USER=Ana "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP" ponto.Main < "$here/feed-off.txt" > "$out/off.txt" 2>&1
 off_ok=yes
-for s in "!   12/10/2026  MON   holiday: Our Lady of Aparecida" \
-         "!   17/10/2026  SAT   weekend" \
-         "!   24/12/2026  THU   optional: Christmas Eve" \
-         "matching  12/10/2026   ·   1 record(s)" \
-         "total  4:00   4.00 h   ·   1 line(s)" \
+for s in "!   12/10/2026  seg   feriado: Nossa Senhora Aparecida" \
+         "!   17/10/2026  sáb   fim de semana" \
+         "!   24/12/2026  qui   facultativo: Véspera de Natal" \
+         "coincidência  12/10/2026   ·   1 registro(s)" \
+         "total  4:00   4.00 h   ·   1 linha(s)" \
          "ok  #1  12/10/2026  08:00-12:00  4:00"; do
     grep -qF -- "$s" "$out/off.txt" || { off_ok=no; print -u2 "x   missing: $s"; }
 done
 # `c config` lists the next days off from today on, so the exact dates drift
 # with the calendar: count them instead of fixing them.
-if [ "$(grep -cE '^    day off [0-9]{2}/[0-9]{2}/[0-9]{4}' "$out/off.txt")" -lt 4 ]; then
+if [ "$(grep -cE '^    folga   [0-9]{2}/[0-9]{2}/[0-9]{4}' "$out/off.txt")" -lt 4 ]; then
     off_ok=no
     print -u2 "x   config did not list the next days off"
 fi

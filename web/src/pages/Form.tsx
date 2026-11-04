@@ -136,7 +136,7 @@ export function FormPage() {
       {!editing && open && (
         <label className="row" style={{ marginTop: 12 }}>
           <input type="checkbox" checked={closeOpen} onChange={(e) => setCloseOpen(e.target.checked)} />
-          Fechar o aberto #{open.id} (in {open.tin})
+          Fechar o aberto #{open.id} (entrada {open.tin})
         </label>
       )}
 

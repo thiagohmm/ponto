@@ -152,7 +152,7 @@ public final class Repo {
 
     public Entry byId(int id) {
         List<Entry> r = rows("SELECT " + COLS + " FROM ponto WHERE id = ? AND company_id = ?", id, cid());
-        if (r.isEmpty()) throw new Problema("no record with id " + id);
+        if (r.isEmpty()) throw new Problema("registro " + id + " não existe");
         return r.getFirst();
     }
 
@@ -211,18 +211,18 @@ public final class Repo {
     public void update(Entry e) {
         int n = write("UPDATE ponto SET dia=?, tin=?, tout=?, just=? WHERE id=? AND company_id=?",
                       e.dia(), e.tin(), e.tout(), e.just(), e.id(), cid());
-        if (n == 0) throw new Problema("no record with id " + e.id());
+        if (n == 0) throw new Problema("registro " + e.id() + " não existe");
     }
 
     /** Clear just the in/out pair (keeps the day + justification). */
     public void clearTimes(Entry e) {
         int n = write("UPDATE ponto SET tin=NULL, tout=NULL WHERE id=? AND company_id=?", e.id(), cid());
-        if (n == 0) throw new Problema("no record with id " + e.id());
+        if (n == 0) throw new Problema("registro " + e.id() + " não existe");
     }
 
     public void delete(int id) {
         int n = write("DELETE FROM ponto WHERE id=? AND company_id=?", id, cid());
-        if (n == 0) throw new Problema("no record with id " + id);
+        if (n == 0) throw new Problema("registro " + id + " não existe");
     }
 
     /** Delete every record of a day (used by the day editor). */

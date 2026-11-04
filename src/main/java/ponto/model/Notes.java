@@ -56,7 +56,7 @@ public final class Notes {
         synchronized (lock) {
             List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ? AND company_id = ?",
                                           id, cid()));
-            if (r.isEmpty()) throw new Problema("no note with id " + id);
+            if (r.isEmpty()) throw new Problema("nota " + id + " não existe");
             return r.getFirst();
         }
     }
@@ -113,7 +113,7 @@ public final class Notes {
         synchronized (lock) {
             write("DELETE FROM note_tag WHERE note_id=?", id);
             int n = write("DELETE FROM note WHERE id=? AND company_id=?", id, cid());
-            if (n == 0) throw new Problema("no note with id " + id);
+            if (n == 0) throw new Problema("nota " + id + " não existe");
         }
     }
 
@@ -158,7 +158,7 @@ public final class Notes {
         synchronized (lock) {
             Tag cur = mustTag(id);
             String n = name == null ? cur.name() : name.trim();
-            if (n.isEmpty()) throw new Bad("tag name required");
+            if (n.isEmpty()) throw new Bad("nome da tag obrigatório");
             String c = color == null || color.isBlank() ? cur.color() : colorOf(color);
             write("UPDATE tag SET name=?, color=? WHERE id=? AND company_id=?", n, c, id, cid());
             return mustTag(id);
@@ -194,7 +194,7 @@ public final class Notes {
         synchronized (lock) {
             mustFolder(id);
             String n = name == null ? "" : name.trim();
-            if (n.isEmpty()) throw new Bad("folder name required");
+            if (n.isEmpty()) throw new Bad("nome da pasta obrigatório");
             write("UPDATE folder SET name=? WHERE id=? AND company_id=?", n, id, cid());
             return mustFolder(id);
         }
@@ -205,11 +205,11 @@ public final class Notes {
             mustFolder(id);
             Integer p = folder(parent);
             if (p != null) {
-                if (p == id) throw new Bad("folder inside itself");
+                if (p == id) throw new Bad("pasta dentro de si mesma");
                 mustFolder(p);
                 Integer walk = p;
                 while (walk != null) {
-                    if (walk == id) throw new Bad("folder inside itself");
+                    if (walk == id) throw new Bad("pasta dentro de si mesma");
                     walk = mustFolder(walk).parent();
                 }
             }
@@ -231,13 +231,13 @@ public final class Notes {
     private Note must(int id) {
         List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ? AND company_id = ?",
                                       id, cid()));
-        if (r.isEmpty()) throw new Problema("no note with id " + id);
+        if (r.isEmpty()) throw new Problema("nota " + id + " não existe");
         return r.getFirst();
     }
 
     private Tag mustTag(int id) {
         List<Tag> r = tags("SELECT " + TCOLS + " FROM tag WHERE id = ? AND company_id = ?", id, cid());
-        if (r.isEmpty()) throw new Problema("no tag with id " + id);
+        if (r.isEmpty()) throw new Problema("tag " + id + " não existe");
         return r.getFirst();
     }
 
@@ -262,7 +262,7 @@ public final class Notes {
 
     private Folder mustFolder(int id) {
         List<Folder> r = folders("SELECT " + FCOLS + " FROM folder WHERE id = ? AND company_id = ?", id, cid());
-        if (r.isEmpty()) throw new Problema("no folder with id " + id);
+        if (r.isEmpty()) throw new Problema("pasta " + id + " não existe");
         return r.getFirst();
     }
 

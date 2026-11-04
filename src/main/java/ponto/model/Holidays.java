@@ -47,7 +47,7 @@ public final class Holidays {
 
     /** One day off: what it is called, and whether the whole day is off. */
     record Off(String label, boolean optional) {
-        String text() { return (optional ? "optional: " : "holiday: ") + label; }
+        String text() { return (optional ? "facultativo: " : "feriado: ") + label; }
     }
 
     /** A fixed date the XML has to be patched with: the date, the name, the tier. */
@@ -57,9 +57,9 @@ public final class Holidays {
 
     /** Days the BR XML does not have. */
     private static final List<Fix> MISSING = List.of(
-        new Fix(12, 26, "Boxing Day", false),                   // national day off, not in the XML
-        new Fix(12, 24, "Christmas Eve", true),                 // optional day off, city decree
-        new Fix(12, 31, "New Year's Eve", true));               // optional day off, city decree
+        new Fix(12, 26, "Confraternização Universal", false),  // national day off, not in the XML
+        new Fix(12, 24, "Véspera de Natal", true),             // optional day off, city decree
+        new Fix(12, 31, "Véspera de Ano Novo", true));         // optional day off, city decree
 
     /** jollyday says PUBLIC; the city decree lists these as facultative. */
     private static final List<String> OPTIONAL_KEYS = List.of("christian.CARNIVAL", "christian.ASH_WEDNESDAY");
@@ -69,29 +69,29 @@ public final class Holidays {
 
     /** Names on the screen: jollyday's are long and one is broken ("Fiéis Defuntos"). */
     private static final Map<String, String> NAME = Map.ofEntries(
-        Map.entry("NEW_YEAR", "New Year's Day"),
-        Map.entry("FOUNDATION", "São Paulo founded (city)"),
-        Map.entry("christian.CARNIVAL", "Carnival Tuesday"),
-        Map.entry("christian.ASH_WEDNESDAY", "Ash Wednesday, until 12:00"),
-        Map.entry("christian.GOOD_FRIDAY", "Good Friday"),
-        Map.entry("christian.EASTER", "Easter Sunday"),
+        Map.entry("NEW_YEAR", "Confraternização Universal"),
+        Map.entry("FOUNDATION", "Fundação de São Paulo (cidade)"),
+        Map.entry("christian.CARNIVAL", "Terça-feira de Carnaval"),
+        Map.entry("christian.ASH_WEDNESDAY", "Quarta-feira de Cinzas (até 12h)"),
+        Map.entry("christian.GOOD_FRIDAY", "Sexta-feira Santa"),
+        Map.entry("christian.EASTER", "Domingo de Páscoa"),
         Map.entry("TIRADENTES", "Tiradentes"),
-        Map.entry("LABOUR_DAY", "Labour Day"),
+        Map.entry("LABOUR_DAY", "Dia do Trabalho"),
         Map.entry("christian.CORPUS_CHRISTI", "Corpus Christi"),
-        Map.entry("CONST_REVOLUTION", "Revolution of 1932 (São Paulo)"),
-        Map.entry("INDEPENDENCE_DAY", "Independence Day"),
-        Map.entry("APARECIDA", "Our Lady of Aparecida"),
-        Map.entry("ALL_SOULS", "All Saints' Day"),
-        Map.entry("NATIONAL_DAY", "Republic Proclamation"),
-        Map.entry("NATIONAL_DAY_OF_ZUMBI_AND_BLACK_AWARENESS", "Black Awareness Day"),
-        Map.entry("BLACK_AWARENESS", "Black Awareness Day (São Paulo)"),
-        Map.entry("CHRISTMAS", "Christmas"));
+        Map.entry("CONST_REVOLUTION", "Revolução de 1932 (São Paulo)"),
+        Map.entry("INDEPENDENCE_DAY", "Independência"),
+        Map.entry("APARECIDA", "Nossa Senhora Aparecida"),
+        Map.entry("ALL_SOULS", "Finados"),
+        Map.entry("NATIONAL_DAY", "Proclamação da República"),
+        Map.entry("NATIONAL_DAY_OF_ZUMBI_AND_BLACK_AWARENESS", "Dia da Consciência Negra"),
+        Map.entry("BLACK_AWARENESS", "Dia da Consciência Negra (São Paulo)"),
+        Map.entry("CHRISTMAS", "Natal"));
 
     /** "" on a working day; otherwise what to say after the date. */
     public static String off(LocalDate d) {
         Off o = of(d.getYear()).get(d);
-        if (o == null) return weekend(d) ? "weekend" : "";
-        return o.text() + (weekend(d) ? "   ·   weekend" : "");
+        if (o == null) return weekend(d) ? "fim de semana" : "";
+        return o.text() + (weekend(d) ? "   ·   fim de semana" : "");
     }
 
     static boolean weekend(LocalDate d) {
@@ -127,8 +127,8 @@ public final class Holidays {
                 new Off(NAME.getOrDefault(h.getPropertiesKey(), h.getDescription()), OPTIONAL_KEYS.contains(h.getPropertiesKey())));
         }
         for (Fix f : MISSING) t.putIfAbsent(f.in(year), new Off(f.label(), f.optional()));
-        if (easter != null) t.putIfAbsent(easter.minusDays(CARNIVAL_MONDAY_BEFORE_EASTER), new Off("Carnival Monday", true));
-        for (LocalDate d : EXTRA) t.put(d, new Off("your day off", false));
+        if (easter != null) t.putIfAbsent(easter.minusDays(CARNIVAL_MONDAY_BEFORE_EASTER), new Off("Segunda-feira de Carnaval", true));
+        for (LocalDate d : EXTRA) t.put(d, new Off("sua folga", false));
         Map<LocalDate, Off> made = Collections.unmodifiableSortedMap(t);
         YEARS.put(year, made);
         return made;

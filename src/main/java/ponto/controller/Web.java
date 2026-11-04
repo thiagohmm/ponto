@@ -131,7 +131,7 @@ public final class Web {
         if (range) {
             LocalDate from = Service.parseDate(fromRaw, null);
             LocalDate to = Service.parseDate(toRaw, null);
-            if (from == null || to == null) throw new Bad("from/to: use a date like 2026-09-01");
+            if (from == null || to == null) throw new Bad("from/to: use uma data como 2026-09-01");
             if (to.isBefore(from)) { LocalDate x = from; from = to; to = x; }
             if (!isBlank(q)) {
                 var result = svc.filteredRange(from, to, q, n, skip);
@@ -199,7 +199,7 @@ public final class Web {
 
     private void deleteDay(Context ctx) {
         LocalDate d = Service.parseDate(ctx.pathParam("dia"), null);
-        if (d == null) throw new Bad("date required");
+        if (d == null) throw new Bad("data obrigatória");
         int n = svc.deleteDay(d);
         ctx.json(Map.of("ok", true, "deleted", n, "dia", Str.d(d)));
     }
@@ -259,7 +259,7 @@ public final class Web {
         if (raw == null || raw.isBlank()) ym = YearMonth.now();
         else {
             try { ym = YearMonth.parse(raw); }
-            catch (RuntimeException e) { throw new Bad("ym: '" + raw + "'  (YYYY-MM)"); }
+            catch (RuntimeException e) { throw new Bad("mês: '" + raw + "'  (AAAA-MM)"); }
         }
         Map<String, Object> out = new LinkedHashMap<>(Json.jsonBank(svc.bank(ym)));
         out.put("days", svc.bankDays(ym).stream().map(Json::jsonBankDay).toList());
@@ -270,7 +270,7 @@ public final class Web {
     /** Mark or clear the whole-day falta flag (`{ "on": true|false }`). */
     private void falta(Context ctx) {
         LocalDate d = Service.parseDate(ctx.pathParam("dia"), null);
-        if (d == null) throw new Bad("date required");
+        if (d == null) throw new Bad("data obrigatória");
         FaltaReq r = ctx.bodyAsClass(FaltaReq.class);
         boolean on = Boolean.TRUE.equals(r.on());
         String warn = on ? svc.faltaWarn(d) : "";
@@ -287,7 +287,7 @@ public final class Web {
     /** Mark or clear the whole-day "dia normal" flag (`{ "on": true|false }`). */
     private void normal(Context ctx) {
         LocalDate d = Service.parseDate(ctx.pathParam("dia"), null);
-        if (d == null) throw new Bad("date required");
+        if (d == null) throw new Bad("data obrigatória");
         FlagReq r = ctx.bodyAsClass(FlagReq.class);
         boolean on = Boolean.TRUE.equals(r.on());
         String warn = on ? svc.normalWarn(d) : "";
@@ -303,7 +303,7 @@ public final class Web {
 
     private void export(Context ctx) {
         String kind = ctx.pathParam("kind").toLowerCase();
-        if (!List.of("pdf", "xls", "csv").contains(kind)) throw new Bad("export: pdf, xls or csv");
+        if (!List.of("pdf", "xls", "csv").contains(kind)) throw new Bad("exportar: pdf, xls ou csv");
         LocalDate from = range(ctx, "from", true);
         LocalDate to = range(ctx, "to", false);
         if (to.isBefore(from)) { LocalDate x = from; from = to; to = x; }
@@ -352,7 +352,7 @@ public final class Web {
 
     private void companyActive(Context ctx) {
         CompanyReq r = ctx.bodyAsClass(CompanyReq.class);
-        if (r.id() == null) throw new Bad("id required");
+        if (r.id() == null) throw new Bad("id obrigatório");
         Company c = svc.activate(r.id());
         Map<String, Object> out = new LinkedHashMap<>(Json.json(c));
         out.put("activeId", c.id());
@@ -454,13 +454,13 @@ public final class Web {
         svc.notes().byId(id);
         var up = ctx.uploadedFile("file");
         if (up == null || up.filename() == null || up.filename().isBlank())
-            throw new Bad("file: send the multipart field 'file'");
-        if (up.size() == 0) throw new Bad("file: empty file");
+            throw new Bad("arquivo: envie o campo multipart 'file'");
+        if (up.size() == 0) throw new Bad("arquivo: arquivo vazio");
         NoteFile f;
         try {
             f = svc.files().add(id, up.filename(), up.contentType(), up.content().readAllBytes());
         } catch (java.io.IOException e) {
-            throw new Problema("file: " + e.getMessage());
+            throw new Problema("arquivo: " + e.getMessage());
         }
         ctx.status(HttpStatus.CREATED).json(Json.json(f));
     }
@@ -469,7 +469,7 @@ public final class Web {
         int noteId = ctx.pathParamAsClass("id", Integer.class).get();
         int fid = ctx.pathParamAsClass("fid", Integer.class).get();
         NoteFile f = svc.files().must(fid);
-        if (f.noteId() != noteId) throw new Bad("file " + fid + " is not on note " + noteId);
+        if (f.noteId() != noteId) throw new Bad("o arquivo " + fid + " não está na nota " + noteId);
         byte[] data = svc.files().download(fid);
         String name = f.name().replace("\"", "");
         String enc = java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
@@ -490,7 +490,7 @@ public final class Web {
         int noteId = ctx.pathParamAsClass("id", Integer.class).get();
         int fid = ctx.pathParamAsClass("fid", Integer.class).get();
         NoteFile f = svc.files().must(fid);
-        if (f.noteId() != noteId) throw new Bad("file " + fid + " is not on note " + noteId);
+        if (f.noteId() != noteId) throw new Bad("o arquivo " + fid + " não está na nota " + noteId);
         svc.files().remove(fid);
         ctx.json(Map.of("ok", true, "id", fid));
     }
@@ -502,7 +502,7 @@ public final class Web {
      */
     private byte[] write(String kind, LocalDate from, LocalDate to) {
         Report r = svc.report(from, to);
-        if (r.lines().isEmpty()) throw new Problema("nothing between " + new Period(from, to).label());
+        if (r.lines().isEmpty()) throw new Problema("nada entre " + new Period(from, to).label());
         try {
             Path tmp = java.nio.file.Files.createTempFile("ponto-", "." + kind);
             try {
@@ -510,13 +510,13 @@ public final class Web {
                     case "csv" -> Csv.write(tmp, r);
                     case "xls" -> Xls.write(tmp, r);
                     case "pdf" -> Pdf.write(tmp, r);
-                    default -> throw new Bad("export: " + kind);
+                    default -> throw new Bad("exportar: " + kind);
                 };
             } finally {
                 java.nio.file.Files.deleteIfExists(tmp);
             }
         } catch (java.io.IOException e) {
-            throw new Problema("export: " + e.getMessage());
+            throw new Problema("exportar: " + e.getMessage());
         }
     }
 
@@ -524,7 +524,7 @@ public final class Web {
         String v = ctx.queryParam(name);
         if (v == null || v.isBlank()) return def;
         try { return Math.max(0, Integer.parseInt(v)); }
-        catch (NumberFormatException e) { throw new Bad(name + ": '" + v + "'"); }
+        catch (NumberFormatException e) { throw new Bad("valor inválido para " + name + ": '" + v + "'"); }
     }
 
     private LocalDate range(Context ctx, String name, boolean start) {

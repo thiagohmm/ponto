@@ -9,9 +9,9 @@ import java.util.List;
 /** Small text/number formatting helpers (pt-BR, ASCII-safe widths). */
 public final class Str {
 
-    static final String[] D3 = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-    static final String[] M3 = {"jan", "feb", "mar", "abr", "mai", "jun",
-                                "jul", "ago", "set", "oct", "nov", "dec"};
+    static final String[] D3 = {"dom", "seg", "ter", "qua", "qui", "sex", "sáb"};
+    static final String[] M3 = {"jan", "fev", "mar", "abr", "mai", "jun",
+                                "jul", "ago", "set", "out", "nov", "dez"};
     static final String PAD = "                                                  ";
 
     /** A time or an empty string when null. */
@@ -22,7 +22,7 @@ public final class Str {
         return v == null ? "" : p2(v.getDayOfMonth()) + "/" + p2(v.getMonthValue()) + "/" + v.getYear();
     }
 
-    /** A date as dd mmm (e.g. "05 oct"). */
+    /** A date as dd mmm (e.g. "05 out"). */
     static String dm(LocalDate v) {
         return v == null ? "" : p2(v.getDayOfMonth()) + " " + M3[v.getMonthValue() - 1];
     }

@@ -63,7 +63,7 @@ public final class Files {
     public NoteFile must(int id) {
         synchronized (lock) {
             List<NoteFile> r = rows("SELECT " + COLS + " FROM note_file WHERE id = ?", id);
-            if (r.isEmpty()) throw new Problema("no file with id " + id);
+            if (r.isEmpty()) throw new Problema("arquivo " + id + " não existe");
             return r.getFirst();
         }
     }
@@ -75,7 +75,7 @@ public final class Files {
             NoteFile f = must(id);
             byte[] data = s3.get(f.key());
             if (data.length != f.size())
-                throw new Problema("file " + id + " is not the size it was stored with");
+                throw new Problema("o arquivo " + id + " não tem o tamanho com que foi salvo");
             return data;
         }
     }
@@ -85,7 +85,7 @@ public final class Files {
             NoteFile f = must(id);
             if (s3 != null) s3.delete(f.key());
             int n = write("DELETE FROM note_file WHERE id=?", id);
-            if (n == 0) throw new Problema("no file with id " + id);
+            if (n == 0) throw new Problema("arquivo " + id + " não existe");
         }
     }
 
@@ -100,7 +100,7 @@ public final class Files {
 
     private void requireS3() {
         if (s3 == null)
-            throw new Problema("storage: " + Minio.ENDPOINT + " is not set");
+            throw new Problema("armazenamento: " + Minio.ENDPOINT + " não está definido");
     }
 
     private List<NoteFile> rows(String sql, Object... args) {

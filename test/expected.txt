@@ -1,26 +1,26 @@
 == PDF ==
 pages=2
-ponto 1.0.0  |  USER page 1
+ponto 1.0.0  |  USER página 1
 RELATÓRIO DE PONTOS
 Relatório de pontos
-period    20/05/2026 - 20/05/2026
-user      Ana
-company   Empresa
-database  TESTDIR/…
-lines     3   incomplete  1
+período   20/05/2026 - 20/05/2026
+usuário   Ana
+empresa   Empresa
+banco     TESTDIR/…
+linhas    3   incompletas  1
 total     0:45  (0.75 h)
-ID DATE DAY IN OUT DUR HOURS JUSTIFICATION
-1 20/05/2026 WED note trabalho remoto
-2 20/05/2026 WED 08:00 open
-3 20/05/2026 WED 08:30 09:15 0:45 0.75 medico
-TOTAL 0:45 0.75 3 lines  |  1 incomplete
-ponto 1.0.0  |  USER page 2
-SUMMARY BY DAY
+ID DATA DIA ENTRADA SAÍDA DURAÇÃO HORAS JUSTIFICATIVA
+1 20/05/2026 qua note trabalho remoto
+2 20/05/2026 qua 08:00 open
+3 20/05/2026 qua 08:30 09:15 0:45 0.75 medico
+TOTAL 0:45 0.75 3 linhas  |  1 incompletas
+ponto 1.0.0  |  USER página 2
+RESUMO POR DIA
 Relatório de pontos  |  20/05/2026 - 20/05/2026
-user     Ana
-company  Empresa
-DATE DAY LINES DUR HOURS
-20/05/2026 WED 3 0:45 0.75
+usuário   Ana
+empresa   Empresa
+DATA DIA LINHAS DURAÇÃO HORAS
+20/05/2026 qua 3 0:45 0.75
 TOTAL 3 0:45 0.75
 Saldo do período  -7:15
 
@@ -29,36 +29,36 @@ magic=xls (OLE + BIFF8)
 --- REGISTRO ---
   Relatório de pontos |
   20/05/2026 - 20/05/2026 |
-  user Ana   ·   company Empresa   ·   database TESTDIR/…
+  usuário Ana   ·   empresa Empresa   ·   banco TESTDIR/…
   saldo do período -7:15 |
-  lines 3   ·   incomplete 1 |
-  ID | DATE | DAY | IN | OUT | DURATION | HOURS | JUSTIFICATION |
-  1 | 20/05/2026 | WED |  |  | note |  | trabalho remoto |
-  2 | 20/05/2026 | WED | 08:00 |  | open |  |  |
-  3 | 20/05/2026 | WED | 08:30 | 09:15 | 0:45 | 0.75 | medico |
+  linhas 3   ·   incompletas 1 |
+  ID | DATA | DIA | ENTRADA | SAÍDA | DURAÇÃO | HORAS | JUSTIFICATIVA |
+  1 | 20/05/2026 | qua |  |  | note |  | trabalho remoto |
+  2 | 20/05/2026 | qua | 08:00 |  | open |  |  |
+  3 | 20/05/2026 | qua | 08:30 | 09:15 | 0:45 | 0.75 | medico |
   TOTAL |  |  |  |  | 0:45 | 0.75 |  |
-  1 incomplete line(s): no pair, not counted |
+  1 linha(s) incompleta(s): sem par, fora da soma |
 --- RESUMO ---
   Relatório de pontos |
   20/05/2026 - 20/05/2026 |
-  user Ana   ·   company Empresa   ·   database TESTDIR/…
+  usuário Ana   ·   empresa Empresa   ·   banco TESTDIR/…
   saldo do período -7:15 |
-  lines 3   ·   incomplete 1 |
-  DATE | DAY | LINES | DURATION | HOURS |
-  20/05/2026 | WED | 3 | 0:45 | 0.75 |
+  linhas 3   ·   incompletas 1 |
+  DATA | DIA | LINHAS | DURAÇÃO | HORAS |
+  20/05/2026 | qua | 3 | 0:45 | 0.75 |
   TOTAL |  | 3 | 0:45 | 0.75 |
-  1 incomplete line(s): no pair, not counted |
+  1 linha(s) incompleta(s): sem par, fora da soma |
 == CSV ==
-ID;DIA;DIA_3L;IN;OUT;DURACAO;HORAS;JUSTIFICACAO
-1;20/05/2026;WED;;;note;;trabalho remoto
-2;20/05/2026;WED;08:00;;open;;
-3;20/05/2026;WED;08:30;09:15;0:45;0.75;medico
-TOTAL;;;;;0:45;0.75;3 lines
-User;Ana;;;;;;
-Company;Empresa;;;;;;
-Period;20/05/2026 - 20/05/2026;;;;;;
-Days;1;;;;;;
+ID;DATA;DIA;ENTRADA;SAIDA;DURACAO;HORAS;JUSTIFICACAO
+1;20/05/2026;qua;;;note;;trabalho remoto
+2;20/05/2026;qua;08:00;;open;;
+3;20/05/2026;qua;08:30;09:15;0:45;0.75;medico
+TOTAL;;;;;0:45;0.75;3 linhas
+Usuário;Ana;;;;;;
+Empresa;Empresa;;;;;;
+Período;20/05/2026 - 20/05/2026;;;;;;
+Dias;1;;;;;;
 Total;0:45 (0.75 h);;;;;;
-Incomplete;1;;;;;;
-Database;TESTDIR/…
-saldo;-7:15;;;;;;
+Incompletas;1;;;;;;
+Banco;TESTDIR/…
+Saldo;-7:15;;;;;;

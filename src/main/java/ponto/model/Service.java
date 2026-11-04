@@ -142,7 +142,7 @@ public final class Service {
 
     void assertOk(Entry e, int skip, boolean confirmMidnight, boolean confirmOverlap) {
         Warn w = inspectLocked(e, skip);
-        if (w.sameTime()) throw new Bad("in = out");
+        if (w.sameTime()) throw new Bad("entrada = saída");
         if (w.midnight() && !confirmMidnight)
             throw new NeedConfirm("midnight", "cruza meia-noite (" + w.midnightLabel() + ")");
         if (w.overlap() != null && !confirmOverlap) {
@@ -182,8 +182,8 @@ public final class Service {
             Entry e = repo.byId(id);
             String j = just == null ? "" : just;
             Entry now = new Entry(e.id(), dia, tin, tout, j, e.crea());
-            if (now.open() && now.just().isEmpty()) throw new Bad("a half line needs a justification");
-            if (now.closed() && now.min() == 0) throw new Bad("in = out");
+            if (now.open() && now.just().isEmpty()) throw new Bad("linha incompleta precisa de justificativa");
+            if (now.closed() && now.min() == 0) throw new Bad("entrada = saída");
             assertOk(now, now.id(), confirmMidnight, confirmOverlap);
             if (tin == null && tout == null) repo.clearTimes(now);
             else repo.update(now);
@@ -390,19 +390,19 @@ public final class Service {
         int mins;
         if (s.contains(":")) {
             String[] p = s.split(":");
-            if (p.length != 2) throw new Bad("daily: " + raw);
+            if (p.length != 2) throw new Bad("jornada: '" + raw + "'");
             int h = Integer.parseInt(p[0].trim());
             int m = Integer.parseInt(p[1].trim());
-            if (m >= 60) throw new Bad("daily: " + raw);
+            if (m >= 60) throw new Bad("jornada: '" + raw + "'");
             mins = h * 60 + m;
         } else {
             double v;
             try { v = Double.parseDouble(s); }
-            catch (NumberFormatException e) { throw new Bad("daily: " + raw); }
-            if (v < 0) throw new Bad("daily: " + raw);
+            catch (NumberFormatException e) { throw new Bad("jornada: '" + raw + "'"); }
+            if (v < 0) throw new Bad("jornada: '" + raw + "'");
             mins = (int) Math.round(v * 60.0);
         }
-        if (mins < 30 || mins > 24 * 60) throw new Bad("daily: " + raw);
+        if (mins < 30 || mins > 24 * 60) throw new Bad("jornada: '" + raw + "'");
         return mins;
     }
 

@@ -25,7 +25,7 @@ public final class Csv {
         return (c == ',' || c == ';' || c == '\t') ? c : ';';
     }
 
-    private static final String[] HEAD = {"ID", "DIA", "DIA_3L", "IN", "OUT", "DURACAO", "HORAS", "JUSTIFICACAO"};
+    private static final String[] HEAD = {"ID", "DATA", "DIA", "ENTRADA", "SAIDA", "DURACAO", "HORAS", "JUSTIFICACAO"};
 
     /** Renders and writes the report; returns the file content. */
     public static byte[] write(Path f, Report r) {
@@ -34,15 +34,15 @@ public final class Csv {
         for (Entry e : r.lines()) b.append(line(row(e)));
         b.append(line(total(r)));
         b.append('\n');
-        b.append(line(kv("User", r.h().who())));
-        b.append(line(kv("Company", r.h().company())));
-        b.append(line(kv("Period", r.h().periodo())));
-        b.append(line(kv("Days", "" + r.summary().size())));
+        b.append(line(kv("Usuário", r.h().who())));
+        b.append(line(kv("Empresa", r.h().company())));
+        b.append(line(kv("Período", r.h().periodo())));
+        b.append(line(kv("Dias", "" + r.summary().size())));
         b.append(line(kv("Total", r.totalLabel() + " (" + Str.n(r.totalMin() / 60.0) + " h)")));
-        b.append(line(kv("Incomplete", "" + r.openLines())));
-        b.append(line(kv("Generated", r.h().generated())));
-        b.append(line(kv("Database", r.h().db())));
-        b.append(line(kv("saldo", r.saldoLabel())));
+        b.append(line(kv("Incompletas", "" + r.openLines())));
+        b.append(line(kv("Gerado", r.h().generated())));
+        b.append(line(kv("Banco", r.h().db())));
+        b.append(line(kv("Saldo", r.saldoLabel())));
 
         byte[] out = b.toString().getBytes(StandardCharsets.UTF_8);
         try { Files.write(f, out); }
@@ -62,7 +62,7 @@ public final class Csv {
         z[0] = "TOTAL";
         z[5] = r.totalLabel();
         z[6] = Str.n(r.totalMin() / 60.0);
-        z[7] = "" + r.lines().size() + " lines";
+        z[7] = "" + r.lines().size() + " linhas";
         return z;
     }
 
