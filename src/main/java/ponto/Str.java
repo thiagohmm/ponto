@@ -9,9 +9,9 @@ import java.util.List;
 /** Small text/number formatting helpers (pt-BR, ASCII-safe widths). */
 public final class Str {
 
-    static final String[] D3 = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-    static final String[] M3 = {"jan", "feb", "mar", "abr", "mai", "jun",
-                                "jul", "ago", "set", "oct", "nov", "dec"};
+    static final String[] D3 = {"DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"};
+    static final String[] M3 = {"jan", "fev", "mar", "abr", "mai", "jun",
+                                "jul", "ago", "set", "out", "nov", "dez"};
     static final String PAD = "                                                  ";
 
     /** A time or an empty string when null. */

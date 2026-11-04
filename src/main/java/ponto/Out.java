@@ -2,7 +2,7 @@ package ponto;
 
 import java.io.PrintStream;
 
-/** Terminal rendering: colour only when attached to a real TTY. */
+/** Renderização de terminal: cor apenas quando attached to a real TTY. */
 final class Out {
 
     static final boolean TTY = System.console() != null;
@@ -22,7 +22,7 @@ final class Out {
     private static final String RULE = "-".repeat(56);
 
     private final PrintStream ps = System.out;
-    /** The screen is wiped once, for the first menu only. */
+    /** A tela é wipeada uma vez, para o primeiro menu apenas. */
     private boolean painted = false;
 
     static String dim(String s) { return COLOR ? DIM + s + R : s; }
@@ -35,9 +35,9 @@ final class Out {
     void blank() { ps.println(); }
 
     /**
-     * The menu block. It clears the screen only on the first paint: the menu comes
+     * O bloco do menu. Ele clear a tela apenas na first paint: o menu vem
      * back straight after every key, with no pause in between, so clearing on every
-     * repaint erased LIST / SUM / FIND before there was any chance to read them.
+     * repaint erased LIST / SOMA / BUSCAR before there was any chance to read them.
      * Later repaints just leave a blank line, so what the key printed stays above
      * the menu and in the scrollback.
      */
@@ -46,18 +46,18 @@ final class Out {
         painted = true;
         rule();
         ps.println("  " + bold("P O N T O"));
-        ps.println("  " + dim(name.isEmpty() ? "no user" : name)
+        ps.println("  " + dim(name.isEmpty() ? "sem usuário" : name)
                    + " ".repeat(Math.max(1, 22 - name.length()))
-                   + dim(records + " records"));
-        ps.println("  " + dim("this month " + Dur.hm(mins) + "   " + openNote));
+                   + dim(records + " registros"));
+        ps.println("  " + dim("este mês " + Dur.hm(mins) + "   " + openNote));
         ps.println("  " + dim(dbPath));
         rule();
         // four keys per row, never wider than the rule above, so nothing can be
         // clipped or wrapped away on a narrow terminal
-        ps.println("  " + bold("1") + " new     " + bold("2") + " edit    " + bold("3") + " delete  " + bold("4") + " list");
-        ps.println("  " + bold("5") + " sum     " + bold("6") + " find    " + bold("7") + " pdf     " + bold("8") + " xls");
-        ps.println("  " + bold("9") + " csv     " + bold("d") + " date    " + bold("c") + " config  " + bold("x") + " clear");
-        ps.println("  " + bold("?") + " help    " + bold("0") + " quit");
+        ps.println("  " + bold("1") + " novo     " + bold("2") + " editar    " + bold("3") + " excluir  " + bold("4") + " listar");
+        ps.println("  " + bold("5") + " soma     " + bold("6") + " buscar    " + bold("7") + " pdf     " + bold("8") + " xls");
+        ps.println("  " + bold("9") + " csv     " + bold("d") + " data    " + bold("c") + " config  " + bold("x") + " limpar");
+        ps.println("  " + bold("?") + " ajuda    " + bold("0") + " sair");
         rule();
     }
 
@@ -88,5 +88,5 @@ final class Out {
     void nl() { ps.println(); }
 
     /** Two-state message. */
-    void done(boolean changed, String extra) { ok((changed ? "saved " : "kept   ") + extra); }
+    void done(boolean changed, String extra) { ok((changed ? "salvo " : "mantido   ") + extra); }
 }

@@ -47,7 +47,7 @@ final class Holidays {
 
     /** One day off: what it is called, and whether the whole day is off. */
     record Off(String label, boolean optional) {
-        String text() { return (optional ? "optional: " : "holiday: ") + label; }
+        String text() { return (optional ? "opcional: " : "feriado: ") + label; }
     }
 
     /** A fixed date the XML has to be patched with: the date, the name, the tier. */
@@ -70,23 +70,23 @@ final class Holidays {
 
     /** Names on the screen: jollyday's are long and one is broken ("Fiéis Defuntos"). */
     private static final Map<String, String> NAME = Map.ofEntries(
-        Map.entry("NEW_YEAR", "New Year's Day"),
-        Map.entry("FOUNDATION", "São Paulo founded (city)"),
-        Map.entry("christian.CARNIVAL", "Carnival Tuesday"),
-        Map.entry("christian.ASH_WEDNESDAY", "Ash Wednesday, until 12:00"),
-        Map.entry("christian.GOOD_FRIDAY", "Good Friday"),
-        Map.entry("christian.EASTER", "Easter Sunday"),
+        Map.entry("NEW_YEAR", "Ano Novo"),
+        Map.entry("FOUNDATION", "São Paulo fundada (cidade)"),
+        Map.entry("christian.CARNIVAL", "Carnival Terça-feira"),
+        Map.entry("christian.ASH_WEDNESDAY", "Quarta-feira de Cinzas, até 12:00"),
+        Map.entry("christian.GOOD_FRIDAY", "Sexta-Feira Santa"),
+        Map.entry("christian.EASTER", "Domingo de Páscoa"),
         Map.entry("TIRADENTES", "Tiradentes"),
-        Map.entry("LABOUR_DAY", "Labour Day"),
+        Map.entry("LABOUR_DAY", "Dia do Trabalhador"),
         Map.entry("christian.CORPUS_CHRISTI", "Corpus Christi"),
-        Map.entry("CONST_REVOLUTION", "Revolution of 1932 (São Paulo)"),
-        Map.entry("INDEPENDENCE_DAY", "Independence Day"),
-        Map.entry("APARECIDA", "Our Lady of Aparecida"),
-        Map.entry("ALL_SOULS", "All Saints' Day"),
-        Map.entry("NATIONAL_DAY", "Republic Proclamation"),
-        Map.entry("NATIONAL_DAY_OF_ZUMBI_AND_BLACK_AWARENESS", "Black Awareness Day"),
-        Map.entry("BLACK_AWARENESS", "Black Awareness Day (São Paulo)"),
-        Map.entry("CHRISTMAS", "Christmas"));
+        Map.entry("CONST_REVOLUTION", "Revolução de 1932 (São Paulo)"),
+        Map.entry("INDEPENDENCE_DAY", "Dia da Independência"),
+        Map.entry("APARECIDA", "Nossa Senhora de Aparecida"),
+        Map.entry("ALL_SOULS", "Dia de Todos os Santos"),
+        Map.entry("NATIONAL_DAY", "Proclamação da República"),
+        Map.entry("NATIONAL_DAY_OF_ZUMBI_AND_BLACK_AWARENESS", "Dia da Consciência Negra"),
+        Map.entry("BLACK_AWARENESS", "Dia da Consciência Negra (São Paulo)"),
+        Map.entry("CHRISTMAS", "Natal"));
 
     /** "" on a working day; otherwise what to say after the date. */
     static String off(LocalDate d) {

@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Keyboard input. Every prompt is one short label plus the current value in
- * brackets: Enter keeps it, "-"/"x" clears it, anything else replaces it.
+ * Entrada de teclado. Every prompt is one short label plus the current value in
+ * brackets: Enter keeps it, "-""/"x" clears it, anything else replaces it.
  */
 final class In {
 
@@ -34,7 +34,7 @@ final class In {
         String s;
         try {
             s = rd.readLine();
-        } catch (java.io.IOException e) { throw new Problema("input: " + e.getMessage()); }
+        } catch (java.io.IOException e) { throw new Problema("entrada: " + e.getMessage()); }
         if (s == null) throw new Eof();
         return s.stripTrailing();
     }
@@ -78,7 +78,7 @@ final class In {
             o.ask(label);
             String s = read().strip();
             if (!s.isEmpty()) return s;
-            o.bad("required");
+            o.bad("requerido");
         }
     }
 
@@ -95,7 +95,7 @@ final class In {
         String s = read().strip();
         if (s.isEmpty()) {
             if (def > 0) return def;
-            o.bad("required");
+            o.bad("requerido");
             return num(label, def);
         }
         try { return Parse.num(s, label); }
@@ -108,7 +108,7 @@ final class In {
             o.ask(label, def == null ? null : Str.d(def));
             String s = read().strip();
             if (s.isEmpty()) {
-                if (def == null) { o.bad("date required"); continue; }
+                if (def == null) { o.bad("data requerida"); continue; }
                 return def;
             }
             try { return Parse.date(s); }
@@ -138,12 +138,12 @@ final class In {
 
     /** Yes/No, default encoded in the bracket. */
     boolean yes(String label, boolean def) {
-        o.ask(label, def ? "Y/n" : "y/N");
+        o.ask(label, def ? "S/n" : "s/N");
         String s = read().strip().toLowerCase();
         if (s.isEmpty()) return def;
-        if (s.charAt(0) == 'y' || s.charAt(0) == 's' || s.equals("1")) return true;
+        if (s.charAt(0) == 's' || s.charAt(0) == 'y' || s.equals("1")) return true;
         if (s.charAt(0) == 'n' || s.charAt(0) == 'o' || s.equals("0")) return false;
-        o.bad("y or n");
+        o.bad("s ou n");
         return yes(label, def);
     }
 
@@ -157,7 +157,7 @@ final class In {
             if (s.isEmpty()) return def;
             char c = s.charAt(0);
             if (opts.indexOf(c) >= 0) return c;
-            o.bad("one of " + hint);
+            o.bad("um de " + hint);
         }
     }
 
@@ -168,7 +168,7 @@ final class In {
             o.ask(label, def);
             String s = read().strip();
             if (s.isEmpty()) {
-                if (lo == null || hi == null) { o.bad("period required"); continue; }
+                if (lo == null || hi == null) { o.bad("período requerido"); continue; }
                 return new Period(lo, hi);
             }
             String[] t = split(s);
@@ -187,7 +187,7 @@ final class In {
         String s = read().strip();
         if (s.isEmpty()) {
             if (def > 0) return List.of(def);
-            o.bad("required");
+            o.bad("requerido");
             return ids(label, def);
         }
         List<Integer> out = new ArrayList<>();

@@ -1,57 +1,57 @@
 package ponto;
 
 /**
- * Entry point.
+ * Punto de entrada.
  *
- *   ponto                 -> the menu (that's the normal way to use it)
- *   ponto --db=path     -> another database file
- *   ponto --help        -> this text
+ *   ponto                 -> o menu (essa é a forma normal de usar)
+ *   ponto --db=path     -> outro arquivo de banco de dados
+ *   ponto --help        -> este texto
  *   ponto --version
  *
- * The interactive UI is deliberately minimal: one key per action, the current
- * value is always the default, and '-' clears a field.
+ * A UI interativa é deliberadamente minimal: uma tecla por ação, o valor
+ * atual é sempre o default, e '-' limpa um campo.
  */
 public final class Main {
 
     private static final String HELP = """
-        ponto %s - electronic timesheet in the terminal (SQLite)
+        ponto %s - controle de ponto eletrônico no terminal (SQLite)
 
-        usage
-          ponto                     open the menu
-          ponto --db=<file>       use another database
+        uso
+          ponto                     abre o menu
+          ponto --db=<arquivo>    usa outro banco de dados
           ponto --version | --help
 
-        the menu
-          1 new       day, in, out, justification  (warns on a weekend / day off)
-          2 edit      any day / hour / justification of any record
-          3 delete    a whole day or ids ("3", "3 a", "3 01/10", "3 5 6 7")
-          4 list      newest records, paging, total at the bottom
-          d date      every record of a day, month or year ("d 2026", "d oct")
-          5 sum       totals per day for a period
-          6 find      search the justifications ("6 sick")
-          7 pdf       report as PDF
-          8 xls       report as real Excel .xls
-          9 csv       report as CSV (BOM + ';')
-          c config    user name, your own days off, database path, vacuum
-          x clear     wipe the screen
-          0 quit
+        o menu
+          1 novo      dia, entrada, saída, justificativa  (avisa em fim de semana / dia de folga)
+          2 editar    qualquer dia / hora / justificativa de qualquer registro
+          3 excluir   um dia inteiro ou ids ("3", "3 a", "3 01/10", "3 5 6 7")
+          4 listar    registros mais recentes, pageando, total embaixo
+          d data      todos os registros de um dia, mês ou ano ("d 2026", "d out")
+          5 soma      totais por dia para um período
+          6 buscar    pesquisa as justificativas ("6 doente")
+          7 pdf       relatório como PDF
+          8 xls       relatório como Excel real .xls
+          9 csv       relatório como CSV (BOM + ';')
+          c config    nome do usuário, seus próprios dias de folga, caminho do banco de dados, vacuum
+          x limpar    apaga a tela
+          0 sair
 
-        input
-          dates    08/10 · 08/10/2026 · 2026-10-08 · 5oct · today · y · -3
-          by date  2026 (whole year) · 10/2026 · oct · oct 2026 · 01/10/2026
-          times    07:30 · 07h30 · 0730 · 8 · now
-          Enter    keeps the value shown in brackets
-          -        clears the field
+        entrada
+          datas    08/10 · 08/10/2026 · 2026-10-08 · 5out · hoje · y · -3
+          por data  2026 (ano inteiro) · 10/2026 · out · out 2026 · 01/10/2026
+          horas    07:30 · 07h30 · 0730 · 8 · agora
+          Enter    mantiene o valor mostrado entre colchetes
+          -        limpa o campo
 
-        days off
-          Brazil and São Paulo (state and city), from jollyday, no internet needed
-          a line of yellow on 1 and 2, never a wall: work on those days is still recorded
-          your own days off: c config, "27/10/2026 31/12" (space, comma or ;)
+        dias de folga
+          Brasil e São Paulo (estado e cidade), do jollyday, sem internet needed
+          uma linha amarela no 1 e 2, nunca uma barreira: work naqueles dias é ainda registrado
+          seus próprios dias de folga: c config, "27/10/2026 31/12" (espaço, vírgula ou ;)
 
-        environment
-          PONTO_DB          database path (default ~/.local/share/ponto/ponto.db)
-          PONTO_JAVA        JDK 25+ used by the launcher
-          PONTO_CSV_SEP     ',' if you prefer commas over semicolons
+        ambiente
+          PONTO_DB          caminho do banco de dados (default ~/.local/share/ponto/ponto.db)
+          PONTO_JAVA        JDK 25+ usado pelo launcher
+          PONTO_CSV_SEP     ',' se você prefere vírgulas over ponto e vírgulas
         """.formatted(Ver.N);
 
     public static void main(String[] args) {

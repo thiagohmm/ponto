@@ -37,7 +37,7 @@ public record Entry(int id, LocalDate dia, LocalTime tin, LocalTime tout, String
     public double hours() { double m = min(); return m < 0 ? 0 : m / 60.0; }
 
     /** The duration column: "1:30", "open" (half line) or "note" (no punch). */
-    public String durCol() { return closed() ? dur() : open() ? "open" : "note"; }
+    public String durCol() { return closed() ? dur() : open() ? "aberto" : "nota"; }
 
     /** The decimal hours column: blank unless the pair is complete. */
     public String hoursCol() { return closed() ? Str.n(hours()) : ""; }

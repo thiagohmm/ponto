@@ -1,187 +1,186 @@
 # ponto
 
-Timesheet in the terminal: SQLite, Java 25, one command, one database file,
-three report formats. Built for the Brazilian "punch card" habit — day, in, out,
-justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
+Controle de ponto no terminal: SQLite, Java 25, um comando, um arquivo de banco de dados,
+três formatos de relatório. Feito para o hábito brasileiro " carto de ponto" — dia, entrada, saída,
+justificativa — com datas como `dd/mm/aaaa` e horas decimais como `0.75`.
 
 ```
 --------------------------------------------------------
   P O N T O
-  Ana                   12 records
-  this month 46:30   open 1   since 20/05/2026
+  Ana                   12 registros
+  este mês 46:30   aberto 1   desde 20/05/2026
   /Users/ana/.local/share/ponto/ponto.db
 --------------------------------------------------------
-  1 new     2 edit    3 delete  4 list
-  5 sum     6 find    7 pdf     8 xls
-  9 csv     d date    c config  x clear
-  ? help    0 quit
+  1 novo    2 editar    3 excluir  4 listar
+  5 soma    6 buscar    7 pdf     8 xls
+  9 csv     d data      c config  x limpar
+  ? ajuda   0 sair
 --------------------------------------------------------
 >
 ```
 
-## Requirements
+## Requisitos
 
-* **Java 25** — the sources are compiled with `--release 25`.
-* Maven, only to build; the produced jar runs on its own.
-* SQLite, PDFBox and POI are already inside the jar. So is **jollyday**
-  (`jollyday-core` + `jollyday-jackson`, about 5.6 MB of the ~29 MB jar), which
-  keeps the Brazilian calendar. Nothing in the app reaches the network.
+* **Java 25** — as fontes são compiladas com `--release 25`.
+* Maven, apenas para build; o jar produzido roda standalone.
+* SQLite, PDFBox e POI já estão dentro do jar. Também está **jollyday**
+  (`jollyday-core` + `jollyday-jackson`, cerca de 5.6 MB do jar de ~29 MB), que
+  mantém o calendário brasileiro. Nada no app acessa a rede.
 
-## Build and run
+## Build e run
 
 ```sh
 mvn -o package      # fat jar  ->  target/ponto.jar
-./ponto             # run straight from the project
+./ponto             # roda direto do projeto
 ./install.sh      # jar -> ~/.local/share/ponto, launcher -> ~/.local/bin/ponto
-ponto             # anywhere afterwards
+ponto             # em qualquer lugar depois
 ```
 
-The launcher finds a Java 25+ runtime by itself (`$PONTO_JAVA`, then
-`/usr/libexec/java_home -v 25`, then the asdf install, then `java` on the PATH)
-and adds `--enable-native-access=ALL-UNNAMED` so the SQLite driver stays quiet.
+O launcher encontra um runtime Java 25+ automaticamente (`$PONTO_JAVA`, então
+`/usr/libexec/java_home -v 25`, então a instalação asdf, então `java` no PATH)
+e adiciona `--enable-native-access=ALL-UNNAMED` para o driver do SQLite ficar silencioso.
 
-## Data
+## Dados
 
-* Database: `$PONTO_DB`, default `~/.local/share/ponto/ponto.db` (or `--db=path`).
-* One table, `ponto`: `id, dia, tin, tout, just, crea`.
-* Any row can be edited or deleted at any time — nothing is locked to "today".
-* A line may hold one clock (an open punch) or none at all (just a note).
+* Banco de dados: `$PONTO_DB`, default `~/.local/share/ponto/ponto.db` (ou `--db=path`).
+* Uma tabela, `ponto`: `id, dia, tin, tout, just, crea`.
+* Qualquer linha pode ser editada ou excluída a qualquer momento — nada é travado para "hoje".
+* Uma linha pode ter um relógio (um ponto aberto) ou nenhum de todos (apenas uma nota).
 
-## Keys
+## Teclas
 
-| key | what it does |
-|-----|--------------|
-| `1` | new entry: day, in, out, justification — the day's existing records and their total appear as soon as you give the day, and a weekend or day off is pointed out |
-| `2` | edit an entry (`2` to pick from a list, `2 7` to go straight to id 7) — moving a record onto a weekend or day off warns too |
-| `3` | delete — asks **all day or id** (`3`, `3 a`, `3 01/10`, `3 5 6 7`): rows and total shown, one `y`, menu comes back |
-| `4` | list the newest records — or by date: `4 2026`, `4 10/2026`, `4 oct`, `4 01/10/2026`; `older` pages, `total` is the running sum |
-| `5` | sum: totals per day for a period |
-| `6` | find in the justifications (`6 sick`, or `6` then type the text) |
-| `7` | export a PDF report (summary page + detail) |
-| `8` | export a real Excel 97-2003 `.xls` (BIFF8, not xlsx) |
-| `9` | export CSV (UTF-8 BOM, `;` separated, decimal always `.`) |
-| `c` | config: user name, your own days off (`off`), database path, vacuum |
-| `d` | list by date — asks for a **day, month or year** (`d`, `d 2026`, `d oct`) |
-| `x` | clear the screen |
-| `?` | help |
-| `0` | quit |
+| tecla | o que faz |
+|-------|-----------|
+| `1` | novo entrada: dia, entrada, saída, justificativa — os registros existentes do dia e seu total aparecem assim que você informa o dia, e um fim de semana ou diaferiado é indicado |
+| `2` | editar uma entrada (`2` para escolher da lista, `2 7` para ir direto ao id 7) — mover um registro para um fim de semana ou feriado também avisa |
+| `3` | excluir — pede **dia todo ou id** (`3`, `3 a`, `3 01/10`, `3 5 6 7`): linhas e total mostrados, um `y`, o menu volta |
+| `4` | listar os registros mais recentes — ou por data: `4 2026`, `4 10/2026`, `4 out`, `4 01/10/2026`; `antigo` pageia, `total` é a soma acumulada |
+| `5` | soma: totais por dia para um período |
+| `6` | buscar nas justificativas (`6 doente`, ou `6` depois digita o texto) |
+| `7` | exportar relatório PDF (resumo + detalhe) |
+| `8` | exportar Excel real 97-2003 `.xls` (BIFF8, não xlsx) |
+| `9` | exportar CSV (UTF-8 BOM, `;` separado, decimal sempre `.`) |
+| `c` | config: nome do usuário, seus próprios dias de folga (`off`), caminho do banco de dados, vacuum |
+| `d` | listar por data — pede um **dia, mês ou ano** (`d`, `d 2026`, `d out`) |
+| `x` | limpar a tela |
+| `?` | ajuda |
+| `0` | sair |
 
-Output stays on the screen. The menu is redrawn *below* whatever the key printed
-(the screen is wiped once, on the first paint only), so `4`, `5`, `6` and the
-`ok` lines stay readable and in the scrollback — `older` keeps paging until the
-last record is shown. Press `x` when you do want a clean screen.
+A saída fica na tela. O menu é redesenhado *abaixo* do que a tecla imprimiu
+(a tela é apagada uma vez, apenas na primeira pintura), então `4`, `5`, `6` e as
+linhas `ok` ficam legíveis e no scrollback — `antigo` continua pageando até o
+último registro ser mostrado. Pressione `x` quando quiser uma tela limpa.
 
-### List by date
+### Listar por data
 
-`4` and `d` take the same filter. It is matched against the day of each record, so
-one word is enough:
+`4` e `d` usam o mesmo filtro. É combinado contra o dia de cada registro, então
+uma palavra é suficiente:
 
-| you type | you get |
-|----------|---------|
-| `4` · `4 50` | the newest records (`50` = how many rows) |
-| `4 2026` | every record of 2026 |
-| `4 10/2026` · `4 2026-10` | October 2026 |
-| `4 oct` · `4 oct 2026` · `4 outubro` | October (this year when no year is given) |
-| `4 01/10/2026` · `4 2026-10-08` · `4 5oct` | one day |
-| `4 today` · `4 y` · `4 -3` | today, yesterday, three days back |
+| você digita | você obtém |
+|-------------|------------|
+| `4` · `4 50` | os registros mais recentes (`50` = quantas linhas) |
+| `4 2026` | todos os registros de 2026 |
+| `4 10/2026` · `4 2026-10` | outubro de 2026 |
+| `4 out` · `4 out 2026` · `4 outubro` | outubro (este ano quando nenhum ano é dado) |
+| `4 01/10/2026` · `4 2026-10-08` · `4 5out` | um dia |
+| `4 hoje` · `4 y` · `4 -3` | hoje, ontem, três dias atrás |
 
-A bare number 1..999 means *how many rows*, so for October write `10/2026` or `oct`.
-Each screen ends with `total` (the running sum, open lines excluded) and `shown N of M`;
-`older` brings the rest. Nothing matching says so: `nothing in feb 2026`.
+Um número puro 1..999 significa *quantas linhas*, então para outubro escreva `10/2026` ou `out`.
+Cada tela termina com `total` (a soma acumulada, linhas abertas excluídas) e `mostradas N de M`;
+`antigo` traz o restante. Nada que combine diz isso: `nada em fev 2026`.
 
-## Days off
+## Dias de folga
 
-`1` and `2` print one yellow line when the day is not a normal working day:
-
-```
-  day [10/10/2026] > 03/10/2026
-  !   03/10/2026  SAT   weekend
-  day [10/10/2026] > 25/12/2026
-  !   25/12/2026  FRI   holiday: Christmas
-  !   26/12/2026  SAT   holiday: Boxing Day   ·   weekend
-  !   16/02/2026  MON   optional: Carnival Monday
-```
-
-It is a warning, never a wall: people do work weekends and holidays, and a lost
-punch costs more than a punch on the wrong day. `c config` lists the next days off
-and asks for `off`, your own days off — `27/10/2026 31/12`, separated by space,
-comma or `;`.
-
-The calendar comes from [jollyday](https://jollyday.focus-shift.de): the country
-list for `BR` plus the ISO 3166-2 codes `sp` (state) and `csp` (city), so
-09/07 and 20/11 count as São Paulo days and 25/01 counts for the city. Five days
-are added by hand in `Holidays.java`, checked against the city's own calendar
-(Prefecture of São Paulo, Decree 64.862/2025) and listed there with the reason:
-
-| day | what it is |
-|---|---|
-| 26/12 | Boxing Day, national, missing from the country XML |
-| Carnival Monday | the XML knows the Tuesday only |
-| 24/12 · 31/12 | Christmas Eve, New Year's Eve — optional days off |
-| 30/10 | Servant's Day (28/10 moved), optional |
-| Carnival Tuesday · Ash Wednesday | the XML says *public*, the decree says *facultative* |
-
-## Input
+`1` e `2` imprimem uma linha amarela quando o dia não é um dia normal de trabalho:
 
 ```
-dates    08/10  ·  08/10/2026  ·  2026-10-08  ·  5oct  ·  today  ·  y  ·  -3
-times    07:30  ·  07h30  ·  0730  ·  8  ·  now
-Enter    keeps the value shown in brackets
--        clears the field
+  dia [10/10/2026] > 03/10/2026
+  !   03/10/2026  SAT   fim de semana
+  dia [10/10/2026] > 25/12/2026
+  !   25/12/2026  FRI   feriado: Natal
+  !   26/12/2026  SAT   feriado: Boxing Day   ·   fim de semana
+  !   16/02/2026  MON   opcional: Carnaval segunda-feira
 ```
 
-## Environment
+É um aviso, nunca uma barreira: pessoas trabalham fins de semana e feriados, e um
+ponto perdido custa mais que um ponto no dia errado. `c config` lista os próximos
+dias de folga e pede `off`, seus próprios dias de folga — `27/10/2026 31/12`, separados
+por espaço, vírgula ou `;`.
 
-| variable | meaning |
-|----------|---------|
-| `PONTO_DB` | database path |
-| `PONTO_USER` | name printed on the reports (handy in scripts) |
-| `PONTO_JAVA` | Java runtime used by the launcher |
-| `PONTO_CSV_SEP` | set to `,` to get commas instead of semicolons |
+O calendário vem de [jollyday](https://jollyday.focus-shift.de): a lista de países
+para `BR` plus os códigos ISO 3166-2 `sp` (estado) e `csp` (cidade), então
+09/07 e 20/11 contam como dias de São Paulo e 25/01 conta para a cidade. Cinco dias
+são adicionados manualmente em `Holidays.java`, verificadas contra o calendário da cidade
+(Prefeitura de São Paulo, Decreto 64.862/2025) e listados lá com o motivo:
 
-## Tests
+| dia | o que é |
+|-----|---------|
+| 26/12 | Boxing Day, nacional, faltando no XML do país |
+| Carnaval segunda-feira | o XML sabe apenas a terça-feira |
+| 24/12 · 31/12 | véspera de natal, véspera de ano novo — dias de folga opcionais |
+| 30/10 | Dia do Servidor (28/10 deslocado), opcional |
+| Carnaval terça-feira · Quarta-feira de cinzas | o XML diz *público*, o decreto diz *facultativo* |
+
+## Entrada
+
+```
+datas    08/10  ·  08/10/2026  ·  2026-10-08  ·  5out  ·  hoje  ·  y  ·  -3
+horas    07:30  ·  07h30  ·  0730  ·  8  ·  agora
+Enter    mantiene o valor mostrado entre colchetes
+-        limpa o campo
+```
+
+## Variáveis de ambiente
+
+| variável | significado |
+|----------|-------------|
+| `PONTO_DB` | caminho do banco de dados |
+| `PONTO_USER` | nome impresso nos relatórios (útil em scripts) |
+| `PONTO_JAVA` | runtime Java usado pelo launcher |
+| `PONTO_CSV_SEP` | set para `,` para obter vírgulas em vez de ponto e vírgula |
+
+## Testes
 
 ```sh
 ./test/smoke.sh
 ```
 
-Replays `test/feed.txt` into a throwaway database, exports the three formats,
-reads them back (`test/Verify.java` opens the PDF with PDFBox and the workbook
-with POI) and diffs a digest against `test/expected.txt`. The generation clock,
-the test directory and the OS user name are masked, so the golden file holds on
-any machine.
+Replays `test/feed.txt` em um banco de dados descartável, exporta os três formatos,
+lê de volta (`test/Verify.java` abre o PDF com PDFBox e a workbook com POI) e diff
+um digest contra `test/expected.txt`. O relógio de geração, o diretório de teste e o
+nome do usuário do OS são mascarados, então o arquivo golden hold em qualquer máquina.
 
-Then it replays `test/feed-off.txt` and checks the days off on the real output:
+Depois replay `test/feed-off.txt` e verifica os dias de folga na saída real:
 
 ```sh
-./test/smoke.sh     # PASS  smoke   days off + digest, session and files in /tmp/ponto-smoke
+./test/smoke.sh     # PASS  smoke   dias de folga + digest, session e arquivos em /tmp/ponto-smoke
 ```
 
-| asserted | why |
-|---|---|
-| `! 12/10/2026 MON holiday: Our Lady of Aparecida` | 12 October is a national day off |
-| `! 17/10/2026 SAT weekend` | the weekend side of the same rule |
-| `! 24/12/2026 THU optional: Christmas Eve` | the tier shown when the day is only facultative |
-| `ok #1 12/10/2026 08:00-12:00 4:00` | the punch on the holiday **is** saved: a warning, not a wall |
-| `day off 12/10/2026 …` | `c config` reads the same calendar |
-| *nothing* on `13/10/2026` | a working tuesday stays silent |
+| afirmado | por quê |
+|----------|---------|
+| `! 12/10/2026 MON feriado: Nossa Senhora de Aparecida` | 12 de outubro é um feriado nacional |
+| `! 17/10/2026 SAT fim de semana` | o lado do fim de semana da mesma regra |
+| `! 24/12/2026 THU opcional: Véspera de Natal` | o tier mostrado quando o dia é apenas facultativo |
+| `ok #1 12/10/2026 08:00-12:00 4:00` | o ponto no feriado **é** salvo: um aviso, não uma barreira |
+| `dia de folga 12/10/2026 …` | `c config` lê o mesmo calendário |
+| *nada* em `13/10/2026` | uma terça-feira de trabalho fica silenciosa |
 
 ## Layout
 
 ```
 src/main/java/ponto/
-  Main        arguments, first run, uncaught problems
-  App         the menu loop, one method per key
-  In          typed input: dates, times, ids, yes/no, free text
-  Out         printing: rules, columns, colours only on a TTY
-  Db          connection, schema, the `cfg` table
-  Repo        CRUD over the `ponto` table
-  Entry       one line: day, in, out, justification (open / note / closed)
-  Report      totals per day and grand total, shared by the three exporters
-  Parse       date and time text -> values
-  Holidays    weekends and the days off in Brazil, seen from São Paulo
-  Str, Dur    string and duration helpers
-  Csv, Pdf, Xls   the writers
-  Ver         NAME and VERSION
+  Main        pontos de entrada, primeira exec, problemas não tratados
+  App         o loop do menu, um método por tecla
+  In          entrada digitada: datas, horas, ids, sim/não, texto livre
+  Out         impressão: regras, colunas, cores apenas em um TTY
+  Db          conexão, schema, a tabela `cfg`
+  Repo        CRUD sobre a tabela `ponto`
+  Entry       uma linha: dia, entrada, saída, justificativa (aberta / nota / fechada)
+  Report      totais por dia e total geral, compartilhado pelos três exportadores
+  Parse       texto de data e hora -> valores
+  Holidays    fins de semana e os dias de folga no Brasil, visto de São Paulo
+  Str, Dur    helpers de string e duração
+  Csv, Pdf, Xls   os writers
+  Ver         NOME e VERSÃO
 test/         feed.txt, feed-off.txt, Verify.java, expected.txt, smoke.sh
 ```

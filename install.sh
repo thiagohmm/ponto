@@ -2,20 +2,20 @@
 # Build the fat jar and install ponto on the PATH (~/.local/bin).
 set -e
 here="${0:A:h}"
-# any Java 25+ will do; the launcher's rule, reused here
-# zsh does not export an assignment to a variable that was unset: say it out loud
+# qualquer Java 25+ serve; a regra do launcher, reutilizada aqui
+# zsh não exporta uma atribuição para uma variável que foi unset: diga em voz alta
 if [ -z "${JAVA_HOME:-}" ]; then
     export JAVA_HOME="$(/usr/libexec/java_home -v 25 2>/dev/null || true)"
     [ -x "$JAVA_HOME/bin/java" ] || export JAVA_HOME="$HOME/.asdf/installs/java/temurin-25.0.1+8.0.LTS"
     [ -x "$JAVA_HOME/bin/java" ] || export JAVA_HOME="$(cd "$(dirname "$(command -v java || echo /nope)")"/.. 2>/dev/null && pwd || true)"
 fi
 if [ ! -x "$JAVA_HOME/bin/java" ]; then
-    print -u2 "x   no JDK 25+ found (set JAVA_HOME=/path/to/jdk)"
+    print -u2 "x   nenhum JDK 25+ encontrado (set JAVA_HOME=/path/to/jdk)"
     exit 1
 fi
 
 
-# an asdf shim would quietly pull in another JDK, so use a real maven binary
+# um shim asdf silenciosamente puxaria outro JDK, então use um binário maven real
 mvn="${MVN:-}"
 if [ -z "$mvn" ]; then
     for c in /opt/homebrew/bin/mvn /usr/local/bin/mvn "$(command -v mvn || true)"; do
@@ -24,7 +24,7 @@ if [ -z "$mvn" ]; then
     done
 fi
 if [ ! -x "$mvn" ]; then
-    print -u2 "x   maven not found (set MVN=/path/to/mvn)"
+    print -u2 "x   maven não encontrado (set MVN=/path/to/mvn)"
     exit 1
 fi
 
@@ -39,5 +39,5 @@ chmod +x "$bin/ponto"
 
 print "  java      $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
 "$bin/ponto" --version
-print "  installed   $bin/ponto"
-print "  database    \${PONTO_DB:-$HOME/.local/share/ponto/ponto.db}"
+print "  instalado   $bin/ponto"
+print "  banco de dados    \${PONTO_DB:-$HOME/.local/share/ponto/ponto.db}"
