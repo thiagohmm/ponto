@@ -212,8 +212,14 @@ export function ConfigPage() {
           <details className="maintenance"><summary>Manutenção</summary><p className="muted">Otimize o espaço do banco de dados sem remover registros.</p>          <p className="muted">banco {cfg.db}</p>
           <p className="muted">{cfg.records} registros · {cfg.from} … {cfg.to} · java {cfg.java} · sqlite {cfg.sqlite}</p>
           <p className={cfg.storage ? "ok" : "warn"}>
-            arquivos das notas: {cfg.storage ? "armazenamento S3 respondendo" : "armazenamento S3 fora do ar — PONTO_S3_ENDPOINT"}
+            arquivos das notas: {cfg.storage ? "armazenamento S3 respondendo" : "armazenamento indisponível"}
           </p>
+<p className="muted">Limite por arquivo: {cfg.uploadMib} MiB · {cfg.pendingObjects} operação(ões) pendente(s).</p>
+          {cfg.pendingObjects > 0 && <button className="btn" disabled={busy} onClick={async () => {
+            setBusy(true); setErr("");
+            try { await api.retryStorage(); setMsg("Nova tentativa de envio e limpeza agendada."); setCfg(await api.config()); }
+            catch (e) { setErr(String(e)); } finally { setBusy(false); }
+          }}>Tentar operações pendentes novamente</button>}
 <button className="btn" disabled={busy} onClick={() => void saveWho(true)}>Otimizar banco de dados</button></details>
         </>
       )}

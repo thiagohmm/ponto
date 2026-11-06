@@ -30,7 +30,7 @@ public final class Parse {
      */
     public static LocalDate date(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
-        LocalDate today = LocalDate.now();
+        LocalDate today = ponto.model.Time.today();
         if (s.isEmpty()) throw new Bad("data obrigatória");
 
         if (s.equals("t") || s.equals("h") || s.equals("today") || s.equals("toda") || s.equals("hoje")) return today;
@@ -73,7 +73,7 @@ public final class Parse {
      */
     public static LocalTime time(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
-        if (s.equals("now") || s.equals("n") || s.equals("rn")) return LocalTime.now().withSecond(0).withNano(0);
+        if (s.equals("now") || s.equals("n") || s.equals("rn")) return ponto.model.Time.now().withSecond(0).withNano(0);
 
         Matcher m = TIME.matcher(s);
         if (!m.matches()) throw new Bad("hora: '" + raw + "'  (07:30 · 07h30 · 0730 · 8 · agora)");
@@ -99,7 +99,7 @@ public final class Parse {
     public static Like like(String raw) throws Bad {
         String s = raw.strip().toLowerCase();
         if (s.isEmpty()) throw new Bad("data: digite 2026 · 10/2026 · out · 01/10/2026");
-        LocalDate today = LocalDate.now();
+        LocalDate today = ponto.model.Time.today();
 
         if (TODAY.contains(s)) return new Like(Str.iso(today), Str.d(today));
         if (YESTER.contains(s)) { LocalDate y = today.minusDays(1); return new Like(Str.iso(y), Str.d(y)); }
@@ -193,7 +193,7 @@ public final class Parse {
 
     /** "26" -> 2026; empty/null -> this year. */
     private static long year(String g) {
-        if (g == null || g.isEmpty()) return LocalDate.now().getYear();
+        if (g == null || g.isEmpty()) return ponto.model.Time.today().getYear();
         int y = (int) digits(g);
         return y < 100 ? 2000 + y : y;
     }

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { CompanyBar, CompanyProvider, useCompany } from "./Company";
+import { UnsavedProvider } from "./ui/Unsaved";
+import { Connection } from "./ui/Connection";
 import { ConfirmProvider } from "./ui/Confirm";
 import { ConfigPage } from "./pages/Config";
 import { ExportPage } from "./pages/Export";
@@ -33,7 +35,7 @@ export function App() {
   const [menu, setMenu] = useState(false);
   const title = editing ? "Editar registro" : TABS.find(t => t.to === loc.pathname)?.label ?? "Notas";
   return (
-    <ConfirmProvider><CompanyProvider>
+    <ConfirmProvider><UnsavedProvider><Connection /><CompanyProvider>
       <div className={vault ? "workspace notes-workspace" : "workspace"}>
         <a className="skip-link" href="#conteudo">Ir para o conteúdo</a>
         <header className="mobile-header"><b>P<span className="brand-dot">.</span> Ponto</b>
@@ -59,7 +61,7 @@ export function App() {
           </main>
         </div>
       </div>
-    </CompanyProvider></ConfirmProvider>
+    </CompanyProvider></UnsavedProvider></ConfirmProvider>
   );
 }
 

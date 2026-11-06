@@ -152,7 +152,7 @@ public final class Repo {
 
     public Entry byId(int id) {
         List<Entry> r = rows("SELECT " + COLS + " FROM ponto WHERE id = ? AND company_id = ?", id, cid());
-        if (r.isEmpty()) throw new Problema("registro " + id + " não existe");
+        if (r.isEmpty()) throw new ponto.NotFound("registro " + id + " não existe");
         return r.getFirst();
     }
 
@@ -222,7 +222,7 @@ public final class Repo {
 
     public void delete(int id) {
         int n = write("DELETE FROM ponto WHERE id=? AND company_id=?", id, cid());
-        if (n == 0) throw new Problema("registro " + id + " não existe");
+        if (n == 0) throw new ponto.NotFound("registro " + id + " não existe");
     }
 
     /** Delete every record of a day (used by the day editor). */

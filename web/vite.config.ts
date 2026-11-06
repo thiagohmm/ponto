@@ -8,7 +8,8 @@ export default defineConfig({
     proxy: { "/api": "http://127.0.0.1:8090" },
   },
   build: {
-    outDir: "../src/main/resources/public",
+    outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: { output: { manualChunks: { charts: ["recharts"] } } },
   },
 });

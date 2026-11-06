@@ -4,7 +4,6 @@ import ponto.Bad;
 import ponto.NeedConfirm;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -31,15 +30,54 @@ public final class Service {
     private final Repo repo;
     private final Notes notes;
     private final Companies companies;
-    private final Object lock = new Object();
+    private final Object lock;
+    private final Holidays calendar;
+    private final Reports reports;
     private Files files;
     private Minio storage;
 
     public Service(Db db) {
         this.db = db;
+        this.lock = db.lock;
+        this.calendar = new Holidays(() -> offDates(companyLocked().off()));
         this.repo = new Repo(db);
         this.notes = new Notes(db, lock);
         this.companies = new Companies(db, lock);
+        this.reports = new Reports(db, repo, () -> who(), () -> companyLocked().name());
+    }
+
+    /** A fixed request context. It shares the connection lock, never the CLI selection. */
+    public Service forCompany(int id) {
+        synchronized (lock) {
+            companies.byId(id);
+            Service scoped = new Service(db.forCompany(id));
+            scoped.storage = storage;
+            scoped.files = files();
+            return scoped;
+        }
+    }
+
+    public <T> T transaction(java.util.function.Supplier<T> work) { return db.transaction(work); }
+    public boolean healthy() { return db.healthy(); }
+    public java.time.LocalDate today() { return Time.today(); }
+    public int companyId() { synchronized (lock) { return db.company(); } }
+    public java.nio.file.Path dataDir() { return db.file.toAbsolutePath().getParent(); }
+
+    public void deleteNote(int id) {
+        Files attachments = files();
+        db.transaction(() -> {
+            notes.byId(id);
+            attachments.scheduleNoteDeletion(id);
+            notes.delete(id);
+            return null;
+        });
+        attachments.kick();
+    }
+
+    public void closeResources() {
+        Files attachments;
+        synchronized (lock) { attachments = files; }
+        if (attachments != null) attachments.close();
     }
 
     /** Markdown notes: same SQLite file, unrelated to the timesheet. */
@@ -58,12 +96,7 @@ public final class Service {
     }
 
     /** Storage reachable? Shown in the config screen, not enforced at boot. */
-    public boolean storageUp() {
-        synchronized (lock) {
-            if (storage == null) storage = Minio.env();
-            return storage != null && storage.up();
-        }
-    }
+    public boolean storageUp() { return files().storageUp(); }
 
     /** Weekend/user-off registration for the two modes' startup. */
     public void registerOff() { registerOff(s -> { }); }
@@ -75,7 +108,7 @@ public final class Service {
     private void applyOff() { applyOff(s -> { }); }
 
     private void applyOff(Consumer<String> bad) {
-        Holidays.extra(offDates(companyLocked().off(), bad));
+        offDates(companyLocked().off(), bad);
     }
 
     private Company companyLocked() { return companies.active(); }
@@ -202,8 +235,8 @@ public final class Service {
     public Map<String, Object> home() {
         synchronized (lock) {
             applyOff();
-            LocalDate from = LocalDate.now().withDayOfMonth(1);
-            LocalDate to = LocalDate.now();
+            LocalDate from = ponto.model.Time.today().withDayOfMonth(1);
+            LocalDate to = ponto.model.Time.today();
             long mins = 0;
             for (Entry e : repo.between(from, to)) if (e.min() > 0) mins += e.min();
             List<Entry> half = repo.openAll().stream().filter(Entry::open).toList();
@@ -300,9 +333,9 @@ public final class Service {
             var normais = new HashSet<>(repo.flags("normal", "%"));
             long overtime = 0;
             for (var day : mins.entrySet()) {
-                if (!day.getKey().isAfter(LocalDate.now()))
-                    overtime += bankDay(day.getValue(), dailyMinutes(), faltas.contains(day.getKey()),
-                        normais.contains(day.getKey()), !Holidays.off(day.getKey()).isEmpty(), true);
+                if (!day.getKey().isAfter(ponto.model.Time.today()))
+                    overtime += BankRules.day(day.getValue(), dailyMinutes(), faltas.contains(day.getKey()),
+                        normais.contains(day.getKey()), !calendar.off(day.getKey()).isEmpty(), true);
             }
             return new FilteredRange(matches.stream().skip(Math.max(0, skip)).limit(Math.max(0, n)).toList(),
                 new Totals(minutes, open), matches.size(), overtime);
@@ -346,27 +379,7 @@ public final class Service {
      * markings — this app compares the whole day (batido - jornada), so the
      * trigger here is the 5th minute, symmetric in both directions.
      */
-    public static final int TOLERANCE_MINS = 5;
-
-    /** A day balance within the legal tolerance (±5 min) counts as 0. */
-    private static long tolerated(long raw) {
-        return Math.abs(raw) <= TOLERANCE_MINS ? 0 : raw;
-    }
-
-    /**
-     * One day's bank contribution, the same for {@link #overtime} and
-     * {@link #saldoBetween}: a falta keeps batido - jornada untouched (the
-     * explicit flag, the jornada is owed); a day off banks everything worked
-     * unless marked normal; where the rule is "batido - jornada" the legal
-     * tolerance ({@link #TOLERANCE_MINS}) applies. A day without punches
-     * contributes nothing.
-     */
-    private static long bankDay(long m, long daily, boolean flt, boolean normal, boolean off, boolean hasPunch) {
-        if (flt) return m - daily;
-        if (normal) return hasPunch ? tolerated(m - daily) : 0;
-        if (off) return m;
-        return hasPunch ? tolerated(m - daily) : 0;
-    }
+    public static final int TOLERANCE_MINS = BankRules.TOLERANCE_MINS;
 
     /**
      * The configured workday in minutes (cfg `daily`, decimal hours like "8" or
@@ -425,7 +438,7 @@ public final class Service {
             Map<LocalDate, Long> mins = dayMins(rows);
             Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
             Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"));
-            LocalDate today = LocalDate.now();
+            LocalDate today = ponto.model.Time.today();
             Set<LocalDate> days = new HashSet<>();
             for (LocalDate d : mins.keySet()) if (!d.isAfter(today)) days.add(d);
             if (q == null || q.isBlank()) {
@@ -435,8 +448,8 @@ public final class Service {
             long sum = 0;
             for (LocalDate d : days) {
                 long m = mins.getOrDefault(d, 0L);
-                sum += bankDay(m, daily, fl.contains(d), nm.contains(d),
-                               !Holidays.off(d).isEmpty(), mins.containsKey(d));
+                sum += BankRules.day(m, daily, fl.contains(d), nm.contains(d),
+                               !calendar.off(d).isEmpty(), mins.containsKey(d));
             }
             return sum;
         }
@@ -467,7 +480,7 @@ public final class Service {
      * ({@link #TOLERANCE_MINS}).
      */
     private long saldoBetween(LocalDate from, LocalDate to) {
-        LocalDate end = to.isAfter(LocalDate.now()) ? LocalDate.now() : to;
+        LocalDate end = to.isAfter(ponto.model.Time.today()) ? ponto.model.Time.today() : to;
         if (from.isAfter(end)) return 0;
         long daily = dailyMinutes();
         Map<LocalDate, Long> mins = dayMins(repo.between(from, end));
@@ -476,8 +489,8 @@ public final class Service {
         long sum = 0;
         for (LocalDate d = from; !d.isAfter(end); d = d.plusDays(1)) {
             long m = mins.getOrDefault(d, 0L);
-            sum += bankDay(m, daily, fl.contains(d), nm.contains(d),
-                           !Holidays.off(d).isEmpty(), mins.containsKey(d));
+            sum += BankRules.day(m, daily, fl.contains(d), nm.contains(d),
+                           !calendar.off(d).isEmpty(), mins.containsKey(d));
         }
         return sum;
     }
@@ -500,13 +513,13 @@ public final class Service {
     public record Bank(YearMonth ym, long saldoMins, String saldoLabel, int dailyMins,
                        int remaining, int planMins, String planLabel, boolean neg) { }
 
-    public Bank bank() { return bank(YearMonth.now()); }
+    public Bank bank() { return bank(ponto.model.Time.month()); }
 
     public Bank bank(YearMonth ym) {
         synchronized (lock) {
             applyOff();
             long saldo = saldoBetween(ym.atDay(1), ym.atEndOfMonth());
-            LocalDate today = LocalDate.now();
+            LocalDate today = ponto.model.Time.today();
             int remaining = 0;
             if (!ym.atEndOfMonth().isBefore(today)) {
                 LocalDate from = ym.atDay(1).isAfter(today) ? ym.atDay(1) : today;
@@ -514,7 +527,7 @@ public final class Service {
                 Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"));
                 for (LocalDate d = from; !d.isAfter(ym.atEndOfMonth()); d = d.plusDays(1)) {
                     if (fl.contains(d)) continue;
-                    if (!Holidays.off(d).isEmpty() && !nm.contains(d)) continue;
+                    if (!calendar.off(d).isEmpty() && !nm.contains(d)) continue;
                     remaining++;
                 }
             }
@@ -543,7 +556,7 @@ public final class Service {
     public List<BankDay> bankDays(YearMonth ym) {
         synchronized (lock) {
             applyOff();
-            LocalDate today = LocalDate.now();
+            LocalDate today = ponto.model.Time.today();
             LocalDate from = ym.atDay(1), to = ym.atEndOfMonth();
             if (from.isAfter(today)) return List.of();
             Map<LocalDate, Long> mins = dayMins(repo.between(from, to));
@@ -553,7 +566,7 @@ public final class Service {
             for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
                 boolean falta = fl.contains(d);
                 boolean normal = nm.contains(d);
-                String off = Holidays.off(d);
+                String off = calendar.off(d);
                 String kind = falta ? "falta"
                            : off.isEmpty() || normal ? "work"
                            : off.startsWith("weekend") ? "weekend"
@@ -624,7 +637,7 @@ public final class Service {
         synchronized (lock) {
             applyOff();
             if (repo.flagOn(d, "falta")) return "o dia também tem falta — a falta ganha";
-            if (Holidays.off(d).isEmpty()) return "o dia não é dia off (sem efeito)";
+            if (calendar.off(d).isEmpty()) return "o dia não é dia off (sem efeito)";
             return "batidas pagam a jornada (não somam banco)";
         }
     }
@@ -637,7 +650,7 @@ public final class Service {
     public String faltaWarn(LocalDate d) {
         synchronized (lock) {
             applyOff();
-            String off = Holidays.off(d);
+            String off = calendar.off(d);
             if (!off.isEmpty()) return "dia off (" + off + ")   ·   a falta deduz a jornada";
             for (Entry e : repo.on(d)) if (e.closed()) return "o dia já tem batidas (a falta não muda o saldo)";
             return "";
@@ -666,26 +679,21 @@ public final class Service {
     public String holiday(LocalDate d) {
         synchronized (lock) {
             applyOff();
-            return Holidays.off(d);
+            return calendar.off(d);
         }
     }
 
     public Report report(LocalDate from, LocalDate to) {
         synchronized (lock) {
             applyOff();
-            Period p = new Period(from, to);
-            long saldo = saldoBetween(from, to);
-            int faltas = 0;
-            for (LocalDate d : repo.flags("falta", "%"))
-                if (!d.isBefore(from) && !d.isAfter(to)) faltas++;
-            LocalDate today = LocalDate.now();
+            LocalDate today = ponto.model.Time.today();
             String plano = (!from.isAfter(today) && !to.isBefore(today)) ? bank().planLabel() : "";
-            return new Report(new Report.Head(who(), companyLocked().name(), db.file.toString(), p, stamp()),
-                              repo.between(from, to), saldo, faltas, plano);
+            return reports.create(from, to, saldoBetween(from, to), plano);
         }
     }
 
     public Map<String, Object> config() {
+        boolean storageReady = storageUp();
         synchronized (lock) {
             applyOff();
             Company c = companyLocked();
@@ -702,8 +710,10 @@ public final class Service {
             m.put("to", Str.d(repo.max()));
             m.put("java", System.getProperty("java.version"));
             m.put("sqlite", db.version());
-            m.put("storage", storageUp());
-            m.put("nextOff", Holidays.next(4));
+            m.put("storage", storageReady);
+            m.put("pendingObjects", files().pending());
+            m.put("uploadMib", Files.maxUpload() / (1024*1024));
+            m.put("nextOff", calendar.next(4));
             return m;
         }
     }
@@ -724,17 +734,18 @@ public final class Service {
      */
     public Map<String, Object> setConfig(String who, String off, String daily, boolean vacuum, Consumer<String> bad) {
         synchronized (lock) {
-            if (who != null) db.setCfg("who", who.equals("-") ? "" : who);
-            Company cur = companyLocked();
-            String nextOff = off == null ? null : (off.equals("-") ? "" : off);
-            String nextDaily = daily;
-            if (nextOff != null || nextDaily != null)
-                companies.update(cur.id(), cur.name(), nextOff, nextDaily);
-            if (nextOff != null) Holidays.extra(offDates(nextOff, bad));
-            db.setCfg("asked", "1");
+            db.transaction(() -> {
+                if (who != null) db.setCfg("who", who.equals("-") ? "" : who);
+                Company cur = companyLocked();
+                String nextOff = off == null ? null : (off.equals("-") ? "" : off);
+                if (nextOff != null || daily != null) companies.update(cur.id(), cur.name(), nextOff, daily);
+                if (nextOff != null) offDates(nextOff, bad);
+                db.setCfg("asked", "1");
+                return null;
+            });
             if (vacuum) db.vacuum();
-            return config();
         }
+        return config();
     }
 
     public Company activate(int id) {
@@ -776,8 +787,4 @@ public final class Service {
         return Parse.time(raw);
     }
 
-    private static String stamp() {
-        LocalDateTime n = LocalDateTime.now();
-        return Str.d(n.toLocalDate()) + " " + Str.t(n.toLocalTime());
-    }
 }

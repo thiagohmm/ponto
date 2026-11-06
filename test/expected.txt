@@ -1,6 +1,6 @@
 == PDF ==
 pages=2
-ponto 1.0.0  |  USER página 1
+ponto 1.1.0  |  USER página 1
 RELATÓRIO DE PONTOS
 Relatório de pontos
 período   20/05/2026 - 20/05/2026
@@ -14,7 +14,7 @@ ID DATA DIA ENTRADA SAÍDA DURAÇÃO HORAS JUSTIFICATIVA
 2 20/05/2026 qua 08:00 open
 3 20/05/2026 qua 08:30 09:15 0:45 0.75 medico
 TOTAL 0:45 0.75 3 linhas  |  1 incompletas
-ponto 1.0.0  |  USER página 2
+ponto 1.1.0  |  USER página 2
 RESUMO POR DIA
 Relatório de pontos  |  20/05/2026 - 20/05/2026
 usuário   Ana

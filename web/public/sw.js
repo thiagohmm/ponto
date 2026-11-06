@@ -1,56 +1,41 @@
-// Ponto PWA: hand-written, no build plugin.
-// cache-first for /assets/* (hashed names), network-first for navigation and
-// /api/* — offline the page shows its own network error, as it does today.
-const CACHE = "ponto-v2";
-const CORE = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+// The build stamps the version and complete asset list. No personal API data is cached.
+const CACHE = "ponto-__BUILD__";
+const CORE = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", ...__ASSETS__];
 
-self.addEventListener("install", (e) => {
-  e.waitUntil((async () => {
-    const c = await caches.open(CACHE);
-    for (const r of CORE) { try { await c.add(r); } catch (ignored) { } }
-    self.skipWaiting();
+self.addEventListener("install", event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => {
+    if (!self.registration.active) return self.skipWaiting();
+  }));
+});
+self.addEventListener("message", event => {
+  if (event.data?.type === "ACTIVATE") self.skipWaiting();
+});
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    for (const key of await caches.keys()) if (key.startsWith("ponto-") && key !== CACHE) await caches.delete(key);
+    await self.clients.claim();
   })());
 });
-
-self.addEventListener("activate", (e) => {
-  e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k);
-    self.clients.claim();
-  })());
-});
-
-self.addEventListener("fetch", (e) => {
-  const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
-
+self.addEventListener("fetch", event => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== "GET" || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) {
-    e.respondWith(fetch(e.request).catch(() =>
-      new Response('{"error":"sem rede"}', { status: 504, headers: { "Content-Type": "application/json" } })));
-    return;
-  }
-
-  if (url.pathname.startsWith("/assets/")) {
-    e.respondWith((async () => {
-      const hit = await caches.match(e.request);
+    event.respondWith(fetch(event.request).catch(() => new Response('{"error":"Sem conexão. Tente novamente quando a rede voltar."}', {
+      status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    })));
+  } else if (url.pathname.startsWith("/assets/")) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const hit = await cache.match(event.request);
       if (hit) return hit;
-      const res = await fetch(e.request);
-      const c = await caches.open(CACHE);
-      c.put(e.request, res.clone());
-      return res;
+      const response = await fetch(event.request);
+      if (response.ok) await cache.put(event.request, response.clone());
+      return response;
     })());
-    return;
-  }
-
-  if (e.request.mode === "navigation") {
-    e.respondWith((async () => {
-      try {
-        const res = await fetch(e.request);
-        const c = await caches.open(CACHE);
-        c.put("/", res.clone());
-        return res;
-      } catch (offline) {
-        return (await caches.match(e.request)) || (await caches.match("/")) || Response.error();
-      }
+  } else if (event.request.mode === "navigate") {
+    event.respondWith((async () => {
+      try { return await fetch(event.request); }
+      catch { return (await (await caches.open(CACHE)).match("/")) || Response.error(); }
     })());
   }
 });

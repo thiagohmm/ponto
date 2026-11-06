@@ -147,9 +147,12 @@ export type Config = {
   sqlite: string;
   nextOff: string[];
   storage: boolean;
+  pendingObjects: number;
+  uploadMib: number;
 };
 
 export type NoteFile = {
+  state: "ready" | "uploading" | "failed";
   id: number;
   noteId: number;
   name: string;
@@ -159,6 +162,7 @@ export type NoteFile = {
 };
 
 export type Note = {
+  revision: number;
   id: number;
   title: string;
   body: string;
@@ -166,6 +170,7 @@ export type Note = {
   upd: string;
   folderId: number | null;
   tagIds: number[];
+  fileNames?: string[];
 };
 
 export type Folder = {

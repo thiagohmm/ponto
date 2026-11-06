@@ -1353,19 +1353,35 @@ tr.note td { color: var(--muted); }
   font-size: 12.5px;
 }
 
-.vault-attach-chip a {
+.vault-attach-chip .vault-attach-name {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
   max-width: 260px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
-.vault-attach-chip a span,
-.vault-attach-chip a {
+.vault-attach-chip .vault-attach-name span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.vault-attach-chip .vault-attach-dl {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.vault-attach-chip .vault-attach-dl:hover {
+  color: var(--accent);
 }
 
 .vault-attach-chip svg {
@@ -1396,6 +1412,134 @@ tr.note td { color: var(--muted); }
 
 .vault-attach-chip button:hover {
   color: var(--stamp);
+}
+
+.file-preview {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 48px));
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.file-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bar);
+}
+
+.file-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-preview-title svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted);
+}
+
+.file-preview-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+
+.file-preview-title small {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.file-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.file-preview-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.file-preview-close:hover {
+  color: var(--stamp);
+}
+
+.file-preview-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--paper);
+  overflow: auto;
+}
+
+.file-preview-body > p {
+  margin: 0;
+  max-width: 480px;
+  text-align: center;
+}
+
+.file-preview-error {
+  color: var(--stamp);
+}
+
+.file-preview-body img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.file-preview-body.pdf {
+  align-items: stretch;
+}
+
+.file-preview-body iframe {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: #fff;
+}
+
+.file-preview-body.text {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.file-preview-text {
+  margin: 0;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
 }
 
 /* Corporate workspace: shared surfaces, controls and responsive navigation. */

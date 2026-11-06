@@ -19,7 +19,7 @@ import java.util.Map;
  */
 public final class Notes {
 
-    private static final String COLS = "id, title, body, crea, upd, folder_id";
+    private static final String COLS = "id, title, body, crea, upd, folder_id, revision";
     private static final String ORDER = " ORDER BY upd DESC, id DESC";
     private static final String FCOLS = "id, parent, name, crea";
     private static final String TCOLS = "id, name, color, crea";
@@ -38,25 +38,80 @@ public final class Notes {
     public List<Note> list(String q) {
         synchronized (lock) {
             int c = cid();
-            if (q == null || q.isBlank())
-                return attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?" + ORDER, c));
-            String like = "%" + q.trim().replace('%', ' ').replace('_', ' ') + "%";
-            return attachTags(rows(
-                "SELECT DISTINCT note.id, note.title, note.body, note.crea, note.upd, note.folder_id"
-                + " FROM note LEFT JOIN note_tag ON note_tag.note_id = note.id"
-                + " LEFT JOIN tag ON tag.id = note_tag.tag_id"
-                + " WHERE note.company_id = ? AND (note.title LIKE ? COLLATE NOCASE"
-                + " OR note.body LIKE ? COLLATE NOCASE"
-                + " OR (tag.company_id = ? AND tag.name LIKE ? COLLATE NOCASE))"
-                + " ORDER BY note.upd DESC, note.id DESC", c, like, like, c, like));
+            List<Note> all = attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?" + ORDER, c));
+            String needle = q == null ? "" : q.trim();
+            if (needle.isEmpty()) return all;
+            // Same rule as the client matcher: every word must appear in the note's
+            // haystack (title, body, tag names, attachment names), case/accent insensitive.
+            Map<Integer, String> tagNames = tagNamesById(all);
+            Map<Integer, List<String>> fileNames = fileNamesByNote(all);
+            String[] words = needle.split("\\s+");
+            List<Note> out = new ArrayList<>();
+            for (Note n : all)
+                if (matchesWords(n, tagNames, fileNames, words)) out.add(n);
+            return out;
         }
+    }
+
+    private static boolean matchesWords(Note n, Map<Integer, String> tagNames,
+                                        Map<Integer, List<String>> fileNames, String[] words) {
+        StringBuilder hay = new StringBuilder(n.title()).append(' ').append(n.body());
+        for (int tagId : n.tagIds()) {
+            String name = tagNames.get(tagId);
+            if (name != null) hay.append(' ').append(name);
+        }
+        List<String> files = fileNames.get(n.id());
+        if (files != null) for (String f : files) hay.append(' ').append(f);
+        String norm = fold(hay.toString());
+        for (String w : words) {
+            String term = fold(w);
+            if (!term.isEmpty() && !norm.contains(term)) return false;
+        }
+        return true;
+    }
+
+    /** Lowercase and strip diacritics so "ação" matches "acao". */
+    private static String fold(String s) {
+        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+            .replaceAll("[\\u0300-\\u036f]", "").toLowerCase();
+    }
+
+    private Map<Integer, String> tagNamesById(List<Note> notes) {
+        var ids = new java.util.LinkedHashSet<Integer>();
+        for (Note n : notes) ids.addAll(n.tagIds());
+        if (ids.isEmpty()) return Map.of();
+        String in = String.join(",", ids.stream().map(i -> "?").toList());
+        Map<Integer, String> out = new LinkedHashMap<>();
+        try (var q = prep("SELECT id, name FROM tag WHERE id IN (" + in + ")")) {
+            int i = 1;
+            for (Integer id : ids) q.setInt(i++, id);
+            try (var rs = q.executeQuery()) {
+                while (rs.next()) out.put(rs.getInt("id"), nz(rs.getString("name")));
+            }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+        return out;
+    }
+
+    private Map<Integer, List<String>> fileNamesByNote(List<Note> notes) {
+        if (notes.isEmpty()) return Map.of();
+        String in = String.join(",", notes.stream().map(n -> "?").toList());
+        Map<Integer, List<String>> out = new LinkedHashMap<>();
+        try (var q = prep("SELECT note_id, name FROM note_file WHERE note_id IN (" + in + ") ORDER BY id")) {
+            int i = 1;
+            for (Note n : notes) q.setInt(i++, n.id());
+            try (var rs = q.executeQuery()) {
+                while (rs.next())
+                    out.computeIfAbsent(rs.getInt("note_id"), k -> new ArrayList<>()).add(nz(rs.getString("name")));
+            }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+        return out;
     }
 
     public Note byId(int id) {
         synchronized (lock) {
             List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ? AND company_id = ?",
                                           id, cid()));
-            if (r.isEmpty()) throw new Problema("nota " + id + " não existe");
+            if (r.isEmpty()) throw new ponto.NotFound("nota " + id + " não existe");
             return r.getFirst();
         }
     }
@@ -80,21 +135,28 @@ public final class Notes {
 
     public Note create(String title, String body, Integer folderId, List<Integer> tagIds) {
         synchronized (lock) {
+            return db.transaction(() -> {
             Integer fid = folder(folderId);
             if (fid != null) mustFolder(fid);
             int id = insert("INSERT INTO note(title, body, folder_id, company_id) VALUES(?,?,?,?)",
                             nz(title), nz(body), fid, cid());
             putTags(id, tagIds);
             return must(id);
+                    });
         }
     }
 
     public Note update(int id, String title, String body) {
+        synchronized (lock) { return update(id, title, body, must(id).revision()); }
+    }
+
+    public Note update(int id, String title, String body, int revision) {
         synchronized (lock) {
             must(id);
-            write("UPDATE note SET title=?, body=?,"
-                  + " upd=strftime('%Y-%m-%d %H:%M','now','localtime') WHERE id=? AND company_id=?",
-                  nz(title), nz(body), id, cid());
+            int changed = write("UPDATE note SET title=?, body=?, revision=revision+1,"
+                  + " upd=strftime('%Y-%m-%d %H:%M:%f','now','localtime') WHERE id=? AND company_id=? AND revision=?",
+                  nz(title), nz(body), id, cid(), revision);
+            if (changed == 0) throw new ponto.Conflict("Esta nota foi alterada em outro acesso. Copie seu texto e reabra a nota para comparar.");
             return must(id);
         }
     }
@@ -111,18 +173,25 @@ public final class Notes {
 
     public void delete(int id) {
         synchronized (lock) {
+            db.transaction(() -> {
+            must(id);
             write("DELETE FROM note_tag WHERE note_id=?", id);
             int n = write("DELETE FROM note WHERE id=? AND company_id=?", id, cid());
-            if (n == 0) throw new Problema("nota " + id + " não existe");
+            if (n == 0) throw new ponto.NotFound("nota " + id + " não existe");
+
+            return null;
+            });
         }
     }
 
     public Note setTags(int id, List<Integer> tagIds) {
         synchronized (lock) {
+            return db.transaction(() -> {
             must(id);
             write("DELETE FROM note_tag WHERE note_id=?", id);
             putTags(id, tagIds);
             return must(id);
+                    });
         }
     }
 
@@ -167,9 +236,13 @@ public final class Notes {
 
     public void deleteTag(int id) {
         synchronized (lock) {
+            db.transaction(() -> {
             mustTag(id);
             write("DELETE FROM note_tag WHERE tag_id=?", id);
             write("DELETE FROM tag WHERE id=? AND company_id=?", id, cid());
+
+            return null;
+            });
         }
     }
 
@@ -221,23 +294,27 @@ public final class Notes {
     /** Notes and child folders go to the parent (or the root). */
     public void deleteFolder(int id) {
         synchronized (lock) {
+            db.transaction(() -> {
             Folder f = mustFolder(id);
             write("UPDATE note SET folder_id=? WHERE folder_id=? AND company_id=?", f.parent(), id, cid());
             write("UPDATE folder SET parent=? WHERE parent=? AND company_id=?", f.parent(), id, cid());
             write("DELETE FROM folder WHERE id=? AND company_id=?", id, cid());
+
+            return null;
+            });
         }
     }
 
     private Note must(int id) {
         List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE id = ? AND company_id = ?",
                                       id, cid()));
-        if (r.isEmpty()) throw new Problema("nota " + id + " não existe");
+        if (r.isEmpty()) throw new ponto.NotFound("nota " + id + " não existe");
         return r.getFirst();
     }
 
     private Tag mustTag(int id) {
         List<Tag> r = tags("SELECT " + TCOLS + " FROM tag WHERE id = ? AND company_id = ?", id, cid());
-        if (r.isEmpty()) throw new Problema("tag " + id + " não existe");
+        if (r.isEmpty()) throw new ponto.NotFound("tag " + id + " não existe");
         return r.getFirst();
     }
 
@@ -262,7 +339,7 @@ public final class Notes {
 
     private Folder mustFolder(int id) {
         List<Folder> r = folders("SELECT " + FCOLS + " FROM folder WHERE id = ? AND company_id = ?", id, cid());
-        if (r.isEmpty()) throw new Problema("pasta " + id + " não existe");
+        if (r.isEmpty()) throw new ponto.NotFound("pasta " + id + " não existe");
         return r.getFirst();
     }
 
@@ -300,7 +377,7 @@ public final class Notes {
         List<Note> out = new ArrayList<>();
         for (Note n : notes)
             out.add(new Note(n.id(), n.title(), n.body(), n.crea(), n.upd(), n.folderId(),
-                             List.copyOf(by.get(n.id()))));
+                             List.copyOf(by.get(n.id())), n.revision()));
         return out;
     }
 
@@ -365,7 +442,7 @@ public final class Notes {
         int f = rs.getInt("folder_id");
         Integer folderId = rs.wasNull() ? null : f;
         return new Note(rs.getInt("id"), nz(rs.getString("title")), nz(rs.getString("body")),
-                        nz(rs.getString("crea")), nz(rs.getString("upd")), folderId, List.of());
+                        nz(rs.getString("crea")), nz(rs.getString("upd")), folderId, List.of(), rs.getInt("revision"));
     }
 
     private static String nz(String s) { return s == null ? "" : s; }

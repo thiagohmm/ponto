@@ -38,9 +38,11 @@ mvn -o package      # fat jar  ->  target/ponto.jar
 ponto             # anywhere afterwards
 ```
 
-The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (default 8090) and serves the React build from the jar. Both talk to the same SQLite file (`$PONTO_DB` / `--db=`).
+See [operation, backup and recovery](deploy/README.md) for the verified deploy and rollback procedure.
 
-The web app is a **PWA**: open `http://host:8090` in the phone's browser and "add to home screen" installs it like an app (standalone, icons, offline shell — `web/public/sw.js`, registered in production only).
+The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (default 8090) and serves the React build from the jar. Both talk to the same SQLite file (`$PONTO_DB` / `--db=`). Web requests select their company explicitly with `companyId`; each tab remembers its own choice without changing the terminal preference.
+
+The web app is a **PWA**: open it over HTTPS (or localhost) to install it and use the offline shell. Plain LAN HTTP serves the web interface; service workers require a secure context. See `web/public/sw.js`, registered in production only.
 
 In the form the times are masked as `NN:NN` (digits only, `830` types
 `08:30`, an `agora` button fills the clock), and **Salvar e lançar outra**
@@ -49,7 +51,7 @@ without reopening the page — the balance asks for confirmation over
 overlapping pairs.
 
 ```sh
-npm --prefix web ci && npm --prefix web run build   # writes src/main/resources/public
+npm --prefix web ci && npm --prefix web run build   # writes web/dist; Maven packages it
 mvn package
 ./ponto --serve --port=8090
 ```
@@ -66,16 +68,15 @@ Each note can hold files (drag them onto the note, or the *anexar* button).
 The row lives in SQLite (`note_file`), the bytes in an S3-compatible object
 store — no SDK, a minimal SigV4 client in `ponto/model/Minio.java`:
 
-* **MinIO** runs next to the app in `docker-compose.yml`: S3 API on
-  `:9000`, browse/download web console on `:9001`, data in
+* **MinIO** runs next to the app in `docker-compose.yml`: S3 API on the internal container network, browse/download web console bound to `127.0.0.1:9001`, data in
   `/home/thiagohmm/.local/share/ponto-minio`.
   The official `minio/minio` images stopped being published in October 2025,
   so the compose pulls the current release that Chainguard builds from source
-  (`cgr.dev/chainguard/minio`). Any S3-compatible store works: point
+  (`cgr.dev/chainguard/minio`, pinned by digest). Any S3-compatible store works: point
   `PONTO_S3_ENDPOINT` at it.
 * Config via environment: `PONTO_S3_ENDPOINT` (required, e.g.
   `http://minio:9000` inside compose), `PONTO_S3_ACCESS`, `PONTO_S3_SECRET`,
-  `PONTO_S3_BUCKET`, `PONTO_S3_REGION`.
+  `PONTO_S3_BUCKET`, `PONTO_S3_REGION`. Access and secret are required when an endpoint is configured; deployment generates credentials on the server.
 * Without an endpoint the app runs fine — the attachment button just says
   storage is not set, and the config page shows the status.
 
@@ -302,3 +303,20 @@ Dependency rule: `controller -> model`, `view -> model`, and `controller ->`
 and the table columns live in `view/` for that reason. The frontend (`web/`) is
 unchanged: it is the browser view of the web mode.
 
+
+## Quality checks
+
+```sh
+npm --prefix web ci
+npm --prefix web test
+npm --prefix web run build
+mvn verify
+./test/smoke.sh
+python3 -m unittest discover -s test -p test_backup.py
+npm --prefix web run test:e2e
+```
+
+The Java suite includes transactional upgrades, rollback, request isolation,
+revision conflicts, storage failures and report exports. The browser suite uses
+a disposable database and covers tab isolation, unsaved edits, conflicts, mobile
+navigation and the offline shell. GitHub Actions runs the same checks.

@@ -43,7 +43,9 @@ public final class Holidays {
     private static final ConcurrentHashMap<Integer, Map<LocalDate, Off>> YEARS = new ConcurrentHashMap<>();
 
     /** Days the user calls off too (`c config`, key `off`). */
-    private static volatile List<LocalDate> EXTRA = List.of();
+    private final java.util.function.Supplier<List<LocalDate>> extras;
+
+    public Holidays(java.util.function.Supplier<List<LocalDate>> extras) { this.extras = extras; }
 
     /** One day off: what it is called, and whether the whole day is off. */
     record Off(String label, boolean optional) {
@@ -88,8 +90,8 @@ public final class Holidays {
         Map.entry("CHRISTMAS", "Natal"));
 
     /** "" on a working day; otherwise what to say after the date. */
-    public static String off(LocalDate d) {
-        Off o = of(d.getYear()).get(d);
+    public String off(LocalDate d) {
+        Off o = year(d.getYear()).get(d);
         if (o == null) return weekend(d) ? "fim de semana" : "";
         return o.text() + (weekend(d) ? "   ·   fim de semana" : "");
     }
@@ -100,21 +102,22 @@ public final class Holidays {
     }
 
     /** The next `n` days off from today on, for `c config`. */
-    public static List<String> next(int n) {
+    public List<String> next(int n) {
         List<String> r = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+        LocalDate today = ponto.model.Time.today();
         for (int step = 0; step < 2 && r.size() < n; step++) {
-            for (var e : of(today.getYear() + step).entrySet()) {
+            for (var e : year(today.getYear() + step).entrySet()) {
                 if (!e.getKey().isBefore(today)) r.add(Str.d(e.getKey()) + "   " + e.getValue().text());
             }
         }
         return r.stream().limit(n).toList();
     }
 
-    /** The user's own days off; the list is rebuilt because these win over all. */
-    public static void extra(List<LocalDate> days) { EXTRA = List.copyOf(days); YEARS.clear(); }
-
-    public static List<LocalDate> extra() { return EXTRA; }
+    private Map<LocalDate, Off> year(int year) {
+        TreeMap<LocalDate, Off> days = new TreeMap<>(of(year));
+        for (LocalDate d : extras.get()) if (d.getYear() == year) days.put(d, new Off("sua folga", false));
+        return days;
+    }
 
     private static Map<LocalDate, Off> of(int year) {
         Map<LocalDate, Off> hit = YEARS.get(year);
@@ -128,7 +131,6 @@ public final class Holidays {
         }
         for (Fix f : MISSING) t.putIfAbsent(f.in(year), new Off(f.label(), f.optional()));
         if (easter != null) t.putIfAbsent(easter.minusDays(CARNIVAL_MONDAY_BEFORE_EASTER), new Off("Segunda-feira de Carnaval", true));
-        for (LocalDate d : EXTRA) t.put(d, new Off("sua folga", false));
         Map<LocalDate, Off> made = Collections.unmodifiableSortedMap(t);
         YEARS.put(year, made);
         return made;

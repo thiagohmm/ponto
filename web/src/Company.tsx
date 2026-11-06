@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { api } from "./api";
+import { api, selectApiCompany } from "./api";
+import { useLeaveGuard } from "./ui/Unsaved";
 import type { Company, CompanyList } from "./types";
 
 type Ctx = {
@@ -22,27 +23,35 @@ export function useCompany() {
 }
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
+  const canLeave = useLeaveGuard();
   const [error, setError] = useState("");
   const [data, setData] = useState<CompanyList | null>(null);
 
   const reload = useCallback(async () => {
     const list = await api.companies();
-    setData(list);
+    let preferred = 0;
+    try { preferred = Number(sessionStorage.getItem("ponto-company")); } catch { /* private browser */ }
+    const selected = list.companies.find(c => c.id === preferred)?.id ?? list.activeId;
+    selectApiCompany(selected);
+    setData({ ...list, activeId: selected });
   }, []);
 
   useEffect(() => { void reload().catch(e => setError(e instanceof Error ? e.message : "Não foi possível carregar as empresas.")); }, [reload]);
 
   const select = useCallback(async (id: number) => {
-    await api.activateCompany(id);
+    if (!(await canLeave())) return;
+    if (!data?.companies.some(c => c.id === id)) { await reload(); }
+    selectApiCompany(id);
+    try { sessionStorage.setItem("ponto-company", String(id)); } catch { /* private browser */ }
     await reload();
-  }, [reload]);
+  }, [canLeave, data, reload]);
 
   const active = data?.companies.find((c) => c.id === data.activeId) ?? null;
 
   return (
     <CompanyCtx.Provider value={{ active, companies: data?.companies ?? [], reload, select }}>
       {error && <p role="alert" className="err">{error} <button className="btn" onClick={() => { setError(""); void reload().catch(e => setError(String(e))); }}>Tentar novamente</button></p>}
-      {children}
+      {data ? children : !error && <p role="status">Carregando empresas…</p>}
     </CompanyCtx.Provider>
   );
 }
@@ -82,7 +91,7 @@ export function CompanyStat() {
         <div className="picker">
           {companies.map((c) => (
             <button key={c.id} type="button" className={c.id === active?.id ? "on" : ""}
-              onClick={() => { void select(c.id); setOpen(false); }}>
+              onClick={() => { void select(c.id).catch(e => window.alert(String(e))); setOpen(false); }}>
               {c.name}
             </button>
           ))}

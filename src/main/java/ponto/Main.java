@@ -68,9 +68,15 @@ public final class Main {
         if (flag(args, "-v", "--version")) { System.out.println(Ver.NAME + " " + Ver.N); return; }
         String db = value(args, "--db=");
         try {
+            if (flag(args, "--check-db")) {
+                try (Db d = Db.open(db)) {
+                    if (!d.healthy()) throw new Problema("banco indisponível");
+                    System.out.println("database migration and connection ok");
+                }
+                return;
+            }
             if (flag(args, "--serve")) {
-                Db d = Db.open(db);
-                new Web(new Service(d), port(args)).start();
+                try (Db d = Db.open(db)) { new Web(new Service(d), port(args)).start(); }
                 return;
             }
             try (Db d = Db.open(db)) { new App(new Service(d)).run(); }

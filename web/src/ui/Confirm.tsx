@@ -58,16 +58,23 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!pending) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     okRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") done(false);
-      else if (e.key === "Enter") { e.preventDefault(); done(true); }
+      else if (e.key === "Tab") {
+        const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>(".dialog button"));
+        const first = buttons[0], last = buttons.at(-1);
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
     };
     window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
+      previous?.focus();
     };
   }, [pending, done]);
 

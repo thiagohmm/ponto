@@ -17,3 +17,15 @@ ponto-*.csv
 *.sqlite
 
 .DS_Store
+
+# Local credentials, WAL sidecars and browser test artifacts
+.env
+.env.*
+!.env.example
+*.db-wal
+*.db-shm
+web/playwright-report/
+web/test-results/
+
+__pycache__/
+*.pyc

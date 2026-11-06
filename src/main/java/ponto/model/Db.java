@@ -15,7 +15,7 @@ import java.sql.Statement;
 public final class Db implements AutoCloseable {
 
     /** One statement per element: the JDBC driver runs only the first one otherwise. */
-    private static final java.util.List<String> SCHEMA = java.util.List.of(
+    static final java.util.List<String> SCHEMA = java.util.List.of(
         """
         CREATE TABLE IF NOT EXISTS ponto (
           id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,11 +89,15 @@ public final class Db implements AutoCloseable {
         )""");
 
     private final Connection c;
+    final Object lock;
+    private final Integer scopedCompany;
     public final Path file;
     final boolean fresh;
 
     private Db(Path p) throws SQLException {
         file = p;
+        lock = new Object();
+        scopedCompany = null;
         fresh = !p.toFile().exists() || p.toFile().length() == 0;
         var parent = p.toAbsolutePath().getParent();
         if (parent != null) parent.toFile().mkdirs();
@@ -104,18 +108,15 @@ public final class Db implements AutoCloseable {
                                            "PRAGMA synchronous = NORMAL")) {
             try (Statement st = c.createStatement()) { st.execute(s); }
         }
-        for (String sql : SCHEMA) exec(sql);
-        if (!hasColumn("note", "folder_id"))
-            exec("ALTER TABLE note ADD COLUMN folder_id INTEGER");
-        exec("CREATE INDEX IF NOT EXISTS ix_note_folder ON note(folder_id)");
-        migrateCompanies();
+        try { Migrations.apply(this); }
+        catch (RuntimeException e) { close(); throw e; }
     }
 
     /**
      * One active company per database file. Existing rows (and the old cfg
      * off/daily) land on a seeded company so a production db keeps its data.
      */
-    private void migrateCompanies() {
+    void migrateCompanies() {
         addColumn("ponto", "company_id");
         addColumn("note", "company_id");
         addColumn("folder", "company_id");
@@ -171,13 +172,14 @@ public final class Db implements AutoCloseable {
 
     /** The id stored in cfg `company`. Always set after {@link #migrateCompanies}. */
     public int company() {
+        if (scopedCompany != null) return scopedCompany;
         String v = cfg("company");
         if (v.isEmpty()) throw new Problema("sem empresa");
         try { return Integer.parseInt(v); }
         catch (NumberFormatException e) { throw new Problema("empresa: " + v); }
     }
 
-    private boolean hasColumn(String table, String col) {
+    boolean hasColumn(String table, String col) {
         try (Statement st = c.createStatement();
              var rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
             while (rs.next()) if (col.equalsIgnoreCase(rs.getString("name"))) return true;
@@ -201,6 +203,56 @@ public final class Db implements AutoCloseable {
         }
     }
 
+    private Db(Db source, int companyId) {
+        c = source.c;
+        file = source.file;
+        fresh = source.fresh;
+        lock = source.lock;
+        scopedCompany = companyId;
+    }
+
+    Db forCompany(int id) { return new Db(this, id); }
+    boolean scoped() { return scopedCompany != null; }
+
+    /** Nested operations join their caller's transaction; all callers share this lock. */
+    public <T> T transaction(java.util.function.Supplier<T> work) {
+        synchronized (lock) {
+            boolean owner = false;
+            try {
+                owner = c.getAutoCommit();
+                if (owner) c.setAutoCommit(false);
+                T result = work.get();
+                if (owner) c.commit();
+                return result;
+            } catch (RuntimeException | SQLException | Error e) {
+                if (owner) try { c.rollback(); } catch (SQLException suppressed) { e.addSuppressed(suppressed); }
+                if (e instanceof RuntimeException runtime) throw runtime;
+                if (e instanceof Error error) throw error;
+                throw new Problema("transação: " + clean(e.getMessage()));
+            } finally {
+                if (owner) try { c.setAutoCommit(true); }
+                catch (SQLException e) { throw new Problema("transação: " + clean(e.getMessage())); }
+            }
+        }
+    }
+
+    /** A consistent snapshot includes committed WAL contents without copying live files. */
+    public void backup(Path target) {
+        synchronized (lock) {
+            try (var q = c.prepareStatement("VACUUM INTO ?")) {
+                q.setString(1, target.toAbsolutePath().toString());
+                q.execute();
+            } catch (SQLException e) { throw new Problema("backup: " + clean(e.getMessage())); }
+        }
+    }
+
+    public boolean healthy() {
+        synchronized (lock) {
+            try (var q = c.createStatement(); var rs = q.executeQuery("SELECT 1")) { return rs.next(); }
+            catch (SQLException e) { return false; }
+        }
+    }
+
     /** One-off db cleanup (delete a data file the user no longer wants). */
     public void vacuum() { exec("VACUUM"); }
 
@@ -212,7 +264,7 @@ public final class Db implements AutoCloseable {
         try (var q = c.prepareStatement("SELECT v FROM cfg WHERE k = ?")) {
             q.setString(1, k);
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getString(1) : def; }
-        } catch (SQLException ignored) { return def; }
+        } catch (SQLException e) { throw new Problema("configuração: " + clean(e.getMessage())); }
     }
 
     public void setCfg(String k, String v) {
@@ -236,6 +288,7 @@ public final class Db implements AutoCloseable {
     }
 
     @Override public void close() {
+        if (scoped()) return;
         try { c.close(); } catch (SQLException ignored) { /* already gone */ }
     }
 

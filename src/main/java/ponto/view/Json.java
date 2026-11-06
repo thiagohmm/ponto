@@ -27,7 +27,7 @@ public final class Json {
         m.put("dia", Str.d(e.dia()));
         m.put("diaIso", Str.iso(e.dia()));
         m.put("d3", Str.d3(e.dia()));
-        m.put("off", Holidays.off(e.dia()));
+        m.put("off", new Holidays(java.util.List::of).off(e.dia()));
         m.put("tin", Str.t(e.tin()));
         m.put("tout", Str.t(e.tout()));
         m.put("just", e.just());
@@ -47,6 +47,7 @@ public final class Json {
         m.put("body", n.body());
         m.put("crea", n.crea());
         m.put("upd", n.upd());
+        m.put("revision", n.revision());
         m.put("folderId", n.folderId());
         m.put("tagIds", n.tagIds() == null ? java.util.List.of() : n.tagIds());
         return m;

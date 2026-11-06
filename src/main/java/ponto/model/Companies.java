@@ -58,6 +58,7 @@ public final class Companies {
     }
 
     public void activate(int id) {
+        if (db.scoped()) throw new Bad("a seleção web pertence à aba");
         synchronized (lock) {
             must(id);
             db.setCfg("company", String.valueOf(id));
@@ -66,6 +67,7 @@ public final class Companies {
 
     public void delete(int id) {
         synchronized (lock) {
+            db.transaction(() -> {
             List<Company> all = listLocked();
             if (all.size() <= 1) throw new Bad("última empresa");
             must(id);
@@ -79,6 +81,9 @@ public final class Companies {
                 int next = all.stream().filter(c -> c.id() != id).findFirst().orElseThrow().id();
                 db.setCfg("company", String.valueOf(next));
             }
+
+            return null;
+            });
         }
     }
 
@@ -88,7 +93,7 @@ public final class Companies {
 
     private Company must(int id) {
         List<Company> r = rows("SELECT " + COLS + " FROM company WHERE id = ?", id);
-        if (r.isEmpty()) throw new Problema("empresa " + id + " não existe");
+        if (r.isEmpty()) throw new ponto.NotFound("empresa " + id + " não existe");
         return r.getFirst();
     }
 

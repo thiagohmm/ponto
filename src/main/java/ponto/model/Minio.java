@@ -24,12 +24,12 @@ import java.util.Map;
  *
  * Config, all from the environment:
  *   PONTO_S3_ENDPOINT   e.g. http://minio:9000 (empty = storage disabled)
- *   PONTO_S3_ACCESS     access key     (default "minioadmin")
- *   PONTO_S3_SECRET     secret key     (default "minioadmin")
+ *   PONTO_S3_ACCESS     access key     (required)
+ *   PONTO_S3_SECRET     secret key     (required)
  *   PONTO_S3_BUCKET     (default "ponto")
  *   PONTO_S3_REGION     (default "us-east-1")
  */
-public final class Minio {
+public final class Minio implements ObjectStore {
 
     public static final String ENDPOINT = "PONTO_S3_ENDPOINT";
     public static final String ACCESS = "PONTO_S3_ACCESS";
@@ -38,7 +38,7 @@ public final class Minio {
     public static final String REGION = "PONTO_S3_REGION";
 
     private static final Duration CONNECT = Duration.ofSeconds(5);
-    private static final Duration REQUEST = Duration.ofMinutes(10);
+    private static final Duration REQUEST = Duration.ofSeconds(30);
 
     private final URI endpoint;
     private final String access;
@@ -63,10 +63,11 @@ public final class Minio {
             throw new Problema("s3: " + ENDPOINT + " precisa de http(s)");
         String url = ep;
         while (url.endsWith("/")) url = url.substring(0, url.length() - 1);
+        String access = nz(System.getenv(ACCESS)), secret = nz(System.getenv(SECRET));
+        if (access.isEmpty() || secret.isEmpty()) throw new Problema("s3: configure PONTO_S3_ACCESS e PONTO_S3_SECRET");
         try {
             return new Minio(URI.create(url),
-                    nz(System.getenv(ACCESS), "minioadmin"),
-                    nz(System.getenv(SECRET), "minioadmin"),
+                    access, secret,
                     nz(System.getenv(BUCKET), "ponto"),
                     nz(System.getenv(REGION), "us-east-1"));
         } catch (IllegalArgumentException e) {
@@ -76,14 +77,14 @@ public final class Minio {
 
     /** true when the bucket answers (creating it if it is missing). */
     public boolean up() {
-        try { ensureBucket(); return true; }
+        try { return req("HEAD", null, null, null).status() == 200; }
         catch (Problema e) { return false; }
     }
 
     /** Head the bucket; create it when it is missing. */
     public void ensureBucket() {
         Response head = req("HEAD", null, null, null);
-        if (head.status() == 200 || head.status() == 403) return;
+        if (head.status() == 200) return;
         if (head.status() != 404) throw fail(head, "bucket");
         Response put = req("PUT", null, null, null);
         if (put.status() >= 300) throw fail(put, "bucket");
@@ -149,13 +150,16 @@ public final class Minio {
                     .header("x-amz-content-sha256", payloadHash)
                     .header("x-amz-date", amzDate)
                     .header("Authorization", auth)
-                    .timeout(REQUEST);
+                    .timeout(method.equals("HEAD") ? Duration.ofSeconds(3) : REQUEST);
             if (contentType != null) b.header("Content-Type", contentType);
             HttpResponse<byte[]> res = http.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
             byte[] raw = res.body() == null ? new byte[0] : res.body();
             return new Response(res.statusCode(), raw, new String(raw, StandardCharsets.UTF_8));
         } catch (Problema e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Problema("s3: operação interrompida");
         } catch (Exception e) {
             throw new Problema("s3: " + nz(e.getMessage()));
         }

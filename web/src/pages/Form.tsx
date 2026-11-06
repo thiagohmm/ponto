@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useUnsavedChanges } from "../ui/Unsaved";
 import { api } from "../api";
 import { maskTime, nowHm, timeOk } from "../mask";
 import type { DayInfo, Entry } from "../types";
@@ -29,34 +30,53 @@ export function FormPage() {
   const [need, setNeed] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(!editing);
   const tinRef = useRef<HTMLInputElement>(null);
+  const [initial, setInitial] = useState(() => JSON.stringify([todayIso(), "", "", ""]));
+  const markClean = useUnsavedChanges(JSON.stringify([dia, tin, tout, just]) !== initial || busy);
+
+  function changeTimes(field: "dia" | "tin" | "tout", value: string) {
+    setConfirmMidnight(false); setConfirmOverlap(false); setNeed("");
+    if (field === "dia") setDia(value);
+    else if (field === "tin") setTin(value);
+    else setTout(value);
+  }
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
+    setLoaded(false);
     api.entry(Number(id)).then((e: Entry) => {
+      if (cancelled) return;
+      setInitial(JSON.stringify([e.diaIso, e.tin, e.tout, e.just]));
       setDia(e.diaIso);
       setTin(e.tin);
       setTout(e.tout);
       setJust(e.just);
-    }).catch((e: unknown) => setErr(e instanceof Error ? e.message : "não achou"));
+      setLoaded(true);
+    }).catch((e: unknown) => { if (!cancelled) setErr(e instanceof Error ? e.message : "não achou"); });
+    return () => { cancelled = true; };
   }, [id]);
 
   useEffect(() => {
     if (!dia) return;
+    let cancelled = false;
+    setDay(null);
     api.day(dia).then((d) => {
+      if (cancelled) return;
       setDay(d);
-      if (!editing && !tin && d.lastOut) setTin(d.lastOut);
-    }).catch(() => setDay(null));
+      if (!editing && d.lastOut) setTin(current => current || d.lastOut);
+    }).catch(() => { if (!cancelled) setDay(null); });
+    return () => { cancelled = true; };
   }, [dia, editing]);
 
   async function save(outro = false) {
-    if (busy) return;
+    if (busy || !loaded) return;
     setErr("");
     setNeed("");
     const badIn = timeOk(tin), badOut = timeOk(tout);
     if (badIn || badOut) {
-      setErr("entrada" + (badIn ? " " + badIn : "") + (badIn && badOut ? " · " : "")
-        + "saída" + (badOut ? " " + badOut : "") + " — corrija antes de salvar");
+      setErr([badIn && "entrada " + badIn, badOut && "saída " + badOut].filter(Boolean).join(" · ") + " — corrija antes de salvar");
       return;
     }
     setBusy(true);
@@ -64,11 +84,13 @@ export function FormPage() {
     try {
       if (editing) {
         await api.update(Number(id), body);
+        markClean();
         nav("/");
         return;
       }
       await api.create(body);
       if (!outro) {
+        markClean();
         nav("/");
         return;
       }
@@ -79,10 +101,12 @@ export function FormPage() {
       setNeed("");
       setConfirmMidnight(false);
       setConfirmOverlap(false);
-      const d = await api.day(dia);
-      setDay(d);
-      setCloseOpen(d.open.length > 0);
-      if (d.lastOut) setTin(d.lastOut);
+      setInitial(JSON.stringify([dia, "", "", ""]));
+      try {
+        const d = await api.day(dia);
+        setDay(d); setCloseOpen(d.open.length > 0);
+        if (d.lastOut) { setTin(d.lastOut); setInitial(JSON.stringify([dia, d.lastOut, "", ""])); }
+      } catch { setErr("Registro salvo. Não foi possível atualizar os horários do dia; confira a conexão antes do próximo lançamento."); }
       tinRef.current?.focus();
     } catch (e) {
       if (e instanceof ApiError && e.need) {
@@ -108,24 +132,24 @@ export function FormPage() {
 
       <div className="form">
         <label>Dia
-          <input type="date" value={dia} onChange={(e) => setDia(e.target.value)} />
+          <input type="date" value={dia} onChange={(e) => changeTimes("dia", e.target.value)} />
         </label>
         <label>Entrada
           <div className="row">
             <input ref={tinRef} className={"hora" + (timeOk(tin) ? " bad" : "")} placeholder="07:30" value={tin}
               inputMode="numeric" autoComplete="off"
-              aria-invalid={Boolean(timeOk(tin))} aria-describedby="entrada-erro" onChange={(e) => setTin(maskTime(e.target.value, tin))} />
+              aria-invalid={Boolean(timeOk(tin))} aria-describedby="entrada-erro" onChange={(e) => changeTimes("tin", maskTime(e.target.value, tin))} />
             <button className="btn" type="button" title="usar a hora do relógio"
-              onClick={() => setTin(nowHm())}>Agora</button>
+              onClick={() => changeTimes("tin", nowHm())}>Agora</button>
           </div><small id="entrada-erro" className="field-error">{timeOk(tin)}</small>
         </label>
         <label>Saída
           <div className="row">
             <input className={"hora" + (timeOk(tout) ? " bad" : "")} placeholder="12:00" value={tout}
               inputMode="numeric" autoComplete="off"
-              aria-invalid={Boolean(timeOk(tout))} aria-describedby="saida-erro" onChange={(e) => setTout(maskTime(e.target.value, tout))} />
+              aria-invalid={Boolean(timeOk(tout))} aria-describedby="saida-erro" onChange={(e) => changeTimes("tout", maskTime(e.target.value, tout))} />
             <button className="btn" type="button" title="usar a hora do relógio"
-              onClick={() => setTout(nowHm())}>Agora</button>
+              onClick={() => changeTimes("tout", nowHm())}>Agora</button>
           </div><small id="saida-erro" className="field-error">{timeOk(tout)}</small>
         </label>
         <label className="span2">Justificativa
@@ -135,7 +159,7 @@ export function FormPage() {
 
       {!editing && open && (
         <label className="row" style={{ marginTop: 12 }}>
-          <input type="checkbox" checked={closeOpen} onChange={(e) => setCloseOpen(e.target.checked)} />
+          <input type="checkbox" checked={closeOpen} onChange={(e) => { setCloseOpen(e.target.checked); setConfirmMidnight(false); setConfirmOverlap(false); setNeed(""); }} />
           Fechar o aberto #{open.id} (entrada {open.tin})
         </label>
       )}
@@ -154,9 +178,9 @@ export function FormPage() {
       )}
 
       <div className="row" style={{ marginTop: 18 }}>
-        <button className="btn primary" disabled={busy} onClick={() => void save(false)}>{busy ? "Salvando…" : "Salvar registro"}</button>
+        <button className="btn primary" disabled={busy || !loaded} onClick={() => void save(false)}>{busy ? "Salvando…" : "Salvar registro"}</button>
         {!editing && (
-          <button className="btn" disabled={busy}
+          <button className="btn" disabled={busy || !loaded}
             title="salva o par e continua neste dia para lançar o próximo"
             onClick={() => void save(true)}>Salvar e adicionar outro</button>
         )}

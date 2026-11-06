@@ -7,7 +7,7 @@
 
   <groupId>pt.ponto</groupId>
   <artifactId>ponto</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
   <packaging>jar</packaging>
   <name>ponto</name>
   <description>Terminal timesheet (SQLite) with CSV / XLS / PDF export</description>
@@ -24,6 +24,12 @@
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.11.4</version>
+      <scope>test</scope>
+    </dependency>
     <!-- SQLite JDBC driver (native lib bundled, extracted at runtime) -->
     <dependency>
       <groupId>org.xerial</groupId>
@@ -82,7 +88,20 @@
 
   <build>
     <finalName>ponto</finalName>
+    <testSourceDirectory>test</testSourceDirectory>
+    <resources>
+      <resource><directory>src/main/resources</directory><excludes><exclude>public/**</exclude></excludes></resource>
+      <resource><directory>web/dist</directory><targetPath>public</targetPath></resource>
+    </resources>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>

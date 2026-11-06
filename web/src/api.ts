@@ -1,6 +1,15 @@
 import type { Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteFile, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
+export type EntrySave = { dia: string; tin: string; tout: string; just: string; closeOpen?: boolean; confirmMidnight?: boolean; confirmOverlap?: boolean };
+export type ConfigSave = { who?: string; off?: string; daily?: string; vacuum?: boolean };
+let companyId = 0;
+export function selectApiCompany(id: number) { companyId = id; }
+export function companyUrl(path: string) {
+  if (!companyId) throw new Error("Selecione uma empresa antes de continuar.");
+  return "/api" + path + (path.includes("?") ? "&" : "?") + "companyId=" + companyId;
+}
+
 async function parse(r: Response): Promise<unknown> {
   const text = await r.text();
   if (!text) return {};
@@ -8,20 +17,21 @@ async function parse(r: Response): Promise<unknown> {
   catch { return { error: text }; }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch("/api" + path, {
+async function req<T>(path: string, init?: RequestInit, catalog = false): Promise<T> {
+  const r = await fetch(catalog ? "/api" + path : companyUrl(path), {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
   if (r.status === 204) return undefined as T;
-  const body = await parse(r) as { error?: string; message?: string; need?: string };
+  const body = await parse(r) as { error?: string; message?: string; need?: string; requestId?: string };
   if (!r.ok) {
-    throw new ApiError(body.error || body.message || r.statusText, r.status, body.need);
+    throw new ApiError((body.error || body.message || r.statusText) + (r.status >= 500 && body.requestId ? " (" + body.requestId + ")" : ""), r.status, body.need);
   }
   return body as T;
 }
 
 export const api = {
+  retryStorage: () => req<{ ok: boolean }>("/storage/retry", { method: "POST" }),
   home: () => req<Home>("/home"),
   entries: (q: { q?: string; dia?: string; n?: number; skip?: number }) => {
     const p = new URLSearchParams();
@@ -36,9 +46,9 @@ export const api = {
   entriesRange: (from: string, to: string, n = 500, q = "") =>
     req<EntryList>("/entries?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to) + "&n=" + n + "&q=" + encodeURIComponent(q)),
   entry: (id: number) => req<Entry>("/entries/" + id),
-  create: (body: Record<string, unknown>) =>
+  create: (body: EntrySave) =>
     req<Entry>("/entries", { method: "POST", body: JSON.stringify(body) }),
-  update: (id: number, body: Record<string, unknown>) =>
+  update: (id: number, body: EntrySave) =>
     req<Entry>("/entries/" + id, { method: "PUT", body: JSON.stringify(body) }),
   remove: (id: number) => req<{ ok: boolean }>("/entries/" + id, { method: "DELETE" }),
   removeDay: (dia: string) => req<{ ok: boolean; deleted: number }>("/days/" + encodeURIComponent(dia), { method: "DELETE" }),
@@ -54,9 +64,9 @@ export const api = {
   sum: (from: string, to: string) =>
     req<Sum>("/sum?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to)),
   config: () => req<Config>("/config"),
-  saveConfig: (body: Record<string, unknown>) =>
+  saveConfig: (body: ConfigSave) =>
     req<Config>("/config", { method: "PUT", body: JSON.stringify(body) }),
-  companies: () => req<CompanyList>("/companies"),
+  companies: () => req<CompanyList>("/companies", undefined, true),
   createCompany: (body: { name: string; off?: string; daily?: string }) =>
     req<Company>("/companies", { method: "POST", body: JSON.stringify(body) }),
   updateCompany: (id: number, body: { name?: string; off?: string; daily?: string }) =>
@@ -66,13 +76,13 @@ export const api = {
   activateCompany: (id: number) =>
     req<Company & { activeId: number }>("/companies/active", { method: "PUT", body: JSON.stringify({ id }) }),
   exportUrl: (kind: string, from: string, to: string) =>
-    "/api/export/" + kind + "?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to),
+    companyUrl("/export/" + kind + "?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to)),
   notes: (q?: string) =>
     req<NoteList>("/notes" + (q ? "?q=" + encodeURIComponent(q) : "")),
   note: (id: number) => req<Note>("/notes/" + id),
   createNote: (body: { title: string; body: string; folderId?: number | null; tagIds?: number[] }) =>
     req<Note>("/notes", { method: "POST", body: JSON.stringify(body) }),
-  updateNote: (id: number, body: { title: string; body: string }) =>
+  updateNote: (id: number, body: { title: string; body: string; revision: number }) =>
     req<Note>("/notes/" + id, { method: "PUT", body: JSON.stringify(body) }),
   moveNote: (id: number, folderId: number | null) =>
     req<Note>("/notes/" + id + "/folder", { method: "PUT", body: JSON.stringify({ folderId }) }),
@@ -83,15 +93,23 @@ export const api = {
   uploadFile: async (noteId: number, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch("/api/notes/" + noteId + "/files", { method: "POST", body: fd });
-    const body = await parse(r) as { error?: string; message?: string; need?: string };
-    if (!r.ok) throw new ApiError(body.error || body.message || r.statusText, r.status, body.need);
+    const r = await fetch(companyUrl("/notes/" + noteId + "/files"), { method: "POST", body: fd });
+    const body = await parse(r) as { error?: string; message?: string; need?: string; requestId?: string };
+    if (!r.ok) throw new ApiError((body.error || body.message || r.statusText) + (r.status >= 500 && body.requestId ? " (" + body.requestId + ")" : ""), r.status, body.need);
     return body as NoteFile;
   },
   removeFile: (noteId: number, fileId: number) =>
     req<{ ok: boolean }>("/notes/" + noteId + "/files/" + fileId, { method: "DELETE" }),
   fileDownloadUrl: (noteId: number, fileId: number) =>
-    "/api/notes/" + noteId + "/files/" + fileId + "/download",
+    companyUrl("/notes/" + noteId + "/files/" + fileId + "/download"),
+  fileBytes: async (noteId: number, fileId: number): Promise<Blob> => {
+    const r = await fetch(companyUrl("/notes/" + noteId + "/files/" + fileId + "/download"));
+    if (!r.ok) {
+      const body = await parse(r) as { error?: string; message?: string; requestId?: string };
+      throw new ApiError((body.error || body.message || r.statusText) + (r.status >= 500 && body.requestId ? " (" + body.requestId + ")" : ""), r.status);
+    }
+    return r.blob();
+  },
   createFolder: (body: { name: string; parent?: number | null }) =>
     req<Folder>("/folders", { method: "POST", body: JSON.stringify(body) }),
   updateFolder: (id: number, body: { name?: string; parent?: number | null }) =>

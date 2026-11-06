@@ -1,4 +1,4 @@
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:25.0.2_10-jre
 WORKDIR /app
 COPY target/ponto.jar /app/ponto.jar
 ENV PONTO_DB=/data/ponto.db

@@ -6,7 +6,6 @@ import ponto.Problema;
 import ponto.Ver;
 import ponto.model.Dur;
 import ponto.model.Entry;
-import ponto.model.Holidays;
 import ponto.model.Parse;
 import ponto.model.Period;
 import ponto.model.Report;
@@ -119,7 +118,7 @@ public final class App {
 
     private void novo() {
         out.title("NOVO");
-        LocalDate dia = in.date("dia", LocalDate.now());
+        LocalDate dia = in.date("dia", ponto.model.Time.today());
         offDay(dia, true);
         List<Entry> same = svc.on(dia);
 
@@ -136,7 +135,7 @@ public final class App {
             Entry o = open.getFirst();
             out.warn("aberto: #" + o.id() + "   entrada " + Str.t(o.tin()));
             if (in.yes("fechar #" + o.id() + "?", true)) {
-                Optional<LocalTime> t = in.time("saída", Str.t(LocalTime.now()));
+                Optional<LocalTime> t = in.time("saída", Str.t(ponto.model.Time.now()));
                 if (t.isPresent()) {
                     Entry done = new Entry(o.id(), o.dia(), o.tin(), t.get(), o.just(), o.crea());
                     check(done, done.id());
@@ -165,7 +164,7 @@ public final class App {
 
     /** Default for "out": now, but only when starting a punch today. */
     private String punchNow(Optional<LocalTime> tin, LocalDate dia) {
-        return tin.isPresent() && dia.equals(LocalDate.now()) ? Str.t(LocalTime.now()) : "";
+        return tin.isPresent() && dia.equals(ponto.model.Time.today()) ? Str.t(ponto.model.Time.now()) : "";
     }
 
     /** Default for the next "in": the latest "out" of that day. */
@@ -208,7 +207,7 @@ public final class App {
      */
     private void offDay(LocalDate d, boolean force) {
         if (!force) return;
-        String off = Holidays.off(d);
+        String off = svc.holiday(d);
         if (!off.isEmpty()) out.warn(Str.d(d) + "  " + Str.d3(d) + "   " + off);
     }
 
@@ -301,7 +300,7 @@ public final class App {
 
     /** Today if it has lines, otherwise the last day that has any. */
     private LocalDate defaultDay() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = ponto.model.Time.today();
         return svc.countOn(today) > 0 ? today : nzD(svc.max(), today);
     }
 
@@ -436,13 +435,13 @@ public final class App {
             List<LocalDate> fl = svc.faltas();
             if (fl.isEmpty()) { out.note("nenhuma falta marcada   ·   f [dia] alterna"); return; }
             for (LocalDate d : fl) {
-                String off = Holidays.off(d);
+                String off = svc.holiday(d);
                 out.note(Str.d(d) + "  " + Str.d3(d) + (off.isEmpty() ? "" : "   ·   " + off));
             }
             out.note(fl.size() + " falta(s)");
             return;
         }
-        LocalDate d = rest.isEmpty() ? LocalDate.now() : Parse.date(rest);
+        LocalDate d = rest.isEmpty() ? ponto.model.Time.today() : Parse.date(rest);
         boolean on = !svc.falta(d);
         String warn = on ? svc.faltaWarn(d) : "";
         svc.falta(d, on);
@@ -568,7 +567,7 @@ public final class App {
         out.ok("usuário " + (w.equals("-") ? "-" : w));
         String o = in.text("folgas", off.isEmpty() ? "-" : off);
         svc.setConfig(null, o, false, s -> out.warn("folga: '" + Str.cut(s, 24) + "'   ·   não é data, ignorado"));
-        out.ok("folgas " + (o.equals("-") ? "-" : Holidays.extra().size() + " dia(s)"));
+        out.ok("folgas " + (o.equals("-") ? "-" : Service.offDates(svc.rawOff()).size() + " dia(s)"));
         String d = in.text("jornada", daily.isEmpty() ? "8" : daily);
         try {
             svc.setConfig(null, null, d, false, s -> { });

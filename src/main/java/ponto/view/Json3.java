@@ -19,6 +19,7 @@ public final class Json3 implements JsonMapper {
 
     @Override
     public <T> T fromJsonString(String json, Type targetType) {
-        return om.readValue(json, om.constructType(targetType));
+        try { return om.readValue(json, om.constructType(targetType)); }
+        catch (tools.jackson.core.JacksonException e) { throw new ponto.Bad("JSON inválido ou campos incompatíveis."); }
     }
 }

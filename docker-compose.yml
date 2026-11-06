@@ -1,23 +1,17 @@
 services:
-  # S3-compatible object storage for the note attachments.
-  # The official minio/minio images stopped being published (Oct/2025);
-  # Chainguard builds the current release from source, console included.
-  # The image defaults to a locked-down non-root uid, which breaks the
-  # bind mount under rootless docker --user 0 runs it as the docker owner.
   minio:
-    image: cgr.dev/chainguard/minio:latest
+    image: cgr.dev/chainguard/minio@sha256:e234321fd3abff7fb968b0674056e883b702aa1ad93a0d4d795cb6c21fa46407
     container_name: ponto-minio
     restart: unless-stopped
     user: "0"
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${PONTO_S3_ACCESS:?Configure PONTO_S3_ACCESS in .env}
+      MINIO_ROOT_PASSWORD: ${PONTO_S3_SECRET:?Configure PONTO_S3_SECRET in .env}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # web console
+      - "127.0.0.1:9001:9001"
     volumes:
-      - /home/thiagohmm/.local/share/ponto-minio:/data
+      - ${PONTO_OBJECT_DIR:-/home/thiagohmm/.local/share/ponto-minio}:/data
 
   ponto:
     build: .
@@ -27,11 +21,23 @@ services:
     depends_on:
       - minio
     ports:
-      - "8090:8080"
+      - "${PONTO_BIND:-0.0.0.0}:${PONTO_PORT:-8090}:8080"
     environment:
       PONTO_DB: /data/ponto.db
+      PONTO_TZ: ${PONTO_TZ:-America/Sao_Paulo}
+      TZ: ${PONTO_TZ:-America/Sao_Paulo}
       PONTO_S3_ENDPOINT: http://minio:9000
-      PONTO_S3_BUCKET: ponto
+      PONTO_S3_ACCESS: ${PONTO_S3_ACCESS:?Configure PONTO_S3_ACCESS in .env}
+      PONTO_S3_SECRET: ${PONTO_S3_SECRET:?Configure PONTO_S3_SECRET in .env}
+      PONTO_S3_BUCKET: ${PONTO_S3_BUCKET:-ponto}
+      PONTO_UPLOAD_MIB: ${PONTO_UPLOAD_MIB:-20}
     volumes:
-      - /home/thiagohmm/.local/share/ponto:/data
+      - ${PONTO_DATA_DIR:-/home/thiagohmm/.local/share/ponto}:/data
     command: ["--serve", "--port=8080"]
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/app/ponto.jar", "ponto.HealthCheck"]
+      interval: 30s
+      timeout: 6s
+      start_period: 20s
+      retries: 3
+    stop_grace_period: 45s
