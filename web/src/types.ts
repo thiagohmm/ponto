@@ -194,6 +194,29 @@ export type NoteList = {
   tags: Tag[];
 };
 
+export type KanbanColumn = {
+  id: number;
+  name: string;
+  position: number;
+  crea: string;
+};
+
+export type KanbanCard = {
+  id: number;
+  columnId: number;
+  title: string;
+  body: string;
+  position: number;
+  revision: number;
+  crea: string;
+  upd: string;
+};
+
+export type KanbanBoard = {
+  columns: KanbanColumn[];
+  cards: KanbanCard[];
+};
+
 export class ApiError extends Error {
   status: number;
   need?: string;

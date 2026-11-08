@@ -35,7 +35,7 @@ class IntegrityTest {
             assertEquals("legado", s.byId(7).just());
             assertEquals(360, s.dailyMinutes());
             assertEquals(1,s.count());
-            assertEquals(2, version(db));
+            assertEquals(3, version(db));
         }
         try (Db db = Db.open(file.toString())) {
             var s = new Service(db);

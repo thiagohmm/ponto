@@ -1,4 +1,4 @@
-import type { Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, Note, NoteFile, NoteList, Sum, Tag } from "./types";
+import type { Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 export type EntrySave = { dia: string; tin: string; tout: string; just: string; closeOpen?: boolean; confirmMidnight?: boolean; confirmOverlap?: boolean };
@@ -120,4 +120,19 @@ export const api = {
   updateTag: (id: number, body: { name?: string; color?: string }) =>
     req<Tag>("/tags/" + id, { method: "PUT", body: JSON.stringify(body) }),
   removeTag: (id: number) => req<{ ok: boolean }>("/tags/" + id, { method: "DELETE" }),
+  kanban: () => req<KanbanBoard>("/kanban"),
+  createKanbanColumn: (body: { name: string }) =>
+    req<KanbanColumn>("/kanban/columns", { method: "POST", body: JSON.stringify(body) }),
+  updateKanbanColumn: (id: number, body: { name?: string; position?: number }) =>
+    req<KanbanColumn>("/kanban/columns/" + id, { method: "PUT", body: JSON.stringify(body) }),
+  removeKanbanColumn: (id: number) =>
+    req<{ ok: boolean }>("/kanban/columns/" + id, { method: "DELETE" }),
+  createKanbanCard: (body: { title: string; body?: string; columnId: number }) =>
+    req<KanbanCard>("/kanban/cards", { method: "POST", body: JSON.stringify(body) }),
+  updateKanbanCard: (id: number, body: { title: string; body: string; revision: number }) =>
+    req<KanbanCard>("/kanban/cards/" + id, { method: "PUT", body: JSON.stringify(body) }),
+  moveKanbanCard: (id: number, body: { columnId: number; position: number }) =>
+    req<KanbanCard>("/kanban/cards/" + id + "/move", { method: "PUT", body: JSON.stringify(body) }),
+  removeKanbanCard: (id: number) =>
+    req<{ ok: boolean }>("/kanban/cards/" + id, { method: "DELETE" }),
 };

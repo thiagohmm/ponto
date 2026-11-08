@@ -119,6 +119,7 @@ public final class Web {
         app.put("/api/companies/{id}", this::companyUpdate);
         app.delete("/api/companies/{id}", this::companyDelete);
         new NoteRoutes(this::service).register(app);
+        new KanbanRoutes(this::service).register(app);
         app.events(events -> events.serverStopped(svc::closeResources));
         return app;
     }

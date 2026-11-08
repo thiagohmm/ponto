@@ -8,6 +8,7 @@ import { ConfigPage } from "./pages/Config";
 import { ExportPage } from "./pages/Export";
 import { FormPage } from "./pages/Form";
 import { HomePage } from "./pages/Home";
+import { KanbanPage } from "./pages/Kanban";
 import { NotesPage } from "./pages/Notes";
 import { SumPage } from "./pages/Sum";
 
@@ -24,6 +25,7 @@ const TABS = [
   { to: "/novo", label: "Novo registro", path: "M12 5v14M5 12h14" },
   { to: "/soma", label: "Resumo de horas", path: "M5 7h14M12 7v4M7 17h10M12 13v8" },
   { to: "/notas", label: "Notas", path: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-5zM14 3v5h5" },
+  { to: "/kanban", label: "Kanban", path: "M4 5h4v14H4zM10 5h4v8h-4zM16 5h4v11h-4z" },
   { to: "/exportar", label: "Exportar", path: "M12 4v12M8 12l4 4 4-4M5 20h14" },
   { to: "/config", label: "Configurações", path: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 3v2M12 19v2M4.2 6.2l1.4 1.4M18.4 16.4l1.4 1.4M3 12h2M19 12h2M4.2 17.8l1.4-1.4M18.4 7.6l1.4-1.4" },
 ] as const;
@@ -31,12 +33,13 @@ const TABS = [
 export function App() {
   const loc = useLocation();
   const vault = loc.pathname.startsWith("/notas");
+  const kanban = loc.pathname.startsWith("/kanban");
   const editing = loc.pathname.startsWith("/edit");
   const [menu, setMenu] = useState(false);
   const title = editing ? "Editar registro" : TABS.find(t => t.to === loc.pathname)?.label ?? "Notas";
   return (
     <ConfirmProvider><UnsavedProvider><Connection /><CompanyProvider>
-      <div className={vault ? "workspace notes-workspace" : "workspace"}>
+      <div className={vault ? "workspace notes-workspace" : kanban ? "workspace kanban-workspace" : "workspace"}>
         <a className="skip-link" href="#conteudo">Ir para o conteúdo</a>
         <header className="mobile-header"><b>P<span className="brand-dot">.</span> Ponto</b>
           <button className="btn" aria-expanded={menu} aria-controls="main-navigation" onClick={() => setMenu(!menu)}>Menu {menu ? "−" : "+"}</button>
@@ -50,13 +53,13 @@ export function App() {
               <Ico path={t.path} />{t.label}
             </NavLink>)}
           </nav>
-          <div className="sidebar-foot">Sua jornada, organizada.<small>Registros · Horas · Notas</small></div>
+          <div className="sidebar-foot">Sua jornada, organizada.<small>Registros · Horas · Notas · Kanban</small></div>
         </aside>
         <div className="workspace-body">
           <header className="workspace-header"><span>Espaço de trabalho <span className="muted">/ {title}</span></span><CompanyBar /></header>
           <main id="conteudo" className="page-content" tabIndex={-1}>
             <div className="page-heading"><div><p className="eyebrow">GESTÃO DE JORNADA</p><h1>{title}</h1>
-              <p className="muted">{vault ? "Suas ideias, tarefas e arquivos em um só lugar." : "Organize sua rotina e acompanhe cada hora."}</p></div></div>
+              <p className="muted">{vault ? "Suas ideias, tarefas e arquivos em um só lugar." : kanban ? "Arraste cartões entre colunas da empresa ativa." : "Organize sua rotina e acompanhe cada hora."}</p></div></div>
             <Pages />
           </main>
         </div>
@@ -75,6 +78,7 @@ function Pages() {
       <Route path="/soma" element={<SumPage />} />
       <Route path="/notas" element={<NotesPage />} />
       <Route path="/notas/:id" element={<NotesPage />} />
+      <Route path="/kanban" element={<KanbanPage />} />
       <Route path="/exportar" element={<ExportPage />} />
       <Route path="/config" element={<ConfigPage />} />
     </Routes>

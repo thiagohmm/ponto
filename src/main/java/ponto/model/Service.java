@@ -29,6 +29,7 @@ public final class Service {
     private final Db db;
     private final Repo repo;
     private final Notes notes;
+    private final Kanban kanban;
     private final Companies companies;
     private final Object lock;
     private final Holidays calendar;
@@ -42,6 +43,7 @@ public final class Service {
         this.calendar = new Holidays(() -> offDates(companyLocked().off()));
         this.repo = new Repo(db);
         this.notes = new Notes(db, lock);
+        this.kanban = new Kanban(db, lock);
         this.companies = new Companies(db, lock);
         this.reports = new Reports(db, repo, () -> who(), () -> companyLocked().name());
     }
@@ -82,6 +84,9 @@ public final class Service {
 
     /** Markdown notes: same SQLite file, unrelated to the timesheet. */
     public Notes notes() { return notes; }
+
+    /** Kanban board: columns and cards of the active company. */
+    public Kanban kanban() { return kanban; }
 
     /** Workplaces: punches, notes, jornada and folgas of the active one. */
     public Companies companies() { return companies; }

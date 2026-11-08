@@ -7,7 +7,7 @@ import java.util.Map;
 
 /** Versioned, atomic upgrades. A failed integrity check rolls back the entire upgrade. */
 final class Migrations {
-    static final int VERSION = 2;
+    static final int VERSION = 3;
 
     static void apply(Db db) {
         int version;
@@ -28,6 +28,7 @@ final class Migrations {
                     db.migrateCompanies();
                 }
                 if (from < 2) integritySchema(db);
+                if (from < 3) kanbanSchema(db);
                 try (var q = db.conn().createStatement(); var rs = q.executeQuery("PRAGMA foreign_key_check")) {
                     if (rs.next()) throw new Problema("migração: referência inválida em " + rs.getString(1)
                             + ", registro " + rs.getString(2) + "; nenhum dado foi alterado");
@@ -36,6 +37,47 @@ final class Migrations {
                 return null;
             });
         } finally { db.exec("PRAGMA foreign_keys=ON"); }
+    }
+
+    private static void kanbanSchema(Db db) {
+        String created = "crea TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))";
+        String company = "company_id INTEGER NOT NULL REFERENCES company(id)";
+        db.exec("CREATE TABLE IF NOT EXISTS kanban_column ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL DEFAULT '', "
+                + "position INTEGER NOT NULL DEFAULT 0, " + created + ", " + company
+                + ", UNIQUE(id,company_id))");
+        db.exec("CREATE TABLE IF NOT EXISTS kanban_card ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, column_id INTEGER NOT NULL, "
+                + "title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', "
+                + "position INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), "
+                + created + ", upd TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime')), "
+                + company + ", UNIQUE(id,company_id), "
+                + "FOREIGN KEY(column_id,company_id) REFERENCES kanban_column(id,company_id))");
+        db.exec("CREATE INDEX IF NOT EXISTS ix_kanban_column_company ON kanban_column(company_id,position)");
+        db.exec("CREATE INDEX IF NOT EXISTS ix_kanban_card_column ON kanban_card(company_id,column_id,position)");
+        try (var q = db.conn().createStatement();
+             var rs = q.executeQuery("SELECT id FROM company ORDER BY id")) {
+            while (rs.next()) seedKanbanColumns(db, rs.getInt(1));
+        } catch (SQLException e) { throw new Problema("migração: " + e.getMessage()); }
+    }
+
+    static void seedKanbanColumns(Db db, int companyId) {
+        try (var q = db.conn().prepareStatement("SELECT count(*) FROM kanban_column WHERE company_id=?")) {
+            q.setInt(1, companyId);
+            try (var rs = q.executeQuery()) {
+                if (rs.next() && rs.getInt(1) > 0) return;
+            }
+        } catch (SQLException e) { throw new Problema("migração: " + e.getMessage()); }
+        String[] names = { "A fazer", "Em andamento", "Feito" };
+        try (var q = db.conn().prepareStatement(
+                "INSERT INTO kanban_column(name, position, company_id) VALUES(?,?,?)")) {
+            for (int i = 0; i < names.length; i++) {
+                q.setString(1, names[i]);
+                q.setInt(2, i);
+                q.setInt(3, companyId);
+                q.executeUpdate();
+            }
+        } catch (SQLException e) { throw new Problema("migração: " + e.getMessage()); }
     }
 
     private static void integritySchema(Db db) {

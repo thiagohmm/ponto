@@ -42,6 +42,7 @@ public final class Companies {
             String o = nzOff(off);
             String d = nzDaily(daily);
             int id = insert("INSERT INTO company(name, off, daily) VALUES(?,?,?)", n, o, d);
+            Migrations.seedKanbanColumns(db, id);
             return must(id);
         }
     }
@@ -71,8 +72,9 @@ public final class Companies {
             List<Company> all = listLocked();
             if (all.size() <= 1) throw new Bad("última empresa");
             must(id);
-            if (countTable("ponto", id) > 0 || countTable("note", id) > 0)
+            if (countTable("ponto", id) > 0 || countTable("note", id) > 0 || countTable("kanban_card", id) > 0)
                 throw new Bad("empresa com dados");
+            write("DELETE FROM kanban_column WHERE company_id=?", id);
             write("DELETE FROM folder WHERE company_id=?", id);
             write("DELETE FROM tag WHERE company_id=?", id);
             write("DELETE FROM dia_flag WHERE company_id=?", id);
