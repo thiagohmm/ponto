@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#1d1d1f"/>
-  <circle cx="256" cy="220" r="130" fill="none" stroke="#e8e8ed" stroke-width="24"/>
-  <line x1="256" y1="220" x2="256" y2="128" stroke="#e8e8ed" stroke-width="24" stroke-linecap="round"/>
-  <line x1="256" y1="220" x2="322" y2="258" stroke="#ff3b30" stroke-width="24" stroke-linecap="round"/>
-  <circle cx="256" cy="220" r="20" fill="#ff3b30"/>
-  <text x="256" y="462" font-family="Helvetica, Arial, sans-serif" font-size="150" font-weight="bold" fill="#007aff" text-anchor="middle">P</text>
+  <rect width="512" height="512" rx="112" fill="#1d1d1f"/>
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#e8e8ed" stroke-width="28"/>
+  <g stroke="#e8e8ed" stroke-linecap="round">
+    <path d="M256 112v32M256 368v32M112 256h32M368 256h32" stroke-width="22"/>
+    <path d="M155 155l22 22M335 335l22 22M335 155l-22 22M177 335l-22 22" stroke-width="16" opacity=".55"/>
+  </g>
+  <line x1="256" y1="256" x2="256" y2="142" stroke="#e8e8ed" stroke-width="28" stroke-linecap="round"/>
+  <line x1="256" y1="256" x2="338" y2="304" stroke="#ff3b30" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="26" fill="#ff3b30"/>
 </svg>

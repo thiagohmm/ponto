@@ -4,6 +4,7 @@ import { AuthProvider, LoginPage, RequireAuth, useAuth } from "./Auth";
 import { CompanyBar, CompanyProvider, useCompany } from "./Company";
 import { UnsavedProvider } from "./ui/Unsaved";
 import { Connection } from "./ui/Connection";
+import { BrandMark } from "./ui/BrandMark";
 import { ConfirmProvider } from "./ui/Confirm";
 import { ConfigPage } from "./pages/Config";
 import { ExportPage } from "./pages/Export";
@@ -53,11 +54,12 @@ function Shell() {
     <ConfirmProvider><UnsavedProvider><Connection /><CompanyProvider>
       <div className={vault ? "workspace notes-workspace" : kanban ? "workspace kanban-workspace" : "workspace"}>
         <a className="skip-link" href="#conteudo">Ir para o conteúdo</a>
-        <header className="mobile-header"><b>P<span className="brand-dot">.</span> Ponto</b>
+        <header className="mobile-header">
+          <b className="mobile-brand"><BrandMark className="brand-mark brand-mark-sm" /><span>Ponto</span></b>
           <button className="btn" aria-expanded={menu} aria-controls="main-navigation" onClick={() => setMenu(!menu)}>Menu {menu ? "−" : "+"}</button>
         </header>
         <aside className={"sidebar" + (menu ? " expanded" : "")}>
-          <div className="brand"><span className="brand-mark">P.</span><div>Ponto<small>GESTÃO DE JORNADA</small></div></div>
+          <div className="brand"><BrandMark /><div>Ponto<small>GESTÃO DE JORNADA</small></div></div>
           <p className="nav-caption">ESPAÇO DE TRABALHO</p>
           <nav id="main-navigation" className="side-nav" aria-label="Navegação principal">
             {TABS.map(t => <NavLink key={t.to} to={t.to} end={"end" in t ? t.end : false}

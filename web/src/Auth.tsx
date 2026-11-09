@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
+import { BrandMark } from "./ui/BrandMark";
 import { ApiError } from "./types";
 
 type AuthState = { user: string | null; ready: boolean; refresh: () => Promise<void>; logout: () => Promise<void> };
@@ -87,7 +88,7 @@ export function LoginPage() {
   return (
     <div className="login-shell">
       <form className="login-card" onSubmit={submit}>
-        <div className="brand"><span className="brand-mark">P.</span><div>Ponto<small>ACESSO</small></div></div>
+        <div className="brand"><BrandMark /><div>Ponto<small>ACESSO</small></div></div>
         <p className="muted">Entre com seu usuário e senha para continuar.</p>
         <label>Usuário
           <input autoComplete="username" autoFocus value={name} onChange={e => setName(e.target.value)} required />
