@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { AuthProvider, LoginPage, RequireAuth, useAuth } from "./Auth";
 import { CompanyBar, CompanyProvider, useCompany } from "./Company";
 import { UnsavedProvider } from "./ui/Unsaved";
 import { Connection } from "./ui/Connection";
@@ -31,6 +32,17 @@ const TABS = [
 ] as const;
 
 export function App() {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<RequireAuth><Shell /></RequireAuth>} />
+      </Routes>
+    </AuthProvider>
+  );
+}
+
+function Shell() {
   const loc = useLocation();
   const vault = loc.pathname.startsWith("/notas");
   const kanban = loc.pathname.startsWith("/kanban");
@@ -53,6 +65,7 @@ export function App() {
               <Ico path={t.path} />{t.label}
             </NavLink>)}
           </nav>
+          <Logout />
           <div className="sidebar-foot">Sua jornada, organizada.<small>Registros · Horas · Notas · Kanban</small></div>
         </aside>
         <div className="workspace-body">
@@ -65,6 +78,18 @@ export function App() {
         </div>
       </div>
     </CompanyProvider></UnsavedProvider></ConfirmProvider>
+  );
+}
+
+function Logout() {
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
+  if (!user || user === "open" || user === "offline") return null;
+  return (
+    <div className="sidebar-auth">
+      <span className="muted">{user}</span>
+      <button type="button" className="btn" onClick={async () => { await logout(); nav("/login", { replace: true }); }}>Sair</button>
+    </div>
   );
 }
 

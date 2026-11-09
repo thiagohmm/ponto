@@ -1,8 +1,14 @@
 # Operação e recuperação
 
-O Ponto continua sendo uma aplicação pessoal na rede local, sem contas de usuários.
+O Ponto é uma aplicação pessoal com um login web único (`PONTO_WEB_USER` /
+`PONTO_WEB_PASSWORD` na `.env` do servidor). Sem essas variáveis o deploy aborta.
 O deploy padrão usa SSH em `thiagohmm@192.168.0.8` e publica a web na porta 8090.
 O diretório padrão da instalação é `/home/thiagohmm/ponto-web`.
+Exposição pública via PiTunnel usa HTTPS: o serviço `edge` (Caddy) termina TLS
+local em `127.0.0.1:8443` com uma CA instalada no host; o túnel persistente é
+`pitunnel --host=https://127.0.0.1 --port=8443 --name=ponto --https --persist`.
+A URL pública fica em `https://ponto-thiagohmm1.us1.pitunnel.net` (certificado
+do PiTunnel). A autenticação fica na aplicação, não no `--http-auth` do túnel.
 
 ## Verificação e deploy
 

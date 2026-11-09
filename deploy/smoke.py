@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Read and write acceptance check. Temporary records are deleted even on failure."""
 import argparse
+import http.cookiejar
 import json
+import os
 import urllib.request
 import uuid
 
 
-def check(base, attachments=True):
+def check(base, attachments=True, user=None, password=None):
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
     def request(method, path, body=None, content_type='application/json'):
         data = json.dumps(body).encode() if body is not None and content_type == 'application/json' else body
         req = urllib.request.Request(base + path, data=data, method=method, headers={'Content-Type': content_type})
-        with urllib.request.urlopen(req, timeout=40) as response:
+        with opener.open(req, timeout=40) as response:
             raw = response.read()
             if response.headers.get_content_type() == 'application/json':
                 return json.loads(raw)
@@ -19,6 +24,12 @@ def check(base, attachments=True):
     health = request('GET', '/api/health')
     assert health['status'] == 'ok', health
     assert b'<html' in request('GET', '/').lower()
+    user = user or os.environ.get('PONTO_WEB_USER')
+    password = password or os.environ.get('PONTO_WEB_PASSWORD')
+    if health.get('auth') or (user and password):
+        assert user and password, 'PONTO_WEB_USER and PONTO_WEB_PASSWORD required when auth is enabled'
+        request('POST', '/api/login', {'user': user, 'password': password})
+        assert request('GET', '/api/me')['user'] == user
     companies = request('GET', '/api/companies')
     default = companies['activeId']
     company = note = entry = None
@@ -57,5 +68,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url', default='http://127.0.0.1:8090')
     parser.add_argument('--without-storage', action='store_true')
+    parser.add_argument('--user', default=None)
+    parser.add_argument('--password', default=None)
     args = parser.parse_args()
-    print(json.dumps(check(args.url, not args.without_storage)))
+    print(json.dumps(check(args.url, not args.without_storage, args.user, args.password)))

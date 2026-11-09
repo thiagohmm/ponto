@@ -30,7 +30,7 @@ def main():
         run(command)
     stage = remote + '/incoming/' + uuid.uuid4().hex
     run(['ssh', host, 'mkdir -p ' + shlex.quote(stage)])
-    names = ['target/ponto.jar', 'Dockerfile', 'docker-compose.yml', '.dockerignore',
+    names = ['target/ponto.jar', 'Dockerfile', 'docker-compose.yml', 'Caddyfile', '.dockerignore',
              'deploy/backup.py', 'deploy/remote.py', 'deploy/smoke.py', '.env.example']
     with tempfile.TemporaryFile() as packed:
         with tarfile.open(fileobj=packed, mode='w:gz') as archive:

@@ -20,6 +20,40 @@ def run(args, project, **kwargs):
     return subprocess.run(args, cwd=project, check=True, **kwargs)
 
 
+def ensure_edge_certs(edge_dir: Path):
+    """Local CA + server cert so PiTunnel --https can verify 127.0.0.1:8443."""
+    certs = edge_dir / 'certs'
+    certs.mkdir(parents=True, exist_ok=True)
+    ca_crt, ca_key = certs / 'ca.crt', certs / 'ca.key'
+    cert, key = certs / 'cert.pem', certs / 'key.pem'
+    if cert.exists() and key.exists() and ca_crt.exists():
+        return
+    ext = certs / 'server.ext'
+    ext.write_text('authorityKeyIdentifier=keyid,issuer\n'
+                   'basicConstraints=CA:FALSE\n'
+                   'keyUsage = digitalSignature, keyEncipherment\n'
+                   'extendedKeyUsage = serverAuth\n'
+                   'subjectAltName = DNS:localhost,IP:127.0.0.1\n')
+    for command in (
+        ['openssl', 'genrsa', '-out', str(ca_key), '2048'],
+        ['openssl', 'req', '-x509', '-new', '-nodes', '-key', str(ca_key), '-sha256', '-days', '3650',
+         '-out', str(ca_crt), '-subj', '/CN=ponto-local-ca'],
+        ['openssl', 'genrsa', '-out', str(key), '2048'],
+        ['openssl', 'req', '-new', '-key', str(key), '-out', str(certs / 'server.csr'), '-subj', '/CN=localhost'],
+        ['openssl', 'x509', '-req', '-in', str(certs / 'server.csr'), '-CA', str(ca_crt), '-CAkey', str(ca_key),
+         '-CAcreateserial', '-out', str(cert), '-days', '825', '-sha256', '-extfile', str(ext)],
+    ):
+        subprocess.run(command, check=True)
+    os.chmod(ca_key, 0o600)
+    os.chmod(key, 0o600)
+    system = Path('/usr/local/share/ca-certificates/ponto-local-ca.crt')
+    try:
+        subprocess.run(['sudo', '-n', 'cp', str(ca_crt), str(system)], check=True)
+        subprocess.run(['sudo', '-n', 'update-ca-certificates'], check=True)
+    except Exception as error:
+        print('Warning: could not install local CA into the system trust store:', error, flush=True)
+
+
 def module(path, name):
     spec = importlib.util.spec_from_file_location(name, path)
     result = importlib.util.module_from_spec(spec)
@@ -62,11 +96,15 @@ def main():
     env.setdefault('PONTO_PORT', '8090')
     env.setdefault('PONTO_TZ', 'America/Sao_Paulo')
     env.setdefault('PONTO_S3_BUCKET', 'ponto')
+    env.setdefault('PONTO_EDGE_DIR', str(Path.home() / '.local/share/ponto-edge'))
     # Rotate the old default pair once. Values are never printed or sent from the workstation.
     if env.get('PONTO_S3_ACCESS') in (None, '', 'minioadmin'):
         env['PONTO_S3_ACCESS'] = 'ponto-' + secrets.token_hex(10)
     if env.get('PONTO_S3_SECRET') in (None, '', 'minioadmin'):
         env['PONTO_S3_SECRET'] = secrets.token_urlsafe(36)
+    if not env.get('PONTO_WEB_USER') or not env.get('PONTO_WEB_PASSWORD'):
+        raise RuntimeError('Configure PONTO_WEB_USER and PONTO_WEB_PASSWORD in the server .env before deploy')
+    ensure_edge_certs(Path(env['PONTO_EDGE_DIR']))
     (stage / '.env').write_text(''.join(key + '=' + value + '\n' for key, value in env.items()))
     os.chmod(stage / '.env', 0o600)
     candidate = 'ponto:candidate-' + secrets.token_hex(5)
@@ -86,17 +124,19 @@ def main():
                  '--db=/data/ponto.db', '--check-db'], project)
             migrated = counts(Path(trial) / 'ponto.db')
             assert all(migrated.get(name) == value for name, value in baseline.items()), 'Migration changed existing row counts'
-        for name in ('Dockerfile', '.dockerignore', 'docker-compose.yml', '.env', 'target/ponto.jar',
+        for name in ('Dockerfile', '.dockerignore', 'docker-compose.yml', 'Caddyfile', '.env', 'target/ponto.jar',
                      'deploy/backup.py', 'deploy/smoke.py', 'deploy/remote.py'):
             destination = project / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(stage / name, destination)
         installed = True
         run(['docker', 'tag', candidate, 'ponto:web'], project)
-        run(['docker', 'compose', 'up', '-d', '--force-recreate', 'minio', 'ponto'], project)
+        # Drop a manual edge test container if present so compose owns the name/port.
+        subprocess.run(['docker', 'rm', '-f', 'ponto-edge', 'ponto-edge-test'], check=False)
+        run(['docker', 'compose', 'up', '-d', '--force-recreate', 'minio', 'ponto', 'edge'], project)
         base = 'http://127.0.0.1:' + env['PONTO_PORT']
         wait(base)
-        smoke.check(base)
+        smoke.check(base, user=env['PONTO_WEB_USER'], password=env['PONTO_WEB_PASSWORD'])
         after = counts(Path(env['PONTO_DATA_DIR']) / 'ponto.db')
         assert all(after.get(name, 0) >= value for name, value in baseline.items()), 'Existing row count decreased'
         # Also verify database-level constraints on the real migrated database.
@@ -127,7 +167,7 @@ def main():
                  '--data', env['PONTO_DATA_DIR'], '--objects', env['PONTO_OBJECT_DIR'], '--root', env['PONTO_BACKUP_DIR'],
                  '--snapshot', str(snapshot), '--apply', '--restore-config'], project)
         else:
-            run(['docker', 'compose', 'up', '-d', 'minio', 'ponto'], project)
+            run(['docker', 'compose', 'up', '-d', 'minio', 'ponto', 'edge'], project)
         raise
 
 if __name__ == '__main__':

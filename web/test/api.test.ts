@@ -10,6 +10,7 @@ it("binds each request and attachment/export URL to its company", async () => {
   selectApiCompany(22);
   await first;
   expect(fetcher.mock.calls[0][0]).toBe("/api/entries?companyId=11");
+  expect(fetcher.mock.calls[0][1]).toMatchObject({ credentials: "include" });
   expect(api.exportUrl("csv", "2026-01-01", "2026-01-31")).toContain("&companyId=22");
   expect(api.fileDownloadUrl(5, 7)).toBe("/api/notes/5/files/7/download?companyId=22");
 });

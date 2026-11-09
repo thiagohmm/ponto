@@ -61,6 +61,8 @@ public final class Main {
           PONTO_JAVA        JDK 25+ used by the launcher
           PONTO_CSV_SEP     ',' if you prefer commas over semicolons
           PONTO_PORT        listen port for --serve (default 8090)
+          PONTO_WEB_USER / PONTO_WEB_PASSWORD
+                            web login (required when exposing --serve)
         """.formatted(Ver.N);
 
     public static void main(String[] args) {

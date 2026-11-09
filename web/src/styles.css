@@ -1571,6 +1571,38 @@ button:disabled { opacity: .5; cursor: wait; }
 .side-nav svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .sidebar-foot { margin-top: auto; padding: 20px 12px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .sidebar-foot small { margin-top: 6px; letter-spacing: 0; }
+.sidebar-auth { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; margin: 12px 0 0; border-top: 1px solid var(--line); font-size: 12px; }
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 0%, rgba(0, 122, 255, 0.12), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(255, 59, 48, 0.08), transparent 50%),
+    var(--paper);
+}
+.login-card {
+  width: min(100%, 380px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px 24px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.login-card .brand { padding: 0 0 8px; }
+.login-card input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--ink);
+}
+.login-card .btn.primary { width: 100%; min-height: 44px; }
 .workspace-body { margin-left: 236px; min-width: 0; }
 .workspace-header { min-height: 76px; padding: 16px 36px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); background: var(--card); }
 .workspace-header .company-bar { margin: 0; display: block; }

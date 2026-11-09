@@ -33,8 +33,15 @@ public final class Web {
 
     private final Service svc;
     private final int port;
+    private final Auth auth;
 
-    public Web(Service svc, int port) { this.svc = svc; this.port = port; }
+    public Web(Service svc, int port) { this(svc, port, Auth.fromEnv()); }
+
+    public Web(Service svc, int port, Auth auth) {
+        this.svc = svc;
+        this.port = port;
+        this.auth = auth;
+    }
 
     public Javalin application() {
         Javalin app = Javalin.create(cfg -> {
@@ -56,9 +63,15 @@ public final class Web {
             ctx.attribute("requestId", java.util.UUID.randomUUID().toString());
             ctx.header("X-Request-ID", ctx.attribute("requestId"));
             ctx.header("X-Content-Type-Options", "nosniff");
+            ctx.header("X-Frame-Options", "DENY");
+            ctx.header("Referrer-Policy", "no-referrer");
+            ctx.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
             if (!ctx.path().startsWith("/api/")) return;
             ctx.header("Cache-Control", "no-store");
             if (ctx.path().equals("/api/health")) return;
+            if (ctx.path().equals("/api/login") && ctx.method() == io.javalin.http.HandlerType.POST) return;
+            if (auth != null) auth.require(ctx);
+            if (ctx.path().equals("/api/me") || ctx.path().equals("/api/logout")) return;
             String raw = ctx.queryParam("companyId");
             boolean catalog = ctx.path().equals("/api/companies") && ctx.method() == io.javalin.http.HandlerType.GET;
             if ((raw == null || raw.isBlank()) && catalog) { ctx.attribute("service", svc); return; }
@@ -93,7 +106,21 @@ public final class Web {
             boolean db = svc.healthy();
             ctx.status(db ? 200 : 503).json(Map.of("status", db ? "ok" : "error", "database", db,
                     "storage", !svc.files().configured() ? "disabled" : svc.files().storageUp() ? "ok" : "unavailable",
-                    "pendingObjects", svc.files().pending(), "version", Ver.N));
+                    "pendingObjects", svc.files().pending(), "version", Ver.N,
+                    "auth", auth != null));
+        });
+        app.post("/api/login", ctx -> {
+            if (auth == null) { ctx.json(Map.of("ok", true, "user", "open")); return; }
+            LoginReq r = ctx.bodyAsClass(LoginReq.class);
+            ctx.json(auth.login(ctx, r.user(), r.password()));
+        });
+        app.get("/api/me", ctx -> {
+            if (auth == null) { ctx.json(Map.of("user", "open")); return; }
+            ctx.json(auth.me());
+        });
+        app.post("/api/logout", ctx -> {
+            if (auth != null) auth.logout(ctx);
+            ctx.json(Map.of("ok", true));
         });
         app.post("/api/storage/retry", ctx -> { service(ctx).files().retry(); ctx.json(Map.of("ok", true)); });
 
@@ -478,4 +505,6 @@ public final class Web {
     record FlagReq(Boolean on) { }
 
     record CompanyReq(Integer id, String name, String off, String daily) { }
+
+    record LoginReq(String user, String password) { }
 }

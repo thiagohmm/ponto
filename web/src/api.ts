@@ -17,20 +17,49 @@ async function parse(r: Response): Promise<unknown> {
   catch { return { error: text }; }
 }
 
+function goLogin() {
+  if (typeof location === "undefined") return;
+  if (location.pathname === "/login") return;
+  const next = location.pathname + location.search;
+  location.assign("/login" + (next && next !== "/" ? "?next=" + encodeURIComponent(next) : ""));
+}
+
+function fail(r: Response, body: { error?: string; message?: string; need?: string; requestId?: string }) {
+  if (r.status === 401) goLogin();
+  throw new ApiError((body.error || body.message || r.statusText) + (r.status >= 500 && body.requestId ? " (" + body.requestId + ")" : ""), r.status, body.need);
+}
+
 async function req<T>(path: string, init?: RequestInit, catalog = false): Promise<T> {
   const r = await fetch(catalog ? "/api" + path : companyUrl(path), {
     ...init,
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
   if (r.status === 204) return undefined as T;
   const body = await parse(r) as { error?: string; message?: string; need?: string; requestId?: string };
+  if (!r.ok) fail(r, body);
+  return body as T;
+}
+
+async function authReq<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch("/api" + path, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+  });
+  const body = await parse(r) as { error?: string; message?: string; need?: string; requestId?: string };
   if (!r.ok) {
-    throw new ApiError((body.error || body.message || r.statusText) + (r.status >= 500 && body.requestId ? " (" + body.requestId + ")" : ""), r.status, body.need);
+    // login/me should not bounce to /login on 401 — the gate handles it
+    throw new ApiError(body.error || body.message || r.statusText, r.status, body.need);
   }
   return body as T;
 }
 
 export const api = {
+  me: () => authReq<{ user: string }>("/me"),
+  login: (user: string, password: string) =>
+    authReq<{ ok: boolean; user: string }>("/login", { method: "POST", body: JSON.stringify({ user, password }) }),
+  logout: () => authReq<{ ok: boolean }>("/logout", { method: "POST" }),
   retryStorage: () => req<{ ok: boolean }>("/storage/retry", { method: "POST" }),
   home: () => req<Home>("/home"),
   entries: (q: { q?: string; dia?: string; n?: number; skip?: number }) => {
@@ -93,9 +122,9 @@ export const api = {
   uploadFile: async (noteId: number, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch(companyUrl("/notes/" + noteId + "/files"), { method: "POST", body: fd });
+    const r = await fetch(companyUrl("/notes/" + noteId + "/files"), { method: "POST", body: fd, credentials: "include" });
     const body = await parse(r) as { error?: string; message?: string; need?: string; requestId?: string };
-    if (!r.ok) throw new ApiError((body.error || body.message || r.statusText) + (r.status >= 500 && body.requestId ? " (" + body.requestId + ")" : ""), r.status, body.need);
+    if (!r.ok) fail(r, body);
     return body as NoteFile;
   },
   removeFile: (noteId: number, fileId: number) =>
@@ -103,10 +132,10 @@ export const api = {
   fileDownloadUrl: (noteId: number, fileId: number) =>
     companyUrl("/notes/" + noteId + "/files/" + fileId + "/download"),
   fileBytes: async (noteId: number, fileId: number): Promise<Blob> => {
-    const r = await fetch(companyUrl("/notes/" + noteId + "/files/" + fileId + "/download"));
+    const r = await fetch(companyUrl("/notes/" + noteId + "/files/" + fileId + "/download"), { credentials: "include" });
     if (!r.ok) {
       const body = await parse(r) as { error?: string; message?: string; requestId?: string };
-      throw new ApiError((body.error || body.message || r.statusText) + (r.status >= 500 && body.requestId ? " (" + body.requestId + ")" : ""), r.status);
+      fail(r, body);
     }
     return r.blob();
   },
