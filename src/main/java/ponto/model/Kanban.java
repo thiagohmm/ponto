@@ -8,7 +8,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Per-company kanban board. Shares Service's lock: the JDBC connection is not thread-safe.
@@ -33,7 +36,7 @@ public final class Kanban {
 
     public List<KanbanCard> cards() {
         synchronized (lock) {
-            return cardRows("SELECT " + CARD_COLS + " FROM kanban_card WHERE company_id=? ORDER BY column_id, position, id", cid());
+            return cardsOf("SELECT " + CARD_COLS + " FROM kanban_card WHERE company_id=? ORDER BY column_id, position, id", cid());
         }
     }
 
@@ -64,6 +67,8 @@ public final class Kanban {
         synchronized (lock) {
             db.transaction(() -> {
                 mustColumn(id);
+                write("DELETE FROM kanban_block WHERE company_id=? AND card_id IN "
+                        + "(SELECT id FROM kanban_card WHERE column_id=? AND company_id=?)", cid(), id, cid());
                 write("DELETE FROM kanban_card WHERE column_id=? AND company_id=?", id, cid());
                 write("DELETE FROM kanban_column WHERE id=? AND company_id=?", id, cid());
                 renumberColumns();
@@ -94,11 +99,46 @@ public final class Kanban {
         }
     }
 
+    /** Blocks a card that is in Em andamento. The episode stays in the history. */
+    public KanbanCard blockCard(int id, String kind, String reason) {
+        synchronized (lock) {
+            return db.transaction(() -> {
+                KanbanCard card = mustCard(id);
+                if (!inProgress(mustColumn(card.columnId()).name()))
+                    throw new ponto.Bad("só é possível bloquear um cartão em Em andamento");
+                if (card.blocked()) throw new ponto.Bad("cartão já está bloqueado");
+                KanbanBlockKind parsed = KanbanBlockKind.parse(kind);
+                String why = reason == null ? "" : reason.trim();
+                if (why.isEmpty()) throw new ponto.Bad("informe o motivo do bloqueio");
+                if (why.length() > 500) throw new ponto.Bad("motivo longo demais");
+                insert("INSERT INTO kanban_block(card_id, kind, reason, company_id) VALUES(?,?,?,?)",
+                        id, parsed.code(), why, cid());
+                return mustCard(id);
+            });
+        }
+    }
+
+    /** Closes the open block. Past episodes remain so the card can move again. */
+    public KanbanCard unblockCard(int id) {
+        synchronized (lock) {
+            return db.transaction(() -> {
+                KanbanCard card = mustCard(id);
+                if (!card.blocked()) throw new ponto.Bad("cartão não está bloqueado");
+                int changed = write("UPDATE kanban_block SET cleared=strftime('%Y-%m-%d %H:%M','now','localtime') "
+                        + "WHERE card_id=? AND company_id=? AND cleared IS NULL", id, cid());
+                if (changed == 0) throw new ponto.Bad("cartão não está bloqueado");
+                return mustCard(id);
+            });
+        }
+    }
+
     public KanbanCard moveCard(int id, int columnId, int position) {
         synchronized (lock) {
             return db.transaction(() -> {
                 KanbanCard card = mustCard(id);
                 mustColumn(columnId);
+                if (card.blocked() && columnId != card.columnId())
+                    throw new ponto.Bad("cartão bloqueado não pode sair de Em andamento");
                 int oldCol = card.columnId();
                 List<KanbanCard> target = cardsInColumn(columnId).stream().filter(c -> c.id() != id).toList();
                 int pos = Math.max(0, Math.min(position, target.size()));
@@ -118,6 +158,7 @@ public final class Kanban {
         synchronized (lock) {
             db.transaction(() -> {
                 KanbanCard card = mustCard(id);
+                write("DELETE FROM kanban_block WHERE card_id=? AND company_id=?", id, cid());
                 write("DELETE FROM kanban_card WHERE id=? AND company_id=?", id, cid());
                 renumberCards(card.columnId());
                 return null;
@@ -178,7 +219,7 @@ public final class Kanban {
     }
 
     private KanbanCard mustCard(int id) {
-        List<KanbanCard> r = cardRows("SELECT " + CARD_COLS + " FROM kanban_card WHERE id=? AND company_id=?", id, cid());
+        List<KanbanCard> r = cardsOf("SELECT " + CARD_COLS + " FROM kanban_card WHERE id=? AND company_id=?", id, cid());
         if (r.isEmpty()) throw new ponto.NotFound("cartão " + id + " não existe");
         return r.getFirst();
     }
@@ -211,6 +252,40 @@ public final class Kanban {
                 return out;
             }
         } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
+    private List<KanbanCard> cardsOf(String sql, Object... args) {
+        return withBlocks(cardRows(sql, args));
+    }
+
+    private List<KanbanCard> withBlocks(List<KanbanCard> cards) {
+        if (cards.isEmpty()) return cards;
+        Map<Integer, List<KanbanBlock>> byCard = new LinkedHashMap<>();
+        for (KanbanBlock block : blockRows(
+                "SELECT id, card_id, kind, reason, crea, cleared FROM kanban_block WHERE company_id=? ORDER BY id DESC",
+                cid())) {
+            byCard.computeIfAbsent(block.cardId(), k -> new ArrayList<>()).add(block);
+        }
+        List<KanbanCard> out = new ArrayList<>();
+        for (KanbanCard card : cards)
+            out.add(card.withBlocks(byCard.getOrDefault(card.id(), List.of())));
+        return out;
+    }
+
+    private List<KanbanBlock> blockRows(String sql, Object... args) {
+        try (var q = prep(sql)) {
+            bind(q, args);
+            try (var rs = q.executeQuery()) {
+                List<KanbanBlock> out = new ArrayList<>();
+                while (rs.next()) out.add(mapBlock(rs));
+                return out;
+            }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
+    static boolean inProgress(String name) {
+        if (name == null) return false;
+        return name.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").equals("em andamento");
     }
 
     private int write(String sql, Object... args) {
@@ -249,7 +324,14 @@ public final class Kanban {
     private static KanbanCard mapCard(ResultSet rs) throws SQLException {
         return new KanbanCard(rs.getInt("id"), rs.getInt("column_id"), nz(rs.getString("title")),
                 nz(rs.getString("body")), rs.getInt("position"), rs.getInt("revision"),
-                nz(rs.getString("crea")), nz(rs.getString("upd")));
+                nz(rs.getString("crea")), nz(rs.getString("upd")), List.of());
+    }
+
+    private static KanbanBlock mapBlock(ResultSet rs) throws SQLException {
+        String kind = nz(rs.getString("kind"));
+        String cleared = rs.getString("cleared");
+        return new KanbanBlock(rs.getInt("id"), rs.getInt("card_id"), kind, KanbanBlockKind.labelOf(kind),
+                nz(rs.getString("reason")), nz(rs.getString("crea")), cleared == null ? "" : cleared);
     }
 
     private static String clean(SQLException e) { return Db.clean(e.getMessage()); }

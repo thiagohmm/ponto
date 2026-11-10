@@ -201,6 +201,16 @@ export type KanbanColumn = {
   crea: string;
 };
 
+export type KanbanBlock = {
+  id: number;
+  cardId: number;
+  kind: string;
+  kindLabel: string;
+  reason: string;
+  crea: string;
+  cleared: string;
+};
+
 export type KanbanCard = {
   id: number;
   columnId: number;
@@ -210,7 +220,17 @@ export type KanbanCard = {
   revision: number;
   crea: string;
   upd: string;
+  blocked: boolean;
+  blocks: KanbanBlock[];
 };
+
+export const KANBAN_BLOCK_KINDS = [
+  { id: "dependencia", label: "Dependência" },
+  { id: "cliente", label: "Aguardando cliente" },
+  { id: "tecnico", label: "Impedimento técnico" },
+  { id: "informacao", label: "Falta de informação" },
+  { id: "outro", label: "Outro" },
+] as const;
 
 export type KanbanBoard = {
   columns: KanbanColumn[];

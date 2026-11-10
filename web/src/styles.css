@@ -1742,6 +1742,10 @@ td { padding: 14px 12px; }
 }
 .kanban-card:active { cursor: grabbing; }
 .kanban-card.active { border-color: var(--accent); }
+.kanban-card.blocked {
+  border-color: var(--stamp);
+  background: var(--stamp-soft);
+}
 .kanban-card strong {
   display: block;
   font-size: 14px;
@@ -1754,12 +1758,31 @@ td { padding: 14px 12px; }
   line-height: 1.35;
   white-space: pre-wrap;
 }
+.kanban-card.blocked strong,
+.kanban-card.blocked p,
+.kanban-block,
+.kanban-history,
+.kanban-history li,
+.kanban-history small {
+  color: var(--stamp);
+}
+.kanban-block {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.kanban-history { margin: 8px 0 4px; }
+.kanban-history h4 { margin: 0 0 6px; font-size: 13px; color: var(--stamp); }
+.kanban-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.kanban-history li { font-size: 13px; line-height: 1.35; }
+.kanban-history small { display: block; font-size: 11px; margin-top: 2px; }
 .kanban-dialog {
   width: min(520px, 92vw);
   text-align: left;
 }
 .kanban-dialog .field { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
-.kanban-dialog input, .kanban-dialog textarea {
+.kanban-dialog input, .kanban-dialog textarea, .kanban-dialog select {
   font: inherit;
   padding: 8px 10px;
   border: 1px solid var(--line);

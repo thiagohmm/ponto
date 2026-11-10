@@ -2,6 +2,7 @@ package ponto.model;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ponto.Bad;
 import ponto.Conflict;
 import ponto.NotFound;
 
@@ -73,6 +74,46 @@ class KanbanTest {
             assertEquals(a.revision() + 1, next.revision());
             assertThrows(Conflict.class, () -> s.kanban().updateCard(a.id(), "velho", "", a.revision()));
             assertEquals("A2", s.kanban().byId(a.id()).title());
+        }
+    }
+
+    @Test void blockedCardStaysInProgressAndKeepsHistory() {
+        try (Db db = Db.open(dir.resolve("block.db").toString())) {
+            Service s = new Service(db);
+            List<KanbanColumn> cols = s.kanban().columns();
+            int todo = cols.get(0).id();
+            int doing = cols.get(1).id();
+            int done = cols.get(2).id();
+            KanbanCard card = s.kanban().createCard("Parado", "", todo);
+            assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "tecnico", "sem ambiente"));
+
+            s.kanban().moveCard(card.id(), doing, 0);
+            assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "nope", "motivo"));
+            assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "tecnico", "  "));
+
+            KanbanCard blocked = s.kanban().blockCard(card.id(), "tecnico", "sem ambiente");
+            assertTrue(blocked.blocked());
+            assertEquals("Impedimento técnico", blocked.blocks().getFirst().kindLabel());
+            assertEquals("sem ambiente", blocked.blocks().getFirst().reason());
+            assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "cliente", "outro"));
+            assertThrows(Bad.class, () -> s.kanban().moveCard(card.id(), done, 0));
+            assertEquals(doing, s.kanban().byId(card.id()).columnId());
+
+            KanbanCard other = s.kanban().createCard("Outro", "", doing);
+            KanbanCard reordered = s.kanban().moveCard(card.id(), doing, 1);
+            assertEquals(1, reordered.position());
+            assertEquals(0, s.kanban().byId(other.id()).position());
+
+            KanbanCard open = s.kanban().unblockCard(card.id());
+            assertFalse(open.blocked());
+            assertEquals(1, open.blocks().size());
+            assertFalse(open.blocks().getFirst().cleared().isEmpty());
+            KanbanCard again = s.kanban().blockCard(card.id(), "cliente", "aguardando retorno");
+            assertEquals(2, again.blocks().size());
+            KanbanCard free = s.kanban().unblockCard(card.id());
+            assertEquals(2, free.blocks().size());
+            assertEquals(done, s.kanban().moveCard(card.id(), done, 0).columnId());
+            assertEquals(2, s.kanban().byId(card.id()).blocks().size());
         }
     }
 

@@ -5,6 +5,7 @@ import ponto.model.Dur;
 import ponto.model.Entry;
 import ponto.model.Holidays;
 import ponto.model.Folder;
+import ponto.model.KanbanBlock;
 import ponto.model.KanbanCard;
 import ponto.model.KanbanColumn;
 import ponto.model.Note;
@@ -113,6 +114,20 @@ public final class Json {
         m.put("revision", c.revision());
         m.put("crea", c.crea());
         m.put("upd", c.upd());
+        m.put("blocked", c.blocked());
+        m.put("blocks", c.blocks().stream().map(Json::json).toList());
+        return m;
+    }
+
+    public static Map<String, Object> json(KanbanBlock b) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", b.id());
+        m.put("cardId", b.cardId());
+        m.put("kind", b.kind());
+        m.put("kindLabel", b.kindLabel());
+        m.put("reason", b.reason());
+        m.put("crea", b.crea());
+        m.put("cleared", b.cleared());
         return m;
     }
 

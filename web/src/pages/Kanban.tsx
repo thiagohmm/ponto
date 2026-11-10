@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { api } from "../api";
-import type { KanbanCard, KanbanColumn } from "../types";
+import { KANBAN_BLOCK_KINDS, type KanbanCard, type KanbanColumn } from "../types";
 import { ApiError } from "../types";
 import { useConfirm } from "../ui/Confirm";
 
@@ -17,7 +17,10 @@ export function KanbanPage() {
   const [draftBody, setDraftBody] = useState("");
   const [renameId, setRenameId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [blockKind, setBlockKind] = useState<string>(KANBAN_BLOCK_KINDS[0].id);
+  const [blockReason, setBlockReason] = useState("");
   const dragged = useRef(false);
+  const dragging = useRef<number | null>(null);
 
   async function reload() {
     const data = await api.kanban();
@@ -101,10 +104,16 @@ export function KanbanPage() {
     }
   }
 
+  function inProgress(name: string) {
+    return name.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ") === "em andamento";
+  }
+
   function openEdit(card: KanbanCard) {
     setEditing(card);
     setDraftTitle(card.title);
     setDraftBody(card.body);
+    setBlockKind(KANBAN_BLOCK_KINDS[0].id);
+    setBlockReason("");
   }
 
   async function saveCard() {
@@ -164,13 +173,61 @@ export function KanbanPage() {
     }
   }
 
+  async function blockCard() {
+    if (!editing) return;
+    const reason = blockReason.trim();
+    if (!reason) {
+      setErr("informe o motivo do bloqueio");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      const next = await api.blockKanbanCard(editing.id, { kind: blockKind, reason });
+      setEditing(next);
+      setBlockReason("");
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não bloqueou");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unblockCard() {
+    if (!editing) return;
+    const ok = await confirm({
+      title: "Desbloquear cartão?",
+      message: "O histórico de bloqueio permanece. Depois disso o cartão pode sair de Em andamento.",
+      ok: "Desbloquear",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const next = await api.unblockKanbanCard(editing.id);
+      setEditing(next);
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "não desbloqueou");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function dragPayload(e: DragEvent, cardId: number) {
     dragged.current = true;
+    dragging.current = cardId;
     e.dataTransfer.setData("text/plain", "card:" + cardId);
     e.dataTransfer.effectAllowed = "move";
   }
 
-  function allowDrop(e: DragEvent, key: string) {
+  function allowDrop(e: DragEvent, key: string, columnId: number) {
+    const card = board.cards.find((c) => c.id === dragging.current);
+    if (card?.blocked && card.columnId !== columnId) {
+      e.dataTransfer.dropEffect = "none";
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDropOn(key);
@@ -185,6 +242,10 @@ export function KanbanPage() {
     if (!cardId) return;
     const card = board.cards.find((c) => c.id === cardId);
     if (!card) return;
+    if (card.blocked && card.columnId !== columnId) {
+      setErr("cartão bloqueado não pode sair de Em andamento");
+      return;
+    }
     if (card.columnId === columnId && card.position === position) return;
     // When dropping after itself in the same column, adjust like list reorders.
     let pos = position;
@@ -232,7 +293,7 @@ export function KanbanPage() {
             <section
               key={col.id}
               className={"kanban-column" + (dropOn === "col:" + col.id ? " drop" : "")}
-              onDragOver={(e) => allowDrop(e, "col:" + col.id)}
+              onDragOver={(e) => allowDrop(e, "col:" + col.id, col.id)}
               onDragLeave={() => setDropOn(null)}
               onDrop={(e) => dropCard(e, col.id, cards.length)}
             >
@@ -270,24 +331,27 @@ export function KanbanPage() {
                   <div key={card.id} className="kanban-slot">
                     <div
                       className={"kanban-drop" + (dropOn === "before:" + col.id + ":" + index ? " on" : "")}
-                      onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "before:" + col.id + ":" + index); }}
+                      onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "before:" + col.id + ":" + index, col.id); }}
                       onDrop={(e) => { e.stopPropagation(); dropCard(e, col.id, index); }}
                     />
                     <article
-                      className={"kanban-card" + (editing?.id === card.id ? " active" : "")}
+                      className={"kanban-card" + (editing?.id === card.id ? " active" : "") + (card.blocked ? " blocked" : "")}
                       draggable
                       onDragStart={(e) => dragPayload(e, card.id)}
-                      onDragEnd={() => { setDropOn(null); dragged.current = false; }}
+                      onDragEnd={() => { setDropOn(null); dragged.current = false; dragging.current = null; }}
                       onClick={() => { if (!dragged.current) openEdit(card); dragged.current = false; }}
                     >
                       <strong>{card.title || "Sem título"}</strong>
                       {card.body.trim() ? <p>{card.body.trim().slice(0, 120)}</p> : null}
+                      {card.blocked && card.blocks.filter((b) => !b.cleared).map((b) => (
+                        <p key={b.id} className="kanban-block">{b.kindLabel}: {b.reason}</p>
+                      ))}
                     </article>
                   </div>
                 ))}
                 <div
                   className={"kanban-drop end" + (dropOn === "end:" + col.id ? " on" : "")}
-                  onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "end:" + col.id); }}
+                  onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "end:" + col.id, col.id); }}
                   onDrop={(e) => { e.stopPropagation(); dropCard(e, col.id, cards.length); }}
                 />
               </div>
@@ -308,6 +372,17 @@ export function KanbanPage() {
               Descrição
               <textarea rows={8} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} />
             </label>
+            <BlockPanel
+              card={editing}
+              doing={inProgress(board.columns.find((c) => c.id === editing.columnId)?.name ?? "")}
+              kind={blockKind}
+              reason={blockReason}
+              busy={busy}
+              onKind={setBlockKind}
+              onReason={setBlockReason}
+              onBlock={blockCard}
+              onUnblock={unblockCard}
+            />
             <div className="dialog-actions">
               <button type="button" className="btn danger" disabled={busy} onClick={removeCard}>Apagar</button>
               <span className="push" />
@@ -316,6 +391,61 @@ export function KanbanPage() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function BlockPanel({ card, doing, kind, reason, busy, onKind, onReason, onBlock, onUnblock }: {
+  card: KanbanCard;
+  doing: boolean;
+  kind: string;
+  reason: string;
+  busy: boolean;
+  onKind: (kind: string) => void;
+  onReason: (reason: string) => void;
+  onBlock: () => void;
+  onUnblock: () => void;
+}) {
+  const open = card.blocks.find((b) => !b.cleared);
+  if (!doing && card.blocks.length === 0) return null;
+  return (
+    <div className="kanban-history">
+      {open && (
+        <p className="kanban-block">Bloqueado — {open.kindLabel}: {open.reason}. Não sai de Em andamento.</p>
+      )}
+      {doing && !open && (
+        <>
+          <label className="field">
+            Tipo de bloqueio
+            <select value={kind} onChange={(e) => onKind(e.target.value)}>
+              {KANBAN_BLOCK_KINDS.map((item) => (
+                <option key={item.id} value={item.id}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Motivo
+            <textarea rows={3} value={reason} onChange={(e) => onReason(e.target.value)} placeholder="Por que o cartão está parado" />
+          </label>
+          <button type="button" className="btn danger" disabled={busy || !reason.trim()} onClick={onBlock}>Bloquear</button>
+        </>
+      )}
+      {open && (
+        <button type="button" className="btn" disabled={busy} onClick={onUnblock}>Desbloquear</button>
+      )}
+      {card.blocks.length > 0 && (
+        <>
+          <h4>Histórico de bloqueios</h4>
+          <ul>
+            {card.blocks.map((b) => (
+              <li key={b.id}>
+                {b.kindLabel}: {b.reason}
+                <small>{b.cleared ? `${b.crea} – ${b.cleared}` : `${b.crea} · bloqueado`}</small>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );

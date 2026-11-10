@@ -26,6 +26,8 @@ final class KanbanRoutes {
         app.post("/api/kanban/cards", this::cardCreate);
         app.put("/api/kanban/cards/{id}", this::cardUpdate);
         app.put("/api/kanban/cards/{id}/move", this::cardMove);
+        app.post("/api/kanban/cards/{id}/block", this::cardBlock);
+        app.post("/api/kanban/cards/{id}/unblock", this::cardUnblock);
         app.delete("/api/kanban/cards/{id}", this::cardDelete);
     }
 
@@ -83,6 +85,19 @@ final class KanbanRoutes {
         ctx.json(Json.json(svc.kanban().moveCard(id, r.columnId(), r.position())));
     }
 
+    private void cardBlock(Context ctx) {
+        Service svc = service.apply(ctx);
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        BlockReq r = ctx.bodyAsClass(BlockReq.class);
+        ctx.json(Json.json(svc.kanban().blockCard(id, r.kind(), r.reason())));
+    }
+
+    private void cardUnblock(Context ctx) {
+        Service svc = service.apply(ctx);
+        int id = ctx.pathParamAsClass("id", Integer.class).get();
+        ctx.json(Json.json(svc.kanban().unblockCard(id)));
+    }
+
     private void cardDelete(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
@@ -94,4 +109,5 @@ final class KanbanRoutes {
 
     public record ColumnReq(String name, Integer position) { }
     public record CardReq(String title, String body, Integer columnId, Integer position, Integer revision) { }
+    public record BlockReq(String kind, String reason) { }
 }

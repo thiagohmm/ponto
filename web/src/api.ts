@@ -162,6 +162,10 @@ export const api = {
     req<KanbanCard>("/kanban/cards/" + id, { method: "PUT", body: JSON.stringify(body) }),
   moveKanbanCard: (id: number, body: { columnId: number; position: number }) =>
     req<KanbanCard>("/kanban/cards/" + id + "/move", { method: "PUT", body: JSON.stringify(body) }),
+  blockKanbanCard: (id: number, body: { kind: string; reason: string }) =>
+    req<KanbanCard>("/kanban/cards/" + id + "/block", { method: "POST", body: JSON.stringify(body) }),
+  unblockKanbanCard: (id: number) =>
+    req<KanbanCard>("/kanban/cards/" + id + "/unblock", { method: "POST", body: "{}" }),
   removeKanbanCard: (id: number) =>
     req<{ ok: boolean }>("/kanban/cards/" + id, { method: "DELETE" }),
 };
