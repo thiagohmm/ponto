@@ -4,6 +4,7 @@
 }
 
 :8443 {
+	header -Server
 	tls /certs/cert.pem /certs/key.pem
 	reverse_proxy ponto:8080
 }

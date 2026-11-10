@@ -10,6 +10,21 @@ local em `127.0.0.1:8443` com uma CA instalada no host; o túnel persistente é
 A URL pública fica em `https://ponto-thiagohmm1.us1.pitunnel.net` (certificado
 do PiTunnel). A autenticação fica na aplicação, não no `--http-auth` do túnel.
 
+## Cabeçalhos de segurança e exposição
+
+A aplicação envia CSP (`script-src 'self'`), HSTS (`max-age=31536000;
+includeSubDomains`), `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` e
+`Permissions-Policy` em todas as respostas (`controller/Web.java`); o `smoke.py`
+confere esses headers no deploy. O Jetty não revela versão
+(`setSendServerVersion(false)`) e o Caddy remove o próprio header `Server`
+(`header -Server`). Ficam expostas, sem remedio por configuração: o `Via: 1.1
+Caddy` escrito pelo Caddy 2.10 na gravação da resposta e o `Server: nginx
+(Ubuntu)` da borda do PiTunnel — mera identificação de proxy, sem implicação
+de vulnerabilidade. O HTTP da LAN (`http://192.168.0.8:8090`) é risco aceito:
+o endereço só é alcançável de dentro da rede de casa, e o login lá trafega
+sem criptografia por decisão própria — prefira a URL HTTPS do túnel quando
+possível.
+
 ## Verificação e deploy
 
 É necessário Java 25, Maven, Node 24, Python 3.11+, zsh e SSH. Antes do primeiro

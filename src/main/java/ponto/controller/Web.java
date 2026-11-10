@@ -31,6 +31,11 @@ import java.util.Map;
 /** HTTP API + static React build. Same Service as the terminal menu. */
 public final class Web {
 
+    private static final String CSP = "default-src 'self'; script-src 'self'; "
+            + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; "
+            + "connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src blob:; "
+            + "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
     private final Service svc;
     private final int port;
     private final Auth auth;
@@ -48,6 +53,7 @@ public final class Web {
             cfg.showJavalinBanner = false;
             cfg.http.maxRequestSize = ponto.model.Files.maxUpload() + 1024 * 1024;
             cfg.jsonMapper(new Json3());
+            cfg.jetty.modifyHttpConfiguration(httpConfig -> httpConfig.setSendServerVersion(false));
             if (Web.class.getResource("/public/index.html") != null) {
                 cfg.staticFiles.add(s -> {
                     s.hostedPath = "/";
@@ -66,6 +72,8 @@ public final class Web {
             ctx.header("X-Frame-Options", "DENY");
             ctx.header("Referrer-Policy", "no-referrer");
             ctx.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+            ctx.header("Content-Security-Policy", CSP);
+            ctx.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
             if (!ctx.path().startsWith("/api/")) return;
             ctx.header("Cache-Control", "no-store");
             if (ctx.path().equals("/api/health")) return;

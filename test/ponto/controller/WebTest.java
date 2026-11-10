@@ -36,7 +36,15 @@ class WebTest {
             var app=new Web(service,0).application().start("127.0.0.1",0);
             base="http://127.0.0.1:"+app.port();
             try {
-                assertEquals(200,call("GET","/api/health",null).statusCode());
+                var health=call("GET","/api/health",null);
+                assertEquals(200,health.statusCode());
+                assertEquals("nosniff",health.headers().firstValue("X-Content-Type-Options").orElse(""));
+                assertEquals("DENY",health.headers().firstValue("X-Frame-Options").orElse(""));
+                assertEquals("no-referrer",health.headers().firstValue("Referrer-Policy").orElse(""));
+                assertEquals("camera=(), microphone=(), geolocation=()",health.headers().firstValue("Permissions-Policy").orElse(""));
+                assertTrue(health.headers().firstValue("Content-Security-Policy").orElse("").startsWith("default-src 'self'"));
+                assertTrue(health.headers().firstValue("Strict-Transport-Security").orElse("").contains("max-age=31536000"));
+                assertTrue(health.headers().firstValue("Server").orElse("").isEmpty()||!health.headers().firstValue("Server").orElse("").contains("Jetty"));
                 assertEquals(200,call("GET","/api/companies",null).statusCode());
                 assertEquals(400,call("GET","/api/entries",null).statusCode());
                 assertEquals(400,call("GET","/api/entries?companyId=no",null).statusCode());

@@ -24,6 +24,13 @@ def check(base, attachments=True, user=None, password=None):
     health = request('GET', '/api/health')
     assert health['status'] == 'ok', health
     assert b'<html' in request('GET', '/').lower()
+    with opener.open(base + '/api/health', timeout=40) as response:
+        headers = {k.lower(): response.headers.get(k) for k in response.headers.keys()}
+    assert headers['content-security-policy'].startswith("default-src 'self'"), headers.get('content-security-policy')
+    assert 'max-age=31536000' in headers['strict-transport-security']
+    for field, value in (('x-content-type-options', 'nosniff'), ('x-frame-options', 'DENY'), ('referrer-policy', 'no-referrer')):
+        assert headers[field] == value, (field, headers[field])
+    assert 'jetty' not in headers.get('server', '').lower(), headers.get('server')
     user = user or os.environ.get('PONTO_WEB_USER')
     password = password or os.environ.get('PONTO_WEB_PASSWORD')
     if health.get('auth') or (user and password):

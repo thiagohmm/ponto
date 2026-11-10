@@ -42,7 +42,7 @@ See [operation, backup and recovery](deploy/README.md) for the verified deploy a
 
 The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (default 8090) and serves the React build from the jar. Both talk to the same SQLite file (`$PONTO_DB` / `--db=`). Web requests select their company explicitly with `companyId`; each tab remembers its own choice without changing the terminal preference.
 
-The web app is a **PWA**: open it over HTTPS (or localhost) to install it and use the offline shell. Plain LAN HTTP serves the web interface; service workers require a secure context. See `web/public/sw.js`, registered in production only.
+The web app is a **PWA**: open it over HTTPS (or localhost) to install it and use the offline shell. Plain LAN HTTP serves the web interface; service workers require a secure context. See `web/public/sw.js`, registered in production only. Every response carries the security headers (CSP, HSTS, `nosniff`, frame-deny) set in `controller/Web.java`, and the Jetty and Caddy layers keep their `Server` identity hidden; the plain LAN address is meant for the home network only.
 
 In the form the times are masked as `NN:NN` (digits only, `830` types
 `08:30`, an `agora` button fills the clock), and **Salvar e lançar outra**

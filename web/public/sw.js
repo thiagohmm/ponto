@@ -1,6 +1,6 @@
 // The build stamps the version and complete asset list. No personal API data is cached.
 const CACHE = "ponto-__BUILD__";
-const CORE = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", ...__ASSETS__];
+const CORE = ["/", "/theme.js", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", ...__ASSETS__];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => {
