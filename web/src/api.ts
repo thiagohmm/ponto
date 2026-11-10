@@ -1,4 +1,4 @@
-import type { Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanCardFile, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
+import type { AssistJust, AssistNoteTags, AssistStatus, Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanCardFile, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 export type EntrySave = { dia: string; tin: string; tout: string; just: string; closeOpen?: boolean; confirmMidnight?: boolean; confirmOverlap?: boolean };
@@ -189,4 +189,9 @@ export const api = {
     }
     return r.blob();
   },
+  assistStatus: () => req<AssistStatus>("/assist/status"),
+  assistNoteTags: (body: { title: string; body: string; tags: { id: number; name: string }[] }) =>
+    req<AssistNoteTags>("/assist/note-tags", { method: "POST", body: JSON.stringify(body) }),
+  assistJust: (body: { text: string }) =>
+    req<AssistJust>("/assist/just", { method: "POST", body: JSON.stringify(body) }),
 };

@@ -62,6 +62,31 @@ On the LAN host `192.168.0.8` the existing `/home/thiagohmm/.local/share/ponto/p
 ./deploy/deploy.sh    # http://192.168.0.8:8090
 ```
 
+### Assistência local (Ollama, opcional)
+
+No `--serve`, o Ponto pode sugerir **tags de notas** e **categorias/frases de
+justificativa** com um modelo minúsculo local. O browser só fala com `/api/assist/*`;
+o Java chama o Ollama em `127.0.0.1`. Sem Ollama o app segue igual — os botões
+não aparecem.
+
+```sh
+# instalar Ollama, depois:
+ollama pull qwen2.5:0.5b
+./ponto --serve
+```
+
+Variáveis (todas opcionais):
+
+| env | default | efeito |
+| --- | --- | --- |
+| `PONTO_ASSIST` | ligado | `0` / `false` / `off` desliga de vez |
+| `PONTO_OLLAMA_URL` | `http://127.0.0.1:11434` | base do Ollama |
+| `PONTO_ASSIST_MODEL` | `qwen2.5:0.5b` | nome do modelo no `ollama list` |
+
+Sugestões nunca gravam sozinhas no banco: tags só após aceite; justificativa
+só preenche o campo se você clicar na frase. O cálculo do banco de horas e o
+parse de data/hora não passam pelo modelo.
+
 ### Files attached to notes
 
 Each note can hold files (drag them onto the note, or the *anexar* button).

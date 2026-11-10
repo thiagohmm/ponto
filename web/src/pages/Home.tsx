@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { useCompany } from "../Company";
+import { JUST_CATEGORIES, matchesJustCategory, type JustCategoryCode } from "../justTaxonomy";
 import { useConfirm } from "../ui/Confirm";
 import { isEscuro, toggleTema } from "../theme";
 import type { Bank, BankDay, Entry, Home } from "../types";
@@ -139,6 +140,7 @@ export function HomePage() {
   const [msg, setMsg] = useState("");
   const [sel, setSel] = useState("");
   const [q, setQ] = useState("");
+  const [justCat, setJustCat] = useState<JustCategoryCode | "">("");
   const [dia, setDia] = useState("");            // texto (dia/mês/ano): sobrepõe a faixa
   const [de, setDe] = useState(mesPickerAtual);  // faixa "do mês" até
   const [ate, setAte] = useState(mesPickerAtual);
@@ -180,8 +182,12 @@ export function HomePage() {
 
   useEffect(() => { void load(); }, [active?.id]);
 
-  const groups = useMemo(() => groupByDay(rows), [rows]);
-  const pageMins = useMemo(() => rows.reduce((s, e) => s + minsOf(e), 0), [rows]);
+  const visible = useMemo(() => {
+    if (!justCat) return rows;
+    return rows.filter((e) => matchesJustCategory(e.just, justCat));
+  }, [rows, justCat]);
+  const groups = useMemo(() => groupByDay(visible), [visible]);
+  const pageMins = useMemo(() => visible.reduce((s, e) => s + minsOf(e), 0), [visible]);
   const selDay = bank?.days.find((d) => d.diaIso === sel) ?? null;
 
   async function del(id: number) {
@@ -234,7 +240,7 @@ export function HomePage() {
     }
   }
 
-  const filtered = Boolean(q.trim() || dia.trim() || de !== ate);
+  const filtered = Boolean(q.trim() || justCat || dia.trim() || de !== ate);
 
   return (
     <>
@@ -251,6 +257,22 @@ export function HomePage() {
         <label>Buscar justificativa<input placeholder="Ex.: atestado" value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void load(); }} /></label>
+        <div className="just-cats" role="group" aria-label="Categorias de justificativa">
+          {JUST_CATEGORIES.filter((c) => c.code !== "outro").map((c) => (
+            <button
+              key={c.code}
+              type="button"
+              className={"chip" + (justCat === c.code ? " sel" : "")}
+              title={"filtrar por " + c.label + " (sinônimos locais)"}
+              onClick={() => {
+                const next = justCat === c.code ? "" : c.code;
+                setJustCat(next);
+                if (next) setQ("");
+                void load(next ? "" : q);
+              }}
+            >{c.label}</button>
+          ))}
+        </div>
         <details className="advanced-filter"><summary>Mais filtros</summary><label>Data específica<input placeholder="Dia, mês ou ano" value={dia}
           onChange={(e) => setDia(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void load(); }} /></label><small>Quando preenchida, esta data substitui o intervalo de meses.</small></details>
@@ -277,7 +299,7 @@ export function HomePage() {
           {escuro ? <Ico path={SUN} /> : <Ico path={MOON} />}
         </button>
         <button className="btn" disabled={loading} onClick={() => void load()}>Aplicar filtros</button>
-        <button className="btn" onClick={() => { const m = mesPickerAtual(); setQ(""); setDia(""); setDe(m); setAte(m); setSel(""); void load("", "", m, m); }}>Limpar filtros</button>
+        <button className="btn" onClick={() => { const m = mesPickerAtual(); setQ(""); setJustCat(""); setDia(""); setDe(m); setAte(m); setSel(""); void load("", "", m, m); }}>Limpar filtros</button>
         <Link className="btn primary push" to="/novo">+ Novo registro</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
       </div>
@@ -315,8 +337,9 @@ export function HomePage() {
       {err && <p role="alert" className="err">{err}</p>}
       <div className="card">
         <p className="muted">
-          {rows.length} na página{rows.length !== total ? " de " + total : ""}
+          {visible.length} na página{visible.length !== total ? " de " + total : ""}
           {" · "}{hm(pageMins)} ({dec(pageMins)} h)
+          {justCat ? " · categoria " + (JUST_CATEGORIES.find((c) => c.code === justCat)?.label ?? justCat) : ""}
         </p>
         <div className="table-scroll"><table>
           <thead>
@@ -382,7 +405,7 @@ export function HomePage() {
                 ))}
               </Fragment>
             ))}
-            {rows.length === 0 && (
+            {visible.length === 0 && (
               <tr><td colSpan={7} className="muted">Nenhum registro encontrado. Ajuste os filtros ou crie um novo registro.</td></tr>
             )}
           </tbody>

@@ -257,6 +257,22 @@ export type KanbanBoard = {
   cards: KanbanCard[];
 };
 
+export type AssistCategory = {
+  code: string;
+  label: string;
+  synonyms: string[];
+  phrases: string[];
+};
+
+export type AssistStatus = {
+  available: boolean;
+  model: string;
+  categories: AssistCategory[];
+};
+
+export type AssistNoteTags = { tagIds: number[] };
+export type AssistJust = { category: string; phrases: string[] };
+
 export class ApiError extends Error {
   status: number;
   need?: string;

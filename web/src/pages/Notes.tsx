@@ -9,6 +9,7 @@ import { api } from "../api";
 import { NoteBody, type Look, type NoteBodyHandle } from "../NoteBody";
 import { NOTE_COLORS, NOTE_FONTS, NotePreview, toggleTodoLine } from "../md";
 import { useConfirm } from "../ui/Confirm";
+import { useAssist } from "../useAssist";
 import type { Folder, Note, NoteFile, Tag } from "../types";
 
 const TODO_PREFIX = "- [ ] ";
@@ -17,6 +18,7 @@ export function NotesPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const confirm = useConfirm();
+  const { available: assistOn } = useAssist();
   const currentId = id ? Number(id) : 0;
 
   const [notes, setNotes] = useState<Note[]>([]);
@@ -39,6 +41,8 @@ export function NotesPage() {
   const [dropFiles, setDropFiles] = useState(false);
   const [dropOn, setDropOn] = useState<number | string | null>(null);
   const [pickTag, setPickTag] = useState(false);
+  const [suggestIds, setSuggestIds] = useState<number[]>([]);
+  const [suggestBusy, setSuggestBusy] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<NoteBodyHandle | null>(null);
@@ -98,7 +102,7 @@ export function NotesPage() {
   }
 
   useEffect(() => { void refresh(); }, []);
-  useEffect(() => { setPickTag(false); setLook({}); }, [currentId]);
+  useEffect(() => { setPickTag(false); setLook({}); setSuggestIds([]); }, [currentId]);
 
   const bindLook = useCallback((node: HTMLDivElement | null) => {
     const prev = lookNode.current;
@@ -351,6 +355,31 @@ export function NotesPage() {
     }
   }
 
+  async function suggestTags() {
+    if (!currentId || !assistOn || suggestBusy || tags.length === 0) return;
+    setSuggestBusy(true);
+    setErr("");
+    try {
+      const r = await api.assistNoteTags({
+        title: draft.current.title || title,
+        body: draft.current.body || body,
+        tags: tags.map((t) => ({ id: t.id, name: t.name })),
+      });
+      const have = new Set(editingTags);
+      setSuggestIds((r.tagIds ?? []).filter((id) => !have.has(id)));
+    } catch {
+      setSuggestIds([]);
+    } finally {
+      setSuggestBusy(false);
+    }
+  }
+
+  async function acceptSuggestedTag(tagId: number) {
+    if (!currentId) return;
+    setSuggestIds((ids) => ids.filter((x) => x !== tagId));
+    await putTags(currentId, [...editingTags, tagId]);
+  }
+
   async function addFolder() {
     const name = window.prompt("nome da pasta", "Pasta");
     if (name == null) return;
@@ -570,11 +599,43 @@ export function NotesPage() {
                   </button>
                 );
               })}
+              {suggestIds.map((id) => {
+                const t = tags.find((x) => x.id === id);
+                if (!t) return null;
+                return (
+                  <button
+                    key={"sug-" + t.id}
+                    type="button"
+                    className="vault-chip suggest"
+                    style={{ "--tag": t.color } as CSSProperties}
+                    onClick={() => void acceptSuggestedTag(t.id)}
+                    title="aceitar sugestão"
+                  >
+                    <span className="vault-tag-ico" aria-hidden="true" />
+                    {t.name}
+                    <span className="vault-chip-x" onClick={(e) => {
+                      e.stopPropagation();
+                      setSuggestIds((ids) => ids.filter((x) => x !== t.id));
+                    }} title="recusar">×</span>
+                  </button>
+                );
+              })}
               <div className="vault-tag-add">
                 <button type="button" className="vault-chip ghost" onClick={() => setPickTag((v) => !v)}>
                   <span className="vault-tag-ico" aria-hidden="true" />
                   tag
                 </button>
+                {assistOn && tags.length > 0 && (
+                  <button
+                    type="button"
+                    className="vault-chip ghost"
+                    disabled={suggestBusy}
+                    onClick={() => void suggestTags()}
+                    title="sugerir tags com o assistente local"
+                  >
+                    {suggestBusy ? "…" : "sugerir"}
+                  </button>
+                )}
                 {pickTag && (
                   <div className="vault-tag-menu">
                     {tags.filter((t) => !editingTags.includes(t.id)).map((t) => (

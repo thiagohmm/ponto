@@ -39,13 +39,19 @@ public final class Web {
     private final Service svc;
     private final int port;
     private final Auth auth;
+    private final ponto.model.Assist assist;
 
     public Web(Service svc, int port) { this(svc, port, Auth.fromEnv()); }
 
     public Web(Service svc, int port, Auth auth) {
+        this(svc, port, auth, ponto.model.Assist.env());
+    }
+
+    public Web(Service svc, int port, Auth auth, ponto.model.Assist assist) {
         this.svc = svc;
         this.port = port;
         this.auth = auth;
+        this.assist = assist == null ? ponto.model.Assist.env() : assist;
     }
 
     public Javalin application() {
@@ -155,6 +161,7 @@ public final class Web {
         app.delete("/api/companies/{id}", this::companyDelete);
         new NoteRoutes(this::service).register(app);
         new KanbanRoutes(this::service).register(app);
+        new AssistRoutes(assist).register(app);
         app.events(events -> events.serverStopped(svc::closeResources));
         return app;
     }

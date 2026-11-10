@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useUnsavedChanges } from "../ui/Unsaved";
 import { api } from "../api";
+import { justCategory } from "../justTaxonomy";
 import { maskTime, nowHm, timeOk } from "../mask";
+import { useAssist } from "../useAssist";
 import type { DayInfo, Entry } from "../types";
 import { ApiError } from "../types";
 
@@ -19,6 +21,7 @@ export function FormPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const editing = Boolean(id);
+  const { available: assistOn } = useAssist();
   const [dia, setDia] = useState(todayIso());
   const [tin, setTin] = useState("");
   const [tout, setTout] = useState("");
@@ -31,7 +34,10 @@ export function FormPage() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(!editing);
+  const [justCat, setJustCat] = useState("");
+  const [justPhrases, setJustPhrases] = useState<string[]>([]);
   const tinRef = useRef<HTMLInputElement>(null);
+  const justReq = useRef(0);
   const [initial, setInitial] = useState(() => JSON.stringify([todayIso(), "", "", ""]));
   const markClean = useUnsavedChanges(JSON.stringify([dia, tin, tout, just]) !== initial || busy);
 
@@ -70,6 +76,33 @@ export function FormPage() {
     return () => { cancelled = true; };
   }, [dia, editing]);
 
+  useEffect(() => {
+    if (!assistOn) {
+      setJustCat("");
+      setJustPhrases([]);
+      return;
+    }
+    const text = just.trim();
+    if (text.length < 3) {
+      setJustCat("");
+      setJustPhrases([]);
+      return;
+    }
+    const current = ++justReq.current;
+    const t = window.setTimeout(() => {
+      api.assistJust({ text }).then((r) => {
+        if (current !== justReq.current) return;
+        setJustCat(r.category || "");
+        setJustPhrases(r.phrases ?? []);
+      }).catch(() => {
+        if (current !== justReq.current) return;
+        setJustCat("");
+        setJustPhrases([]);
+      });
+    }, 400);
+    return () => { window.clearTimeout(t); };
+  }, [just, assistOn]);
+
   async function save(outro = false) {
     if (busy || !loaded) return;
     setErr("");
@@ -98,6 +131,8 @@ export function FormPage() {
       setTin("");
       setTout("");
       setJust("");
+      setJustCat("");
+      setJustPhrases([]);
       setNeed("");
       setConfirmMidnight(false);
       setConfirmOverlap(false);
@@ -154,6 +189,22 @@ export function FormPage() {
         </label>
         <label className="span2">Justificativa
           <textarea rows={3} value={just} onChange={(e) => setJust(e.target.value)} />
+          {assistOn && (justCat || justPhrases.length > 0) && (
+            <div className="assist-just" aria-live="polite">
+              {justCat && (
+                <span className="assist-cat">{justCategory(justCat)?.label ?? justCat}</span>
+              )}
+              {justPhrases.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className="chip assist-phrase"
+                  onClick={() => setJust(p)}
+                  title="usar esta frase"
+                >{p}</button>
+              ))}
+            </div>
+          )}
         </label>
       </div>
 
