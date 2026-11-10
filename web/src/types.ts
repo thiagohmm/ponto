@@ -161,6 +161,25 @@ export type NoteFile = {
   crea: string;
 };
 
+export type KanbanCardFile = {
+  state: "ready" | "uploading" | "failed";
+  id: number;
+  cardId: number;
+  name: string;
+  size: number;
+  ctype: string;
+  crea: string;
+};
+
+export type AttachFile = {
+  state: "ready" | "uploading" | "failed";
+  id: number;
+  name: string;
+  size: number;
+  ctype: string;
+  crea: string;
+};
+
 export type Note = {
   revision: number;
   id: number;
@@ -216,6 +235,7 @@ export type KanbanCard = {
   columnId: number;
   title: string;
   body: string;
+  done: string;
   position: number;
   revision: number;
   crea: string;

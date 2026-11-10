@@ -19,7 +19,7 @@ import java.util.Map;
 public final class Kanban {
 
     private static final String COL_COLS = "id, name, position, crea";
-    private static final String CARD_COLS = "id, column_id, title, body, position, revision, crea, upd";
+    private static final String CARD_COLS = "id, column_id, title, body, done, position, revision, crea, upd";
 
     private final Db db;
     private final Object lock;
@@ -66,7 +66,9 @@ public final class Kanban {
     public void deleteColumn(int id) {
         synchronized (lock) {
             db.transaction(() -> {
-                mustColumn(id);
+                KanbanColumn col = mustColumn(id);
+                if (protectedColumn(col.name()))
+                    throw new ponto.Bad("coluna padrão não pode ser apagada");
                 write("DELETE FROM kanban_block WHERE company_id=? AND card_id IN "
                         + "(SELECT id FROM kanban_card WHERE column_id=? AND company_id=?)", cid(), id, cid());
                 write("DELETE FROM kanban_card WHERE column_id=? AND company_id=?", id, cid());
@@ -81,18 +83,18 @@ public final class Kanban {
         synchronized (lock) {
             mustColumn(columnId);
             int pos = nextCardPosition(columnId);
-            int id = insert("INSERT INTO kanban_card(column_id, title, body, position, company_id) VALUES(?,?,?,?,?)",
-                            columnId, nz(title), nz(body), pos, cid());
+            int id = insert("INSERT INTO kanban_card(column_id, title, body, done, position, company_id) VALUES(?,?,?,?,?,?)",
+                            columnId, nz(title), nz(body), "", pos, cid());
             return mustCard(id);
         }
     }
 
-    public KanbanCard updateCard(int id, String title, String body, int revision) {
+    public KanbanCard updateCard(int id, String title, String body, String done, int revision) {
         synchronized (lock) {
             mustCard(id);
-            int changed = write("UPDATE kanban_card SET title=?, body=?, revision=revision+1,"
+            int changed = write("UPDATE kanban_card SET title=?, body=?, done=?, revision=revision+1,"
                   + " upd=strftime('%Y-%m-%d %H:%M:%f','now','localtime') WHERE id=? AND company_id=? AND revision=?",
-                  nz(title), nz(body), id, cid(), revision);
+                  nz(title), nz(body), nz(done), id, cid(), revision);
             if (changed == 0)
                 throw new ponto.Conflict("Este cartão foi alterado em outro acesso. Recarregue e tente de novo.");
             return mustCard(id);
@@ -283,9 +285,18 @@ public final class Kanban {
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
+    static String normalizeName(String name) {
+        if (name == null) return "";
+        return name.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
     static boolean inProgress(String name) {
-        if (name == null) return false;
-        return name.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").equals("em andamento");
+        return normalizeName(name).equals("em andamento");
+    }
+
+    static boolean protectedColumn(String name) {
+        String n = normalizeName(name);
+        return n.equals("a fazer") || n.equals("em andamento") || n.equals("feito");
     }
 
     private int write(String sql, Object... args) {
@@ -323,7 +334,7 @@ public final class Kanban {
 
     private static KanbanCard mapCard(ResultSet rs) throws SQLException {
         return new KanbanCard(rs.getInt("id"), rs.getInt("column_id"), nz(rs.getString("title")),
-                nz(rs.getString("body")), rs.getInt("position"), rs.getInt("revision"),
+                nz(rs.getString("body")), nz(rs.getString("done")), rs.getInt("position"), rs.getInt("revision"),
                 nz(rs.getString("crea")), nz(rs.getString("upd")), List.of());
     }
 

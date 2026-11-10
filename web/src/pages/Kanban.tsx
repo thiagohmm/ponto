@@ -3,6 +3,7 @@ import { api } from "../api";
 import { KANBAN_BLOCK_KINDS, type KanbanCard, type KanbanColumn } from "../types";
 import { ApiError } from "../types";
 import { useConfirm } from "../ui/Confirm";
+import { KanbanAttachments } from "./KanbanAttachments";
 
 type Board = { columns: KanbanColumn[]; cards: KanbanCard[] };
 
@@ -15,12 +16,14 @@ export function KanbanPage() {
   const [editing, setEditing] = useState<KanbanCard | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
+  const [draftDone, setDraftDone] = useState("");
   const [renameId, setRenameId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [blockKind, setBlockKind] = useState<string>(KANBAN_BLOCK_KINDS[0].id);
   const [blockReason, setBlockReason] = useState("");
   const dragged = useRef(false);
   const dragging = useRef<number | null>(null);
+  const draggingColumn = useRef<number | null>(null);
 
   async function reload() {
     const data = await api.kanban();
@@ -67,6 +70,10 @@ export function KanbanPage() {
   }
 
   async function removeColumn(col: KanbanColumn) {
+    if (protectedColumn(col.name)) {
+      setErr("coluna padrão não pode ser apagada");
+      return;
+    }
     const count = cardsOf(col.id).length;
     const ok = await confirm({
       title: "Apagar coluna?",
@@ -104,14 +111,24 @@ export function KanbanPage() {
     }
   }
 
+  function normalizeColumnName(name: string) {
+    return name.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
+  }
+
   function inProgress(name: string) {
-    return name.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ") === "em andamento";
+    return normalizeColumnName(name) === "em andamento";
+  }
+
+  function protectedColumn(name: string) {
+    const n = normalizeColumnName(name);
+    return n === "a fazer" || n === "em andamento" || n === "feito";
   }
 
   function openEdit(card: KanbanCard) {
     setEditing(card);
     setDraftTitle(card.title);
     setDraftBody(card.body);
+    setDraftDone(card.done ?? "");
     setBlockKind(KANBAN_BLOCK_KINDS[0].id);
     setBlockReason("");
   }
@@ -124,11 +141,13 @@ export function KanbanPage() {
       const next = await api.updateKanbanCard(editing.id, {
         title: draftTitle,
         body: draftBody,
+        done: draftDone,
         revision: editing.revision,
       });
       setEditing(next);
       setDraftTitle(next.title);
       setDraftBody(next.body);
+      setDraftDone(next.done ?? "");
       await reload();
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -141,6 +160,7 @@ export function KanbanPage() {
             setEditing(fresh);
             setDraftTitle(fresh.title);
             setDraftBody(fresh.body);
+            setDraftDone(fresh.done ?? "");
           }
         } catch { /* ignore */ }
       } else {
@@ -218,11 +238,21 @@ export function KanbanPage() {
   function dragPayload(e: DragEvent, cardId: number) {
     dragged.current = true;
     dragging.current = cardId;
+    draggingColumn.current = null;
     e.dataTransfer.setData("text/plain", "card:" + cardId);
     e.dataTransfer.effectAllowed = "move";
   }
 
+  function dragColumnPayload(e: DragEvent, columnId: number) {
+    dragged.current = true;
+    dragging.current = null;
+    draggingColumn.current = columnId;
+    e.dataTransfer.setData("text/plain", "column:" + columnId);
+    e.dataTransfer.effectAllowed = "move";
+  }
+
   function allowDrop(e: DragEvent, key: string, columnId: number) {
+    if (draggingColumn.current != null) return;
     const card = board.cards.find((c) => c.id === dragging.current);
     if (card?.blocked && card.columnId !== columnId) {
       e.dataTransfer.dropEffect = "none";
@@ -231,6 +261,47 @@ export function KanbanPage() {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDropOn(key);
+  }
+
+  function allowColumnDrop(e: DragEvent, key: string) {
+    if (draggingColumn.current == null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    setDropOn(key);
+  }
+
+  async function dropColumn(e: DragEvent, position: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropOn(null);
+    const raw = e.dataTransfer.getData("text/plain");
+    if (!raw.startsWith("column:")) return;
+    const columnId = Number(raw.slice(7));
+    if (!columnId) return;
+    const cols = [...board.columns].sort((a, b) => a.position - b.position || a.id - b.id);
+    const from = cols.findIndex((c) => c.id === columnId);
+    if (from < 0) return;
+    let pos = Math.max(0, Math.min(position, cols.length));
+    if (from < pos) pos = Math.max(0, pos - 1);
+    if (from === pos) return;
+
+    const prev = board;
+    const moved = cols[from];
+    const next = cols.filter((c) => c.id !== columnId);
+    next.splice(pos, 0, moved);
+    setBoard((cur) => ({
+      ...cur,
+      columns: next.map((c, i) => ({ ...c, position: i })),
+    }));
+
+    try {
+      await api.updateKanbanColumn(columnId, { position: pos });
+      await reload();
+    } catch (e) {
+      setBoard(prev);
+      setErr(e instanceof Error ? e.message : "não moveu a coluna");
+    }
   }
 
   async function dropCard(e: DragEvent, columnId: number, position: number) {
@@ -287,77 +358,116 @@ export function KanbanPage() {
         <button type="button" className="btn primary" disabled={busy} onClick={addColumn}>+ Coluna</button>
       </div>
       <div className="kanban-board">
-        {board.columns.map((col) => {
+        {board.columns.map((col, colIndex) => {
           const cards = cardsOf(col.id);
           return (
-            <section
-              key={col.id}
-              className={"kanban-column" + (dropOn === "col:" + col.id ? " drop" : "")}
-              onDragOver={(e) => allowDrop(e, "col:" + col.id, col.id)}
-              onDragLeave={() => setDropOn(null)}
-              onDrop={(e) => dropCard(e, col.id, cards.length)}
-            >
-              <header className="kanban-column-head">
-                {renameId === col.id ? (
-                  <input
-                    className="kanban-rename"
-                    value={renameValue}
-                    autoFocus
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={() => saveRename(col)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                      if (e.key === "Escape") setRenameId(null);
-                    }}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    className="kanban-column-title"
-                    onClick={() => { setRenameId(col.id); setRenameValue(col.name); }}
-                    title="Renomear coluna"
-                  >
-                    {col.name}
-                    <small>{cards.length}</small>
-                  </button>
-                )}
-                <div className="kanban-column-actions">
-                  <button type="button" className="btn" disabled={busy} onClick={() => addCard(col.id)}>+ Cartão</button>
-                  <button type="button" className="btn danger" disabled={busy} onClick={() => removeColumn(col)}>Apagar</button>
-                </div>
-              </header>
-              <div className="kanban-cards">
-                {cards.map((card, index) => (
-                  <div key={card.id} className="kanban-slot">
-                    <div
-                      className={"kanban-drop" + (dropOn === "before:" + col.id + ":" + index ? " on" : "")}
-                      onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "before:" + col.id + ":" + index, col.id); }}
-                      onDrop={(e) => { e.stopPropagation(); dropCard(e, col.id, index); }}
+            <div key={col.id} className="kanban-column-slot">
+              <div
+                className={"kanban-column-drop" + (dropOn === "col-before:" + colIndex ? " on" : "")}
+                onDragOver={(e) => allowColumnDrop(e, "col-before:" + colIndex)}
+                onDrop={(e) => dropColumn(e, colIndex)}
+              />
+              <section
+                className={"kanban-column" + (dropOn === "col:" + col.id ? " drop" : "")}
+                onDragOver={(e) => {
+                  if (draggingColumn.current != null) allowColumnDrop(e, "col-before:" + colIndex);
+                  else allowDrop(e, "col:" + col.id, col.id);
+                }}
+                onDragLeave={() => setDropOn(null)}
+                onDrop={(e) => {
+                  const raw = e.dataTransfer.getData("text/plain");
+                  if (raw.startsWith("column:")) dropColumn(e, colIndex);
+                  else dropCard(e, col.id, cards.length);
+                }}
+              >
+                <header className="kanban-column-head">
+                  {renameId === col.id ? (
+                    <input
+                      className="kanban-rename"
+                      value={renameValue}
+                      autoFocus
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => saveRename(col)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Escape") setRenameId(null);
+                      }}
                     />
-                    <article
-                      className={"kanban-card" + (editing?.id === card.id ? " active" : "") + (card.blocked ? " blocked" : "")}
+                  ) : (
+                    <button
+                      type="button"
+                      className="kanban-column-title"
                       draggable
-                      onDragStart={(e) => dragPayload(e, card.id)}
-                      onDragEnd={() => { setDropOn(null); dragged.current = false; dragging.current = null; }}
-                      onClick={() => { if (!dragged.current) openEdit(card); dragged.current = false; }}
+                      onDragStart={(e) => dragColumnPayload(e, col.id)}
+                      onDragEnd={() => {
+                        setDropOn(null);
+                        dragged.current = false;
+                        draggingColumn.current = null;
+                      }}
+                      onClick={() => {
+                        if (dragged.current) {
+                          dragged.current = false;
+                          return;
+                        }
+                        setRenameId(col.id);
+                        setRenameValue(col.name);
+                      }}
+                      title="Arrastar para reordenar · clicar para renomear"
                     >
-                      <strong>{card.title || "Sem título"}</strong>
-                      {card.body.trim() ? <p>{card.body.trim().slice(0, 120)}</p> : null}
-                      {card.blocked && card.blocks.filter((b) => !b.cleared).map((b) => (
-                        <p key={b.id} className="kanban-block">{b.kindLabel}: {b.reason}</p>
-                      ))}
-                    </article>
+                      {col.name}
+                      <small>{cards.length}</small>
+                    </button>
+                  )}
+                  <div className="kanban-column-actions">
+                    <button type="button" className="btn" disabled={busy} onClick={() => addCard(col.id)}>+ Cartão</button>
+                    {!protectedColumn(col.name) && (
+                      <button type="button" className="btn danger" disabled={busy} onClick={() => removeColumn(col)}>Apagar</button>
+                    )}
                   </div>
-                ))}
-                <div
-                  className={"kanban-drop end" + (dropOn === "end:" + col.id ? " on" : "")}
-                  onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "end:" + col.id, col.id); }}
-                  onDrop={(e) => { e.stopPropagation(); dropCard(e, col.id, cards.length); }}
-                />
-              </div>
-            </section>
+                </header>
+                <div className="kanban-cards">
+                  {cards.map((card, index) => (
+                    <div key={card.id} className="kanban-slot">
+                      <div
+                        className={"kanban-drop" + (dropOn === "before:" + col.id + ":" + index ? " on" : "")}
+                        onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "before:" + col.id + ":" + index, col.id); }}
+                        onDrop={(e) => { e.stopPropagation(); dropCard(e, col.id, index); }}
+                      />
+                      <article
+                        className={"kanban-card" + (editing?.id === card.id ? " active" : "") + (card.blocked ? " blocked" : "")}
+                        draggable
+                        onDragStart={(e) => dragPayload(e, card.id)}
+                        onDragEnd={() => { setDropOn(null); dragged.current = false; dragging.current = null; }}
+                        onClick={() => { if (!dragged.current) openEdit(card); dragged.current = false; }}
+                      >
+                        <strong>{card.title || "Sem título"}</strong>
+                        {card.body.trim() ? <p>{card.body.trim().slice(0, 120)}</p> : null}
+                        {card.blocked && card.blocks.filter((b) => !b.cleared).map((b) => {
+                          const reason = b.reason.trim();
+                          return (
+                            <p key={b.id} className="kanban-block">
+                              {b.kindLabel}: {reason.slice(0, 120)}{reason.length > 120 ? "…" : ""}
+                            </p>
+                          );
+                        })}
+                      </article>
+                    </div>
+                  ))}
+                  <div
+                    className={"kanban-drop end" + (dropOn === "end:" + col.id ? " on" : "")}
+                    onDragOver={(e) => { e.stopPropagation(); allowDrop(e, "end:" + col.id, col.id); }}
+                    onDrop={(e) => { e.stopPropagation(); dropCard(e, col.id, cards.length); }}
+                  />
+                </div>
+              </section>
+            </div>
           );
         })}
+        <div
+          className={"kanban-column-drop end" + (dropOn === "col-end" ? " on" : "")}
+          onDragOver={(e) => allowColumnDrop(e, "col-end")}
+          onDrop={(e) => dropColumn(e, board.columns.length)}
+        />
       </div>
 
       {editing && (
@@ -370,8 +480,13 @@ export function KanbanPage() {
             </label>
             <label className="field">
               Descrição
-              <textarea rows={8} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} />
+              <textarea rows={6} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} />
             </label>
+            <label className="field">
+              O que foi feito
+              <textarea rows={5} value={draftDone} onChange={(e) => setDraftDone(e.target.value)} placeholder="Opcional" />
+            </label>
+            <KanbanAttachments cardId={editing.id} busy={busy} onError={setErr} />
             <BlockPanel
               card={editing}
               doing={inProgress(board.columns.find((c) => c.id === editing.columnId)?.name ?? "")}

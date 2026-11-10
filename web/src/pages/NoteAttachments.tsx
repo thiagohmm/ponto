@@ -63,7 +63,14 @@ export function NoteAttachments({ currentId, files, uploading, dropFiles, fileRe
                   <button type="button" title="apagar arquivo" onClick={() => void removeFile(f)}>×</button>
                 </span>
               ))}
-              {preview && <FilePreview noteId={currentId} file={preview} onClose={() => setPreviewId(null)} />}
+              {preview && (
+                <FilePreview
+                  file={preview}
+                  downloadUrl={api.fileDownloadUrl(currentId, preview.id)}
+                  loadBytes={() => api.fileBytes(currentId, preview.id)}
+                  onClose={() => setPreviewId(null)}
+                />
+              )}
             </div>
   );
 }

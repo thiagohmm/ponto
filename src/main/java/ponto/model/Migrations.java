@@ -7,7 +7,7 @@ import java.util.Map;
 
 /** Versioned, atomic upgrades. A failed integrity check rolls back the entire upgrade. */
 final class Migrations {
-    static final int VERSION = 4;
+    static final int VERSION = 5;
 
     static void apply(Db db) {
         int version;
@@ -30,6 +30,7 @@ final class Migrations {
                 if (from < 2) integritySchema(db);
                 if (from < 3) kanbanSchema(db);
                 if (from < 4) kanbanBlockSchema(db);
+                if (from < 5) kanbanCardDoneAndFiles(db);
                 try (var q = db.conn().createStatement(); var rs = q.executeQuery("PRAGMA foreign_key_check")) {
                     if (rs.next()) throw new Problema("migração: referência inválida em " + rs.getString(1)
                             + ", registro " + rs.getString(2) + "; nenhum dado foi alterado");
@@ -49,7 +50,7 @@ final class Migrations {
                 + ", UNIQUE(id,company_id))");
         db.exec("CREATE TABLE IF NOT EXISTS kanban_card ("
                 + "id INTEGER PRIMARY KEY AUTOINCREMENT, column_id INTEGER NOT NULL, "
-                + "title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', "
+                + "title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', done TEXT NOT NULL DEFAULT '', "
                 + "position INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), "
                 + created + ", upd TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime')), "
                 + company + ", UNIQUE(id,company_id), "
@@ -57,6 +58,7 @@ final class Migrations {
         db.exec("CREATE INDEX IF NOT EXISTS ix_kanban_column_company ON kanban_column(company_id,position)");
         db.exec("CREATE INDEX IF NOT EXISTS ix_kanban_card_column ON kanban_card(company_id,column_id,position)");
         kanbanBlockSchema(db);
+        kanbanCardFileSchema(db);
         try (var q = db.conn().createStatement();
              var rs = q.executeQuery("SELECT id FROM company ORDER BY id")) {
             while (rs.next()) seedKanbanColumns(db, rs.getInt(1));
@@ -74,6 +76,24 @@ final class Migrations {
         db.exec("CREATE INDEX IF NOT EXISTS ix_kanban_block_card ON kanban_block(company_id,card_id,id)");
         db.exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_kanban_block_open "
                 + "ON kanban_block(company_id,card_id) WHERE cleared IS NULL");
+    }
+
+    private static void kanbanCardDoneAndFiles(Db db) {
+        if (!db.hasColumn("kanban_card", "done"))
+            db.exec("ALTER TABLE kanban_card ADD COLUMN done TEXT NOT NULL DEFAULT ''");
+        kanbanCardFileSchema(db);
+    }
+
+    private static void kanbanCardFileSchema(Db db) {
+        String created = "crea TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M','now','localtime'))";
+        db.exec("CREATE TABLE IF NOT EXISTS kanban_card_file ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "card_id INTEGER NOT NULL REFERENCES kanban_card(id) ON DELETE CASCADE, "
+                + "name TEXT NOT NULL DEFAULT '', key TEXT NOT NULL UNIQUE, "
+                + "size INTEGER NOT NULL DEFAULT 0 CHECK(size>=0), "
+                + "ctype TEXT NOT NULL DEFAULT '', " + created + ", "
+                + "state TEXT NOT NULL DEFAULT 'ready' CHECK(state IN ('uploading','ready','failed')))");
+        db.exec("CREATE INDEX IF NOT EXISTS ix_kanban_card_file_card ON kanban_card_file(card_id)");
     }
 
     static void seedKanbanColumns(Db db, int companyId) {

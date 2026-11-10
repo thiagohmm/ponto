@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { api } from "../api";
-import type { NoteFile } from "../types";
+import type { AttachFile } from "../types";
 import { classify } from "./fileKind";
 
 type Props = {
-  noteId: number;
-  file: NoteFile;
+  file: AttachFile;
+  downloadUrl: string;
+  loadBytes: () => Promise<Blob>;
   onClose: () => void;
 };
 
@@ -21,12 +21,14 @@ type Media =
 
 const TEXT_LIMIT = 1024 * 1024;
 
-export function FilePreview({ noteId, file, onClose }: Props) {
+export function FilePreview({ file, downloadUrl, loadBytes, onClose }: Props) {
   const kind = classify(file.name, file.ctype);
   const [media, setMedia] = useState<Media>({ phase: "loading" });
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
+  const loadBytesRef = useRef(loadBytes);
   onCloseRef.current = onClose;
+  loadBytesRef.current = loadBytes;
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +37,7 @@ export function FilePreview({ noteId, file, onClose }: Props) {
     if (kind === "none") { setMedia({ phase: "unsupported" }); return; }
     if (kind === "text" && file.size > TEXT_LIMIT) { setMedia({ phase: "tooBig" }); return; }
     setMedia({ phase: "loading" });
-    api.fileBytes(noteId, file.id).then(async (blob) => {
+    loadBytesRef.current().then(async (blob) => {
       if (cancelled) return;
       if (kind === "text") {
         const text = await blob.text();
@@ -57,7 +59,7 @@ export function FilePreview({ noteId, file, onClose }: Props) {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [noteId, file, kind]);
+  }, [file, kind]);
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -100,7 +102,7 @@ export function FilePreview({ noteId, file, onClose }: Props) {
           </div>
           <div className="file-preview-actions">
             {file.state === "ready" && (
-              <a className="btn" href={api.fileDownloadUrl(noteId, file.id)} download
+              <a className="btn" href={downloadUrl} download
                 aria-label={"baixar " + file.name}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 3v12M7 10l5 5 5-5M4 21h16" />

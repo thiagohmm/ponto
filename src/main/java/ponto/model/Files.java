@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 /** Durable object operations. Database critical sections never include network calls. */
 public final class Files implements AutoCloseable {
     private static final String COLS = "id,note_id,name,key,size,ctype,crea";
+    private static final String CARD_COLS = "id,card_id,name,key,size,ctype,crea";
     private final Db db;
     private final Object lock;
     private final ObjectStore s3;
@@ -102,41 +103,74 @@ public final class Files implements AutoCloseable {
     }
 
     public NoteFile add(int noteId, String name, String ctype, byte[] data) {
-        if (s3 == null) throw new StorageFailure("Armazenamento não configurado.");
-        if (data.length == 0 || data.length > maxUpload()) throw new Bad("Arquivo vazio ou maior que o limite de upload.");
-        String safe = name == null ? "file" : name.replace('\\', '/');
-        safe = safe.substring(safe.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "");
-        if (safe.isBlank()) safe = "file";
-        String key = "note-" + noteId + "/" + UUID.randomUUID() + "-" + safe;
-        Path staged;
-        try {
-            Path dir = db.file.toAbsolutePath().getParent().resolve("uploads");
-            java.nio.file.Files.createDirectories(dir);
-            staged = java.nio.file.Files.createTempFile(dir, "upload-", ".bin");
-            java.nio.file.Files.write(staged, data);
-        } catch (java.io.IOException e) { throw new Problema("Não foi possível preparar o upload."); }
-        String filename = safe;
+        StagedUpload up = stage(name, ctype, data, "note-" + noteId + "/");
         int id;
         try {
             id = db.transaction(() -> {
                 try (var q = db.conn().prepareStatement(
                         "INSERT INTO note_file(note_id,name,key,size,ctype,state) VALUES(?,?,?,?,?,'uploading')",
                         java.sql.Statement.RETURN_GENERATED_KEYS)) {
-                    q.setInt(1, noteId); q.setString(2, filename); q.setString(3, key);
-                    q.setLong(4, data.length); q.setString(5, ctype == null ? "" : ctype);
+                    q.setInt(1, noteId); q.setString(2, up.filename()); q.setString(3, up.key());
+                    q.setLong(4, up.size()); q.setString(5, up.ctype());
                     q.executeUpdate();
-                    queue(key, "PUT", staged.toString(), ctype);
+                    queue(up.key(), "PUT", up.staged().toString(), up.ctype());
                     try (var rs = q.getGeneratedKeys()) { return rs.getInt(1); }
                 } catch (SQLException e) { throw problem(e); }
             });
-        } catch (RuntimeException e) { deleteStaged(staged.toString()); throw e; }
-        process(key);
+        } catch (RuntimeException e) { deleteStaged(up.staged().toString()); throw e; }
+        process(up.key());
         return must(id);
+    }
+
+    public List<KanbanCardFile> listForCard(int cardId) {
+        synchronized (lock) {
+            return cardRows("SELECT " + CARD_COLS + " FROM kanban_card_file WHERE card_id=? ORDER BY id", cardId);
+        }
+    }
+
+    public String cardState(int id) {
+        synchronized (lock) {
+            try (var q = db.conn().prepareStatement("SELECT state FROM kanban_card_file WHERE id=?")) {
+                q.setInt(1, id);
+                try (var rs = q.executeQuery()) {
+                    if (!rs.next()) throw new NotFound("arquivo " + id + " não existe");
+                    return rs.getString(1);
+                }
+            } catch (SQLException e) { throw problem(e); }
+        }
+    }
+
+    public KanbanCardFile addForCard(int cardId, String name, String ctype, byte[] data) {
+        StagedUpload up = stage(name, ctype, data, "kanban-" + cardId + "/");
+        int id;
+        try {
+            id = db.transaction(() -> {
+                try (var q = db.conn().prepareStatement(
+                        "INSERT INTO kanban_card_file(card_id,name,key,size,ctype,state) VALUES(?,?,?,?,?,'uploading')",
+                        java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                    q.setInt(1, cardId); q.setString(2, up.filename()); q.setString(3, up.key());
+                    q.setLong(4, up.size()); q.setString(5, up.ctype());
+                    q.executeUpdate();
+                    queue(up.key(), "PUT", up.staged().toString(), up.ctype());
+                    try (var rs = q.getGeneratedKeys()) { return rs.getInt(1); }
+                } catch (SQLException e) { throw problem(e); }
+            });
+        } catch (RuntimeException e) { deleteStaged(up.staged().toString()); throw e; }
+        process(up.key());
+        return mustCardFile(id);
     }
 
     public NoteFile must(int id) {
         synchronized (lock) {
             var rows = rows("SELECT " + COLS + " FROM note_file WHERE id=?", id);
+            if (rows.isEmpty()) throw new NotFound("arquivo " + id + " não existe");
+            return rows.getFirst();
+        }
+    }
+
+    public KanbanCardFile mustCardFile(int id) {
+        synchronized (lock) {
+            var rows = cardRows("SELECT " + CARD_COLS + " FROM kanban_card_file WHERE id=?", id);
             if (rows.isEmpty()) throw new NotFound("arquivo " + id + " não existe");
             return rows.getFirst();
         }
@@ -148,10 +182,23 @@ public final class Files implements AutoCloseable {
             f = must(id);
             if (!state(id).equals("ready")) throw new StorageFailure("Upload pendente. Tente novamente em instantes.");
         }
+        return fetch(f.key(), f.size());
+    }
+
+    public byte[] downloadCardFile(int id) {
+        KanbanCardFile f;
+        synchronized (lock) {
+            f = mustCardFile(id);
+            if (!cardState(id).equals("ready")) throw new StorageFailure("Upload pendente. Tente novamente em instantes.");
+        }
+        return fetch(f.key(), f.size());
+    }
+
+    private byte[] fetch(String key, long size) {
         if (s3 == null) throw new StorageFailure("Armazenamento não configurado.");
         try {
-            byte[] data = s3.get(f.key());
-            if (data.length != f.size()) throw new Problema("tamanho divergente");
+            byte[] data = s3.get(key);
+            if (data.length != size) throw new Problema("tamanho divergente");
             return data;
         } catch (Problema e) { throw new StorageFailure("Não foi possível baixar o arquivo. Tente novamente."); }
     }
@@ -167,9 +214,42 @@ public final class Files implements AutoCloseable {
         kick();
     }
 
+    public void removeCardFile(int id) {
+        db.transaction(() -> {
+            KanbanCardFile f = mustCardFile(id);
+            queueDelete(f.key());
+            write("DELETE FROM kanban_card_file WHERE id=?", id);
+            return null;
+        });
+        kick();
+    }
+
     /** Called inside the note-deletion transaction; the independent queue survives cascade. */
     void scheduleNoteDeletion(int noteId) {
         for (NoteFile f : list(noteId)) queueDelete(f.key());
+    }
+
+    /** Called inside the card-deletion transaction; the independent queue survives cascade. */
+    void scheduleCardDeletion(int cardId) {
+        for (KanbanCardFile f : listForCard(cardId)) queueDelete(f.key());
+    }
+
+    private record StagedUpload(String filename, String key, String ctype, long size, Path staged) { }
+
+    private StagedUpload stage(String name, String ctype, byte[] data, String keyPrefix) {
+        if (s3 == null) throw new StorageFailure("Armazenamento não configurado.");
+        if (data.length == 0 || data.length > maxUpload()) throw new Bad("Arquivo vazio ou maior que o limite de upload.");
+        String safe = name == null ? "file" : name.replace('\\', '/');
+        safe = safe.substring(safe.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "");
+        if (safe.isBlank()) safe = "file";
+        String key = keyPrefix + UUID.randomUUID() + "-" + safe;
+        try {
+            Path dir = db.file.toAbsolutePath().getParent().resolve("uploads");
+            java.nio.file.Files.createDirectories(dir);
+            Path staged = java.nio.file.Files.createTempFile(dir, "upload-", ".bin");
+            java.nio.file.Files.write(staged, data);
+            return new StagedUpload(safe, key, ctype == null ? "" : ctype, data.length, staged);
+        } catch (java.io.IOException e) { throw new Problema("Não foi possível preparar o upload."); }
     }
 
     private void queueDelete(String key) {
@@ -211,9 +291,10 @@ public final class Files implements AutoCloseable {
                 } else s3.delete(key);
                 db.transaction(() -> {
                     Job latest = job(key);
-                    // A note may be deleted while its upload is in flight. Keep that DELETE queued.
+                    // A note/card may be deleted while its upload is in flight. Keep that DELETE queued.
                     if (latest != null && latest.operation().equals(job.operation())) {
                         write("UPDATE note_file SET state='ready' WHERE key=?", key);
+                        write("UPDATE kanban_card_file SET state='ready' WHERE key=?", key);
                         write("DELETE FROM object_job WHERE key=?", key);
                     }
                     return null;
@@ -225,6 +306,7 @@ public final class Files implements AutoCloseable {
                     if (latest != null && latest.operation().equals(job.operation())) {
                         write("UPDATE object_job SET attempts=attempts+1,last_error='armazenamento indisponível' WHERE key=?", key);
                         write("UPDATE note_file SET state='failed' WHERE key=?", key);
+                        write("UPDATE kanban_card_file SET state='failed' WHERE key=?", key);
                     }
                     return null;
                 });
@@ -274,6 +356,17 @@ public final class Files implements AutoCloseable {
         } catch (SQLException e) { throw problem(e); }
     }
 
+    private List<KanbanCardFile> cardRows(String sql, int id) {
+        try (var q = db.conn().prepareStatement(sql)) {
+            q.setInt(1, id);
+            try (var rs = q.executeQuery()) {
+                List<KanbanCardFile> out = new ArrayList<>();
+                while (rs.next()) out.add(mapCard(rs));
+                return out;
+            }
+        } catch (SQLException e) { throw problem(e); }
+    }
+
     private void write(String sql, Object... values) {
         try (var q = db.conn().prepareStatement(sql)) {
             for (int i = 0; i < values.length; i++) q.setObject(i+1, values[i]);
@@ -283,6 +376,11 @@ public final class Files implements AutoCloseable {
 
     private static NoteFile map(ResultSet rs) throws SQLException {
         return new NoteFile(rs.getInt("id"), rs.getInt("note_id"), rs.getString("name"), rs.getString("key"),
+                rs.getLong("size"), rs.getString("ctype"), rs.getString("crea"));
+    }
+
+    private static KanbanCardFile mapCard(ResultSet rs) throws SQLException {
+        return new KanbanCardFile(rs.getInt("id"), rs.getInt("card_id"), rs.getString("name"), rs.getString("key"),
                 rs.getLong("size"), rs.getString("ctype"), rs.getString("crea"));
     }
 

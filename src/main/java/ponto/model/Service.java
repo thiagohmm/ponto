@@ -76,6 +76,29 @@ public final class Service {
         attachments.kick();
     }
 
+    public void deleteKanbanCard(int id) {
+        Files attachments = files();
+        db.transaction(() -> {
+            kanban.byId(id);
+            attachments.scheduleCardDeletion(id);
+            kanban.deleteCard(id);
+            return null;
+        });
+        attachments.kick();
+    }
+
+    public void deleteKanbanColumn(int id) {
+        Files attachments = files();
+        db.transaction(() -> {
+            for (KanbanCard card : kanban.cards()) {
+                if (card.columnId() == id) attachments.scheduleCardDeletion(card.id());
+            }
+            kanban.deleteColumn(id);
+            return null;
+        });
+        attachments.kick();
+    }
+
     public void closeResources() {
         Files attachments;
         synchronized (lock) { attachments = files; }

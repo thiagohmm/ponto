@@ -70,9 +70,10 @@ class KanbanTest {
             assertEquals(1, s.kanban().byId(c.id()).position());
             assertEquals(0, s.kanban().byId(b.id()).position());
 
-            KanbanCard next = s.kanban().updateCard(a.id(), "A2", "corpo", a.revision());
+            KanbanCard next = s.kanban().updateCard(a.id(), "A2", "corpo", "feito X", a.revision());
             assertEquals(a.revision() + 1, next.revision());
-            assertThrows(Conflict.class, () -> s.kanban().updateCard(a.id(), "velho", "", a.revision()));
+            assertEquals("feito X", next.done());
+            assertThrows(Conflict.class, () -> s.kanban().updateCard(a.id(), "velho", "", "", a.revision()));
             assertEquals("A2", s.kanban().byId(a.id()).title());
         }
     }
@@ -126,6 +127,55 @@ class KanbanTest {
             s.kanban().deleteColumn(col);
             assertTrue(s.kanban().cards().isEmpty());
             assertTrue(s.kanban().columns().stream().noneMatch(c -> c.id() == col));
+        }
+    }
+
+    @Test void defaultColumnsCannotBeDeleted() {
+        try (Db db = Db.open(dir.resolve("protect.db").toString())) {
+            Service s = new Service(db);
+            for (KanbanColumn col : s.kanban().columns()) {
+                assertTrue(Kanban.protectedColumn(col.name()));
+                assertThrows(Bad.class, () -> s.kanban().deleteColumn(col.id()));
+            }
+            assertEquals(List.of("A fazer", "Em andamento", "Feito"),
+                    s.kanban().columns().stream().map(KanbanColumn::name).toList());
+            KanbanColumn custom = s.kanban().createColumn("Extra");
+            s.kanban().deleteColumn(custom.id());
+            assertTrue(s.kanban().columns().stream().noneMatch(c -> c.id() == custom.id()));
+        }
+    }
+
+    @Test void doneFieldPersistsAndDefaultsEmpty() {
+        try (Db db = Db.open(dir.resolve("done.db").toString())) {
+            Service s = new Service(db);
+            int todo = s.kanban().columns().getFirst().id();
+            KanbanCard card = s.kanban().createCard("T", "desc", todo);
+            assertEquals("", card.done());
+            KanbanCard next = s.kanban().updateCard(card.id(), "T", "desc", "implementei X", card.revision());
+            assertEquals("implementei X", next.done());
+            assertEquals("implementei X", s.kanban().byId(card.id()).done());
+        }
+    }
+
+    @Test void reorderColumnsByPosition() {
+        try (Db db = Db.open(dir.resolve("reorder.db").toString())) {
+            Service s = new Service(db);
+            KanbanColumn extra = s.kanban().createColumn("Extra");
+            List<KanbanColumn> before = s.kanban().columns();
+            assertEquals(List.of("A fazer", "Em andamento", "Feito", "Extra"),
+                    before.stream().map(KanbanColumn::name).toList());
+
+            s.kanban().updateColumn(extra.id(), null, 1);
+            assertEquals(List.of("A fazer", "Extra", "Em andamento", "Feito"),
+                    s.kanban().columns().stream().map(KanbanColumn::name).toList());
+            assertEquals(List.of(0, 1, 2, 3),
+                    s.kanban().columns().stream().map(KanbanColumn::position).toList());
+
+            int doing = s.kanban().columns().stream()
+                    .filter(c -> c.name().equals("Em andamento")).findFirst().orElseThrow().id();
+            s.kanban().updateColumn(doing, null, 0);
+            assertEquals(List.of("Em andamento", "A fazer", "Extra", "Feito"),
+                    s.kanban().columns().stream().map(KanbanColumn::name).toList());
         }
     }
 }

@@ -78,4 +78,21 @@ class AttachmentsTest {
             assertEquals(f.id(),files.list(note.id()).getFirst().id());assertEquals(0,files.pending());
         }
     }
+
+    @Test void kanbanCardAttachmentRoundTripAndDelete() {
+        Store store = new Store();
+        try (Db db = Db.open(dir.resolve("kanban-files.db").toString()); Files files = new Files(db, db.lock, store)) {
+            Service s = new Service(db);
+            int cardId = s.kanban().createCard("T", "", s.kanban().columns().getFirst().id()).id();
+            var f = files.addForCard(cardId, "prova.txt", "text/plain", "ok".getBytes());
+            assertEquals("ready", files.cardState(f.id()));
+            assertEquals(1, files.listForCard(cardId).size());
+            assertArrayEquals("ok".getBytes(), files.downloadCardFile(f.id()));
+            s.deleteKanbanCard(cardId);
+            assertTrue(files.listForCard(cardId).isEmpty());
+            files.reconcile();
+            assertEquals(0, files.pending());
+            assertTrue(store.data.isEmpty());
+        }
+    }
 }

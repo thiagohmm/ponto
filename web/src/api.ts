@@ -1,4 +1,4 @@
-import type { Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
+import type { Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanCardFile, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 export type EntrySave = { dia: string; tin: string; tout: string; just: string; closeOpen?: boolean; confirmMidnight?: boolean; confirmOverlap?: boolean };
@@ -158,7 +158,7 @@ export const api = {
     req<{ ok: boolean }>("/kanban/columns/" + id, { method: "DELETE" }),
   createKanbanCard: (body: { title: string; body?: string; columnId: number }) =>
     req<KanbanCard>("/kanban/cards", { method: "POST", body: JSON.stringify(body) }),
-  updateKanbanCard: (id: number, body: { title: string; body: string; revision: number }) =>
+  updateKanbanCard: (id: number, body: { title: string; body: string; done: string; revision: number }) =>
     req<KanbanCard>("/kanban/cards/" + id, { method: "PUT", body: JSON.stringify(body) }),
   moveKanbanCard: (id: number, body: { columnId: number; position: number }) =>
     req<KanbanCard>("/kanban/cards/" + id + "/move", { method: "PUT", body: JSON.stringify(body) }),
@@ -168,4 +168,25 @@ export const api = {
     req<KanbanCard>("/kanban/cards/" + id + "/unblock", { method: "POST", body: "{}" }),
   removeKanbanCard: (id: number) =>
     req<{ ok: boolean }>("/kanban/cards/" + id, { method: "DELETE" }),
+  kanbanFiles: (cardId: number) => req<{ files: KanbanCardFile[] }>("/kanban/cards/" + cardId + "/files"),
+  uploadKanbanFile: async (cardId: number, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(companyUrl("/kanban/cards/" + cardId + "/files"), { method: "POST", body: fd, credentials: "include" });
+    const body = await parse(r) as { error?: string; message?: string; need?: string; requestId?: string };
+    if (!r.ok) fail(r, body);
+    return body as KanbanCardFile;
+  },
+  removeKanbanFile: (cardId: number, fileId: number) =>
+    req<{ ok: boolean }>("/kanban/cards/" + cardId + "/files/" + fileId, { method: "DELETE" }),
+  kanbanFileDownloadUrl: (cardId: number, fileId: number) =>
+    companyUrl("/kanban/cards/" + cardId + "/files/" + fileId + "/download"),
+  kanbanFileBytes: async (cardId: number, fileId: number): Promise<Blob> => {
+    const r = await fetch(companyUrl("/kanban/cards/" + cardId + "/files/" + fileId + "/download"), { credentials: "include" });
+    if (!r.ok) {
+      const body = await parse(r) as { error?: string; message?: string; requestId?: string };
+      fail(r, body);
+    }
+    return r.blob();
+  },
 };

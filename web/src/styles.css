@@ -1665,8 +1665,30 @@ td { padding: 14px 12px; }
   padding-bottom: 16px;
   min-height: 60vh;
 }
+.kanban-column-slot {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+}
+.kanban-column-drop {
+  width: 6px;
+  border-radius: 4px;
+  margin: 0 2px;
+  align-self: stretch;
+  min-height: 120px;
+  transition: background 0.12s ease, width 0.12s ease;
+}
+.kanban-column-drop.on, .kanban-column-drop.end.on {
+  width: 14px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.kanban-column-drop.end {
+  flex: 0 0 6px;
+  align-self: stretch;
+}
 .kanban-column {
   flex: 0 0 280px;
+  width: 280px;
   max-width: 280px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -1693,12 +1715,13 @@ td { padding: 14px 12px; }
   font-weight: 600;
   text-align: left;
   padding: 0;
-  cursor: text;
+  cursor: grab;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
 }
+.kanban-column-title:active { cursor: grabbing; }
 .kanban-column-title small {
   color: var(--muted);
   font-weight: 500;
@@ -1739,6 +1762,8 @@ td { padding: 14px 12px; }
   padding: 10px 12px;
   cursor: grab;
   margin-bottom: 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 .kanban-card:active { cursor: grabbing; }
 .kanban-card.active { border-color: var(--accent); }
@@ -1757,6 +1782,7 @@ td { padding: 14px 12px; }
   font-size: 12px;
   line-height: 1.35;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .kanban-card.blocked strong,
 .kanban-card.blocked p,
@@ -1771,6 +1797,7 @@ td { padding: 14px 12px; }
   font-size: 12px;
   font-weight: 600;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .kanban-history { margin: 8px 0 4px; }
 .kanban-history h4 { margin: 0 0 6px; font-size: 13px; color: var(--stamp); }
@@ -1780,6 +1807,9 @@ td { padding: 14px 12px; }
 .kanban-dialog {
   width: min(520px, 92vw);
   text-align: left;
+}
+.kanban-attach {
+  margin: 8px 0 12px;
 }
 .kanban-dialog .field { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
 .kanban-dialog input, .kanban-dialog textarea, .kanban-dialog select {
