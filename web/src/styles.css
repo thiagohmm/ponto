@@ -1784,12 +1784,7 @@ td { padding: 14px 12px; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.kanban-card.blocked strong,
-.kanban-card.blocked p,
-.kanban-block,
-.kanban-history,
-.kanban-history li,
-.kanban-history small {
+.kanban-card.blocked strong {
   color: var(--stamp);
 }
 .kanban-block {
@@ -1798,9 +1793,11 @@ td { padding: 14px 12px; }
   font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
+  color: var(--stamp);
 }
+.kanban-card .kanban-block { color: var(--muted); font-weight: 500; }
 .kanban-history { margin: 8px 0 4px; }
-.kanban-history h4 { margin: 0 0 6px; font-size: 13px; color: var(--stamp); }
+.kanban-history h4 { margin: 0 0 6px; font-size: 13px; }
 .kanban-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .kanban-history li { font-size: 13px; line-height: 1.35; }
 .kanban-history small { display: block; font-size: 11px; margin-top: 2px; }
