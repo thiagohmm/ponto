@@ -115,8 +115,8 @@ export function KanbanPage() {
     return name.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
   }
 
-  function inProgress(name: string) {
-    return normalizeColumnName(name) === "em andamento";
+  function doneColumn(name: string) {
+    return normalizeColumnName(name) === "feito";
   }
 
   function protectedColumn(name: string) {
@@ -218,7 +218,7 @@ export function KanbanPage() {
     if (!editing) return;
     const ok = await confirm({
       title: "Desbloquear cartão?",
-      message: "O histórico de bloqueio permanece. Depois disso o cartão pode sair de Em andamento.",
+      message: "O histórico de bloqueio permanece. Depois disso o cartão pode ser movido para qualquer coluna.",
       ok: "Desbloquear",
     });
     if (!ok) return;
@@ -254,7 +254,7 @@ export function KanbanPage() {
   function allowDrop(e: DragEvent, key: string, columnId: number) {
     if (draggingColumn.current != null) return;
     const card = board.cards.find((c) => c.id === dragging.current);
-    if (card?.blocked && card.columnId !== columnId) {
+    if (card?.blocked && doneColumn(board.columns.find((c) => c.id === columnId)?.name ?? "")) {
       e.dataTransfer.dropEffect = "none";
       return;
     }
@@ -313,8 +313,8 @@ export function KanbanPage() {
     if (!cardId) return;
     const card = board.cards.find((c) => c.id === cardId);
     if (!card) return;
-    if (card.blocked && card.columnId !== columnId) {
-      setErr("cartão bloqueado não pode sair de Em andamento");
+    if (card.blocked && doneColumn(board.columns.find((c) => c.id === columnId)?.name ?? "")) {
+      setErr("cartão bloqueado não pode ir para Feito");
       return;
     }
     if (card.columnId === columnId && card.position === position) return;
@@ -489,7 +489,7 @@ export function KanbanPage() {
             <KanbanAttachments cardId={editing.id} busy={busy} onError={setErr} />
             <BlockPanel
               card={editing}
-              doing={inProgress(board.columns.find((c) => c.id === editing.columnId)?.name ?? "")}
+              canBlock={!doneColumn(board.columns.find((c) => c.id === editing.columnId)?.name ?? "")}
               kind={blockKind}
               reason={blockReason}
               busy={busy}
@@ -511,9 +511,9 @@ export function KanbanPage() {
   );
 }
 
-function BlockPanel({ card, doing, kind, reason, busy, onKind, onReason, onBlock, onUnblock }: {
+function BlockPanel({ card, canBlock, kind, reason, busy, onKind, onReason, onBlock, onUnblock }: {
   card: KanbanCard;
-  doing: boolean;
+  canBlock: boolean;
   kind: string;
   reason: string;
   busy: boolean;
@@ -523,13 +523,13 @@ function BlockPanel({ card, doing, kind, reason, busy, onKind, onReason, onBlock
   onUnblock: () => void;
 }) {
   const open = card.blocks.find((b) => !b.cleared);
-  if (!doing && card.blocks.length === 0) return null;
+  if (!canBlock && card.blocks.length === 0) return null;
   return (
     <div className="kanban-history">
       {open && (
-        <p className="kanban-block">Bloqueado — {open.kindLabel}: {open.reason}. Não sai de Em andamento.</p>
+        <p className="kanban-block">Bloqueado — {open.kindLabel}: {open.reason}. Não pode ir para Feito.</p>
       )}
-      {doing && !open && (
+      {canBlock && !open && (
         <>
           <label className="field">
             Tipo de bloqueio

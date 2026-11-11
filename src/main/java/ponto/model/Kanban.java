@@ -101,13 +101,13 @@ public final class Kanban {
         }
     }
 
-    /** Blocks a card that is in Em andamento. The episode stays in the history. */
+    /** Blocks a card that is not in Feito. The episode stays in the history. */
     public KanbanCard blockCard(int id, String kind, String reason) {
         synchronized (lock) {
             return db.transaction(() -> {
                 KanbanCard card = mustCard(id);
-                if (!inProgress(mustColumn(card.columnId()).name()))
-                    throw new ponto.Bad("só é possível bloquear um cartão em Em andamento");
+                if (done(mustColumn(card.columnId()).name()))
+                    throw new ponto.Bad("cartão em Feito não pode ser bloqueado");
                 if (card.blocked()) throw new ponto.Bad("cartão já está bloqueado");
                 KanbanBlockKind parsed = KanbanBlockKind.parse(kind);
                 String why = reason == null ? "" : reason.trim();
@@ -139,8 +139,8 @@ public final class Kanban {
             return db.transaction(() -> {
                 KanbanCard card = mustCard(id);
                 mustColumn(columnId);
-                if (card.blocked() && columnId != card.columnId())
-                    throw new ponto.Bad("cartão bloqueado não pode sair de Em andamento");
+                if (card.blocked() && done(mustColumn(columnId).name()))
+                    throw new ponto.Bad("cartão bloqueado não pode ir para Feito");
                 int oldCol = card.columnId();
                 List<KanbanCard> target = cardsInColumn(columnId).stream().filter(c -> c.id() != id).toList();
                 int pos = Math.max(0, Math.min(position, target.size()));
@@ -292,6 +292,10 @@ public final class Kanban {
 
     static boolean inProgress(String name) {
         return normalizeName(name).equals("em andamento");
+    }
+
+    static boolean done(String name) {
+        return normalizeName(name).equals("feito");
     }
 
     static boolean protectedColumn(String name) {

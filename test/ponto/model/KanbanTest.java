@@ -78,17 +78,18 @@ class KanbanTest {
         }
     }
 
-    @Test void blockedCardStaysInProgressAndKeepsHistory() {
+    @Test void blockedCardCannotBeDoneButCanMoveAndKeepsHistory() {
         try (Db db = Db.open(dir.resolve("block.db").toString())) {
             Service s = new Service(db);
             List<KanbanColumn> cols = s.kanban().columns();
             int todo = cols.get(0).id();
             int doing = cols.get(1).id();
             int done = cols.get(2).id();
-            KanbanCard card = s.kanban().createCard("Parado", "", todo);
-            assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "tecnico", "sem ambiente"));
 
-            s.kanban().moveCard(card.id(), doing, 0);
+            KanbanCard doneCard = s.kanban().createCard("Concluído", "", done);
+            assertThrows(Bad.class, () -> s.kanban().blockCard(doneCard.id(), "tecnico", "não pode em Feito"));
+
+            KanbanCard card = s.kanban().createCard("Parado", "", todo);
             assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "nope", "motivo"));
             assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "tecnico", "  "));
 
@@ -98,7 +99,10 @@ class KanbanTest {
             assertEquals("sem ambiente", blocked.blocks().getFirst().reason());
             assertThrows(Bad.class, () -> s.kanban().blockCard(card.id(), "cliente", "outro"));
             assertThrows(Bad.class, () -> s.kanban().moveCard(card.id(), done, 0));
-            assertEquals(doing, s.kanban().byId(card.id()).columnId());
+            assertEquals(todo, s.kanban().byId(card.id()).columnId());
+
+            KanbanCard moved = s.kanban().moveCard(card.id(), doing, 0);
+            assertEquals(doing, moved.columnId());
 
             KanbanCard other = s.kanban().createCard("Outro", "", doing);
             KanbanCard reordered = s.kanban().moveCard(card.id(), doing, 1);
