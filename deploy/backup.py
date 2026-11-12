@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Consistent SQLite + object-store snapshots and verified, offline restoration."""
+"""Consistent PostgreSQL + object-store snapshots and verified, offline restoration.
+
+The timesheet database now lives in the shared container `marketing-postgres`
+(database `ponto`, role `ponto`). Snapshots are pg_dump custom-format archives;
+the object store (MinIO) and the staging uploads directory are archived as before.
+"""
 import argparse
 import datetime as dt
 import fcntl
@@ -7,14 +12,51 @@ import gzip
 import hashlib
 import json
 import os
-from pathlib import Path
+import re
 import shutil
-import sqlite3
 import subprocess
 import tarfile
 import tempfile
+from pathlib import Path
 
 os.umask(0o077)
+
+CONTAINER = os.environ.get('PONTO_PG_CONTAINER', 'marketing-postgres')
+SUPERUSER = os.environ.get('PONTO_PG_SUPERUSER', 'marketing')
+OWNER = os.environ.get('PONTO_PG_OWNER', 'ponto')
+DATABASE = os.environ.get('PONTO_PG_DATABASE', 'ponto')
+# Local mode (no container): postgres://user:pass@host:port/dbname with pg_* on PATH.
+PG_URL = os.environ.get('PONTO_PG_URL', '')
+DUMP_NAME = 'ponto.dump'
+
+
+def in_container():
+    return bool(CONTAINER)
+
+
+def pg(query):
+    """Run psql against the database; return text output."""
+    if in_container():
+        return subprocess.run(['docker', 'exec', CONTAINER,
+                               'psql', '-U', SUPERUSER, '-d', DATABASE,
+                               '-v', 'ON_ERROR_STOP=1', '-t', '-A', '-c', query],
+                              check=True, capture_output=True, text=True).stdout.strip()
+    return subprocess.run(['psql', '--dbname=' + PG_URL,
+                           '-v', 'ON_ERROR_STOP=1', '-t', '-A', '-c', query],
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
+def pg_maintenance(query):
+    """Run psql against the postgres maintenance database (create/drop databases)."""
+    if in_container():
+        return subprocess.run(['docker', 'exec', CONTAINER,
+                               'psql', '-U', SUPERUSER, '-d', 'postgres',
+                               '-v', 'ON_ERROR_STOP=1', '-t', '-A', '-c', query],
+                              check=True, capture_output=True, text=True).stdout.strip()
+    url = PG_URL.rsplit('/', 1)[0] + '/postgres'
+    return subprocess.run(['psql', '--dbname=' + url,
+                           '-v', 'ON_ERROR_STOP=1', '-t', '-A', '-c', query],
+                          check=True, capture_output=True, text=True).stdout.strip()
 
 
 def command(args, project, **kwargs):
@@ -32,6 +74,10 @@ def settings(project):
     return values
 
 
+def pg_table_names():
+    return set(pg('SELECT tablename FROM pg_tables WHERE schemaname = \'public\'').splitlines())
+
+
 def verify(snapshot):
     manifest = json.loads((snapshot / 'manifest.json').read_text())
     for name, expected in manifest['sha256'].items():
@@ -40,15 +86,33 @@ def verify(snapshot):
             raise RuntimeError('Invalid manifest path')
         if digest(path) != expected:
             raise RuntimeError('Snapshot checksum mismatch: ' + name)
-    with sqlite3.connect(snapshot / 'ponto.db') as database:
-        if database.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
-            raise RuntimeError('Snapshot database failed integrity_check')
+    # The dump must list at least the core tables (schema version 5).
+    tables = pg_to_text(snapshot / DUMP_NAME, 'list')
+    for table in ('ponto', 'note', 'company', 'cfg', 'schema_migrations'):
+        if not re.search(r'\b' + table + r'\b', tables):
+            raise RuntimeError('Snapshot database missing table: ' + table)
     for name in ('minio.tar.gz', 'uploads.tar.gz'):
         with tarfile.open(snapshot / name) as archive:
-            for member in archive:
+            for member in archive.getmembers():
                 if not (member.isfile() or member.isdir()) or member.name.startswith('/') or '..' in Path(member.name).parts:
                     raise RuntimeError('Unsafe archive entry: ' + member.name)
     return manifest
+
+
+def pg_to_text(dump_path, action):
+    """Run pg_restore against a local dump; returns stdout."""
+    if in_container():
+        try:
+            subprocess.run(['docker', 'cp', str(dump_path), CONTAINER + ':/tmp/' + DUMP_NAME],
+                           check=True, capture_output=True)
+            result = subprocess.run(['docker', 'exec', CONTAINER,
+                                     'pg_restore', '--list', '/tmp/' + DUMP_NAME],
+                                    check=True, capture_output=True, text=True)
+            return result.stdout
+        finally:
+            subprocess.run(['docker', 'exec', CONTAINER, 'rm', '-f', '/tmp/' + DUMP_NAME], check=False)
+    return subprocess.run(['pg_restore', '--list', str(dump_path)],
+                          check=True, capture_output=True, text=True).stdout
 
 
 def digest(path):
@@ -106,14 +170,22 @@ def backup(args, project, data, objects, root):
                     raise RuntimeError('Cannot preserve previous application image')
         if services:
             command(['docker', 'compose', 'stop', '-t', '45', *services], project, stdout=subprocess.DEVNULL)
-        if not (data / 'ponto.db').is_file():
-            raise RuntimeError('Database absent; refusing to create an empty backup')
-        with sqlite3.connect(f'file:{data / "ponto.db"}?mode=ro', uri=True) as source:
-            with sqlite3.connect(staging / 'ponto.db') as destination:
-                source.backup(destination)
-            names = {row[0] for row in source.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if 'note_file' in names and source.execute('SELECT count(*) FROM note_file').fetchone()[0] and not objects.is_dir():
-                raise RuntimeError('Attachments exist but the object volume is absent')
+        if len(pg_table_names()) < 5:
+            raise RuntimeError('PostgreSQL database `ponto` is empty; refusing to create an empty backup')
+        # Consistent snapshot (WAL-safe). Inside the shared container the dump runs as the
+        # superuser role so it is not locked out by database-level permissions.
+        if in_container():
+            dump = subprocess.run(['docker', 'exec', CONTAINER,
+                                   'pg_dump', '-U', SUPERUSER, '-d', DATABASE, '-Fc'],
+                                  check=True, capture_output=True)
+            (staging / DUMP_NAME).write_bytes(dump.stdout)
+        else:
+            subprocess.run(['pg_dump', '--dbname=' + PG_URL, '-Fc',
+                            '-f', str(staging / DUMP_NAME)],
+                           check=True, capture_output=True)
+        attachments = int(pg('SELECT count(*) FROM note_file'))
+        if attachments and not objects.is_dir():
+            raise RuntimeError('Attachments exist but the object volume is absent')
         archive_dir(objects, staging / 'minio.tar.gz')
         archive_dir(data / 'uploads', staging / 'uploads.tar.gz')
         for name in ('.env', 'docker-compose.yml', 'Dockerfile', '.dockerignore', 'target/ponto.jar'):
@@ -156,7 +228,7 @@ def extract(snapshot, name, destination):
     with tarfile.open(snapshot / name) as archive:
         # Python 3.11.2 on the LAN host predates tarfile extraction filters.
         # verify() already rejects links, devices, absolute paths and traversal.
-        for member in archive:
+        for member in archive.getmembers():
             target = destination / member.name
             if member.isdir():
                 target.mkdir(parents=True, exist_ok=True)
@@ -180,7 +252,6 @@ def restore(args, project, data, objects, root):
     services = [] if args.offline else running(project)
     stamp = dt.datetime.now().strftime('%Y%m%d%H%M%S%f')
     try:
-        shutil.copy2(snapshot / 'ponto.db', stage_data / 'ponto.db')
         extract(snapshot, 'uploads.tar.gz', stage_data / 'uploads')
         extract(snapshot, 'minio.tar.gz', stage_objects)
         if services:
@@ -191,6 +262,28 @@ def restore(args, project, data, objects, root):
                 destination.rename(old)
                 moved.append((destination, old))
             stage.rename(destination)
+        # Database: drop & recreate from the custom-format dump.
+        if in_container():
+            subprocess.run(['docker', 'cp', str(snapshot / DUMP_NAME), CONTAINER + ':/tmp/' + DUMP_NAME],
+                           check=True, capture_output=True)
+            try:
+                subprocess.run(['docker', 'exec', CONTAINER,
+                                'psql', '-U', SUPERUSER, '-d', 'postgres', '-v', 'ON_ERROR_STOP=1',
+                                '-c', 'DROP DATABASE IF EXISTS ' + DATABASE + ' WITH (FORCE);',
+                                '-c', 'CREATE DATABASE ' + DATABASE + ' OWNER ' + OWNER + ';'],
+                               check=True, capture_output=True)
+                subprocess.run(['docker', 'exec', CONTAINER,
+                                'pg_restore', '-U', SUPERUSER, '-d', DATABASE, '--no-owner',
+                                '/tmp/' + DUMP_NAME],
+                               check=True, capture_output=True)
+            finally:
+                subprocess.run(['docker', 'exec', CONTAINER, 'rm', '-f', '/tmp/' + DUMP_NAME], check=False)
+        else:
+            pg_maintenance('DROP DATABASE IF EXISTS ' + DATABASE + ' WITH (FORCE)')
+            pg_maintenance('CREATE DATABASE ' + DATABASE + ' OWNER ' + OWNER)
+            subprocess.run(['pg_restore', '--dbname=' + PG_URL, '--no-owner',
+                            str(snapshot / DUMP_NAME)],
+                           check=True, capture_output=True)
         if args.restore_config:
             for original in (snapshot / 'config').rglob('*'):
                 if original.is_file():

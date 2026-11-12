@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Workplaces in the same SQLite file. Shares Service's lock: the JDBC
+ * Workplaces in the same PostgreSQL database. Shares Service's lock: the JDBC
  * connection is not thread-safe.
  */
 public final class Companies {
@@ -90,7 +90,7 @@ public final class Companies {
     }
 
     private List<Company> listLocked() {
-        return rows("SELECT " + COLS + " FROM company ORDER BY name COLLATE NOCASE, id");
+        return rows("SELECT " + COLS + " FROM company ORDER BY lower(name), id");
     }
 
     private Company must(int id) {

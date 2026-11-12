@@ -93,7 +93,7 @@ public final class Kanban {
         synchronized (lock) {
             mustCard(id);
             int changed = write("UPDATE kanban_card SET title=?, body=?, done=?, revision=revision+1,"
-                  + " upd=strftime('%Y-%m-%d %H:%M:%f','now','localtime') WHERE id=? AND company_id=? AND revision=?",
+                  + " upd=to_char(now(), 'YYYY-MM-DD HH24:MI:SS.MS') WHERE id=? AND company_id=? AND revision=?",
                   nz(title), nz(body), nz(done), id, cid(), revision);
             if (changed == 0)
                 throw new ponto.Conflict("Este cartão foi alterado em outro acesso. Recarregue e tente de novo.");
@@ -126,7 +126,7 @@ public final class Kanban {
             return db.transaction(() -> {
                 KanbanCard card = mustCard(id);
                 if (!card.blocked()) throw new ponto.Bad("cartão não está bloqueado");
-                int changed = write("UPDATE kanban_block SET cleared=strftime('%Y-%m-%d %H:%M','now','localtime') "
+                int changed = write("UPDATE kanban_block SET cleared=to_char(now(), 'YYYY-MM-DD HH24:MI') "
                         + "WHERE card_id=? AND company_id=? AND cleared IS NULL", id, cid());
                 if (changed == 0) throw new ponto.Bad("cartão não está bloqueado");
                 return mustCard(id);

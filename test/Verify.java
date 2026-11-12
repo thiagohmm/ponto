@@ -24,8 +24,8 @@ public final class Verify {
     private static String HIDE = "";    // prefix to mask (the test directory)
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4) { System.out.println("x   need <pdf> <xls> <csv> <db>"); System.exit(2); }
-        HIDE = Path.of(args[3]).getParent().toString();
+        if (args.length < 4) { System.out.println("x   need <pdf> <xls> <csv> <dataDirOrDb>"); System.exit(2); }
+        HIDE = args[3].startsWith("jdbc:") ? "" : Path.of(args[3]).toString();
         System.out.println("== PDF ==");
         System.out.println(mask(pdf(args[0])));
         System.out.println("== XLS ==");
@@ -83,6 +83,8 @@ public final class Verify {
             if (low.contains("generated") || low.contains("generado") || low.contains("gerado")) continue;
             int i = HIDE.isEmpty() ? -1 : ln.indexOf(HIDE);
             if (i >= 0) ln = ln.substring(0, i) + "TESTDIR/…";
+            int j = ln.indexOf("jdbc:postgresql://");
+            if (j >= 0) ln = ln.substring(0, j) + "TESTDIR/…";
             if (!user.isEmpty()) ln = ln.replace(user, "USER");
             out.append(ln).append("\n");
         }

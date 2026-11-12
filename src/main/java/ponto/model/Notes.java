@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Markdown notes in the same SQLite file, different table.
+ * Markdown notes in the same PostgreSQL database, different table.
  * Shares Service's lock: the JDBC connection is not thread-safe.
  */
 public final class Notes {
@@ -121,7 +121,7 @@ public final class Notes {
         synchronized (lock) {
             if (title == null || title.isBlank()) return null;
             List<Note> r = attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?"
-                                + " AND title = ? COLLATE NOCASE" + ORDER + " LIMIT 1",
+                                + " AND lower(title) = lower(?)" + ORDER + " LIMIT 1",
                                 cid(), title.trim()));
             return r.isEmpty() ? null : r.getFirst();
         }
@@ -154,7 +154,7 @@ public final class Notes {
         synchronized (lock) {
             must(id);
             int changed = write("UPDATE note SET title=?, body=?, revision=revision+1,"
-                  + " upd=strftime('%Y-%m-%d %H:%M:%f','now','localtime') WHERE id=? AND company_id=? AND revision=?",
+                  + " upd=to_char(now(), 'YYYY-MM-DD HH24:MI:SS.MS') WHERE id=? AND company_id=? AND revision=?",
                   nz(title), nz(body), id, cid(), revision);
             if (changed == 0) throw new ponto.Conflict("Esta nota foi alterada em outro acesso. Copie seu texto e reabra a nota para comparar.");
             return must(id);
@@ -199,14 +199,14 @@ public final class Notes {
         synchronized (lock) {
             must(id);
             mustTag(tagId);
-            write("INSERT OR IGNORE INTO note_tag(note_id, tag_id) VALUES(?,?)", id, tagId);
+            write("INSERT INTO note_tag(note_id, tag_id) VALUES(?,?) ON CONFLICT DO NOTHING", id, tagId);
             return must(id);
         }
     }
 
     public List<Tag> tags() {
         synchronized (lock) {
-            return tags("SELECT " + TCOLS + " FROM tag WHERE company_id = ? ORDER BY name COLLATE NOCASE, id", cid());
+            return tags("SELECT " + TCOLS + " FROM tag WHERE company_id = ? ORDER BY lower(name), id", cid());
         }
     }
 
@@ -214,7 +214,7 @@ public final class Notes {
         synchronized (lock) {
             String n = name == null ? "" : name.trim();
             if (n.isEmpty()) n = "Tag";
-            List<Tag> same = tags("SELECT " + TCOLS + " FROM tag WHERE company_id = ? AND name = ? COLLATE NOCASE",
+            List<Tag> same = tags("SELECT " + TCOLS + " FROM tag WHERE company_id = ? AND lower(name) = lower(?)",
                                  cid(), n);
             if (!same.isEmpty()) return same.getFirst();
             String c = colorOf(color);
@@ -248,7 +248,7 @@ public final class Notes {
 
     public List<Folder> folders() {
         synchronized (lock) {
-            return folders("SELECT " + FCOLS + " FROM folder WHERE company_id = ? ORDER BY name COLLATE NOCASE, id", cid());
+            return folders("SELECT " + FCOLS + " FROM folder WHERE company_id = ? ORDER BY lower(name), id", cid());
         }
     }
 
@@ -323,7 +323,7 @@ public final class Notes {
         for (Integer t : tagIds) {
             if (t == null || t <= 0) continue;
             mustTag(t);
-            write("INSERT OR IGNORE INTO note_tag(note_id, tag_id) VALUES(?,?)", noteId, t);
+            write("INSERT INTO note_tag(note_id, tag_id) VALUES(?,?) ON CONFLICT DO NOTHING", noteId, t);
         }
     }
 

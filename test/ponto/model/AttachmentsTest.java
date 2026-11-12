@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ponto.Problema;
 import ponto.StorageFailure;
+import ponto.TestDb;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,19 +29,19 @@ class AttachmentsTest {
         private void check(){if(fail)throw new Problema("offline");}
     }
     @Test void failedUploadSurvivesRestartAndRetriesAreBounded() {
-        Path file=dir.resolve("queue.db");Store store=new Store();store.fail=true;
+        String url=TestDb.freshUrl();Store store=new Store();store.fail=true;
         int note;
-        try(Db db=Db.open(file.toString());Files files=new Files(db,db.lock,store)){
+        try(Db db=Db.open(dir,url);Files files=new Files(db,db.lock,store)){
             note=new Service(db).notes().create("nota","").id();
             assertThrows(StorageFailure.class,()->files.add(note,"teste.txt","text/plain","abc".getBytes()));
             assertEquals(1,files.pending());
             assertEquals("failed",files.state(files.list(note).getFirst().id()));
             files.reconcile();files.reconcile();files.reconcile();
-            try(var q=db.conn().createStatement();var rs=q.executeQuery("SELECT attempts FROM object_job")){assertEquals(3,rs.getInt(1));}
+            try(var q=db.conn().createStatement();var rs=q.executeQuery("SELECT attempts FROM object_job")){assertTrue(rs.next());assertEquals(3,rs.getInt(1));}
             catch(Exception e){fail(e);}
         }
         store.fail=false;
-        try(Db db=Db.open(file.toString());Files files=new Files(db,db.lock,store)){
+        try(Db db=Db.open(dir,url);Files files=new Files(db,db.lock,store)){
             files.retry();files.reconcile();
             // retry also dispatches asynchronously; the per-object lock makes both paths safe.
             var f=files.list(note).getFirst();
@@ -53,7 +54,7 @@ class AttachmentsTest {
     }
     @Test void slowStorageDoesNotHoldDatabaseAndDeleteDuringUploadCleansObject() throws Exception {
         Store store=new Store();store.entered=new CountDownLatch(1);store.release=new CountDownLatch(1);
-        try(Db db=Db.open(dir.resolve("slow.db").toString());Files files=new Files(db,db.lock,store);
+        try(Db db=TestDb.open(dir);Files files=new Files(db,db.lock,store);
             var pool=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
             var service=new Service(db);var note=service.notes().create("nota","");
             var upload=pool.submit(()->files.add(note.id(),"teste","text/plain",new byte[]{1}));
@@ -68,7 +69,7 @@ class AttachmentsTest {
     }
     @Test void noteAndCleanupIntentCommitTogether() {
         Store store=new Store();
-        try(Db db=Db.open(dir.resolve("delete.db").toString());Files files=new Files(db,db.lock,store)) {
+        try(Db db=TestDb.open(dir);Files files=new Files(db,db.lock,store)) {
             var service=new Service(db);var note=service.notes().create("nota","");
             var f=files.add(note.id(),"ok","text/plain",new byte[]{2});
             assertThrows(Problema.class,()->db.transaction(()->{
@@ -81,7 +82,7 @@ class AttachmentsTest {
 
     @Test void kanbanCardAttachmentRoundTripAndDelete() {
         Store store = new Store();
-        try (Db db = Db.open(dir.resolve("kanban-files.db").toString()); Files files = new Files(db, db.lock, store)) {
+        try (Db db = TestDb.open(dir); Files files = new Files(db, db.lock, store)) {
             Service s = new Service(db);
             int cardId = s.kanban().createCard("T", "", s.kanban().columns().getFirst().id()).id();
             var f = files.addForCard(cardId, "prova.txt", "text/plain", "ok".getBytes());

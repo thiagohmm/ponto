@@ -5,6 +5,24 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ponto
+          POSTGRES_PASSWORD: ponto
+          POSTGRES_DB: ponto_test
+          TZ: America/Sao_Paulo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ponto -d ponto_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PONTO_TEST_PG: jdbc:postgresql://127.0.0.1:5432/ponto_test?user=ponto&password=ponto
+      PGPASSWORD: ponto
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -17,7 +35,7 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: sudo apt-get update && sudo apt-get install -y zsh
+      - run: sudo apt-get update && sudo apt-get install -y zsh postgresql-client
       - run: npm --prefix web ci
       - run: npm --prefix web test
       - run: npm --prefix web run build

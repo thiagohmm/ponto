@@ -144,7 +144,7 @@ export type Config = {
   from: string;
   to: string;
   java: string;
-  sqlite: string;
+  postgres: string;
   nextOff: string[];
   storage: boolean;
   pendingObjects: number;

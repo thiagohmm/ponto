@@ -540,7 +540,7 @@ public final class App {
             out.note((co.id() == act.id() ? "* " : "  ") + co.id() + "  " + co.name());
         out.note("registros " + c.get("records") + "   " + range(c));
         out.note("csv     sep '" + Csv.SEP + "'  (PONTO_CSV_SEP)");
-        out.note("java    " + c.get("java") + "   sqlite " + c.get("sqlite"));
+        out.note("java    " + c.get("java") + "   postgres " + c.get("postgres"));
         String off = (String) c.get("off");
         out.note("folgas  " + (off.isEmpty() ? "-" : off));
         String daily = (String) c.get("daily");
@@ -591,6 +591,6 @@ public final class App {
         out.note("         4 2026 funciona do mesmo jeito que d 2026");
         out.note("datas  08/10 · 08/10/2026 · 2026-10-08 · 5out · hoje · ontem · -3");
         out.note("horas  07:30 · 07h30 · 0730 · 8 · agora       '-' limpa um campo");
-        out.note("banco  " + svc.dbPath() + "   (PONTO_DB / --db=path)");
+        out.note("banco  " + svc.dbPath() + "   (PONTO_DB / --db=url)");
     }
 }

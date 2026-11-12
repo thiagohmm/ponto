@@ -10,13 +10,13 @@
   <version>1.1.0</version>
   <packaging>jar</packaging>
   <name>ponto</name>
-  <description>Terminal timesheet (SQLite) with CSV / XLS / PDF export</description>
+  <description>Terminal timesheet (PostgreSQL) with CSV / XLS / PDF export</description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.release>25</maven.compiler.release>
-    <sqlite.version>3.53.4.0</sqlite.version>
+    <postgresql.version>42.7.8</postgresql.version>
     <pdfbox.version>3.0.8</pdfbox.version>
     <poi.version>5.5.1</poi.version>
     <jollyday.version>2.21.0</jollyday.version>
@@ -30,11 +30,11 @@
       <version>5.11.4</version>
       <scope>test</scope>
     </dependency>
-    <!-- SQLite JDBC driver (native lib bundled, extracted at runtime) -->
+    <!-- PostgreSQL JDBC driver -->
     <dependency>
-      <groupId>org.xerial</groupId>
-      <artifactId>sqlite-jdbc</artifactId>
-      <version>${sqlite.version}</version>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>${postgresql.version}</version>
     </dependency>
 
     <!-- PDF generation -->

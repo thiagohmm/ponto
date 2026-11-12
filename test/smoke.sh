@@ -21,8 +21,8 @@ fi
 # an asdf shim would quietly pull in another JDK, so use a real maven binary
 mvn="${MVN:-}"
 if [ -z "$mvn" ]; then
-    for c in /opt/homebrew/bin/mvn /usr/local/bin/mvn "$(command -v mvn || true)"; do
-        case "$c" in *asdf*|*/shims/*) continue ;; esac
+    for c in /opt/homebrew/bin/mvn /usr/local/bin/mvn /usr/bin/mvn "$(asdf which mvn 2>/dev/null || true)" "$(command -v mvn || true)"; do
+        case "$c" in */shims/*) continue ;; esac
         [ -x "$c" ] && { mvn="$c"; break; }
     done
 fi
@@ -36,20 +36,22 @@ CP="$root/target/classes:$(cat "$root/target/cp.txt")"
 
 cd "$root"
 "$JAVA_HOME/bin/javac" -Xlint:none -cp "$CP" -d target/classes $(find src/main/java -name '*.java')
-"$JAVA_HOME/bin/javac" -Xlint:none -d target/test-out -cp "$CP" test/Verify.java test/Normal.java test/CompaniesIso.java
+"$JAVA_HOME/bin/javac" -Xlint:none -d target/test-out -cp "$CP" test/ponto/TestDb.java test/Verify.java test/Normal.java test/CompaniesIso.java
 
-DB="$out/ponto.db"
-PONTO_DB="$DB" PONTO_USER=Ana "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP" ponto.Main < "$here/feed.txt" > "$out/session.txt" 2>&1
+fresh_db() { "$JAVA_HOME/bin/java" -cp "$CP:$root/target/test-out" ponto.TestDb; }
+
+DB="$(fresh_db)"
+PONTO_DATA_DIR="$out" PONTO_DB="$DB" PONTO_USER=Ana "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP" ponto.Main < "$here/feed.txt" > "$out/session.txt" 2>&1
 mv -f ponto-*.pdf ponto-*.xls ponto-*.csv "$out/"
 
 "$JAVA_HOME/bin/java" -cp "$CP:$root/target/test-out" ponto.Verify \
-    "$out"/ponto-*.pdf "$out"/ponto-*.xls "$out"/ponto-*.csv "$DB" > "$out/digest.txt" 2>&1
+    "$out"/ponto-*.pdf "$out"/ponto-*.xls "$out"/ponto-*.csv "$out" > "$out/digest.txt" 2>&1
 
 # ---- days off: 12/10/2026 is Our Lady of Aparecida (national) --------------
 # The warning must appear, and the punch must still be saved: a weekend or a
 # holiday is pointed out, never refused. A working day must stay silent.
-DB2="$out/off.db"
-PONTO_DB="$DB2" PONTO_USER=Ana "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP" ponto.Main < "$here/feed-off.txt" > "$out/off.txt" 2>&1
+DB2="$(fresh_db)"
+PONTO_DATA_DIR="$out" PONTO_DB="$DB2" PONTO_USER=Ana "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP" ponto.Main < "$here/feed-off.txt" > "$out/off.txt" 2>&1
 off_ok=yes
 for s in "!   12/10/2026  seg   feriado: Nossa Senhora Aparecida" \
          "!   17/10/2026  sáb   fim de semana" \
@@ -75,12 +77,12 @@ if [ "$off_ok" = no ]; then
 fi
 
 # ---- dia normal: a day off flagged as normal is ruled as a working day -----
-if ! "$JAVA_HOME/bin/java" -cp "$CP:$root/target/test-out" ponto.Normal "$out/normal.db"; then
+if ! PONTO_DATA_DIR="$out" "$JAVA_HOME/bin/java" -cp "$CP:$root/target/test-out" ponto.Normal "$(fresh_db)"; then
     print "FAIL  normal  checks above"
     exit 1
 fi
 
-if ! "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP:$root/target/test-out" ponto.CompaniesIso "$out/iso.db"; then
+if ! PONTO_DATA_DIR="$out" "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP:$root/target/test-out" ponto.CompaniesIso "$(fresh_db)"; then
     print "FAIL  companies  isolation"
     exit 1
 fi

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 import ponto.Bad;
 import ponto.Conflict;
 import ponto.NotFound;
+import ponto.TestDb;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -15,11 +16,11 @@ class KanbanTest {
     @TempDir Path dir;
 
     private Service open(String name) {
-        return new Service(Db.open(dir.resolve(name).toString()));
+        return new Service(TestDb.open(dir));
     }
 
     @Test void freshCompanyGetsDefaultColumns() {
-        try (Db db = Db.open(dir.resolve("seed.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
             List<KanbanColumn> cols = s.kanban().columns();
             assertEquals(List.of("A fazer", "Em andamento", "Feito"),
@@ -29,7 +30,7 @@ class KanbanTest {
     }
 
     @Test void columnAndCardCrudScopedByCompany() {
-        try (Db db = Db.open(dir.resolve("scope.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service root = new Service(db);
             int a = root.companyId();
             int b = root.companies().create("Outra", "", "").id();
@@ -54,7 +55,7 @@ class KanbanTest {
     }
 
     @Test void moveBetweenColumnsAndRevisionConflict() {
-        try (Db db = Db.open(dir.resolve("move.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
             List<KanbanColumn> cols = s.kanban().columns();
             int todo = cols.get(0).id();
@@ -79,7 +80,7 @@ class KanbanTest {
     }
 
     @Test void blockedCardCannotBeDoneButCanMoveAndKeepsHistory() {
-        try (Db db = Db.open(dir.resolve("block.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
             List<KanbanColumn> cols = s.kanban().columns();
             int todo = cols.get(0).id();
@@ -123,7 +124,7 @@ class KanbanTest {
     }
 
     @Test void deleteColumnCascadesCards() {
-        try (Db db = Db.open(dir.resolve("cascade.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
             int col = s.kanban().createColumn("Temp").id();
             s.kanban().createCard("x", "", col);
@@ -135,7 +136,7 @@ class KanbanTest {
     }
 
     @Test void defaultColumnsCannotBeDeleted() {
-        try (Db db = Db.open(dir.resolve("protect.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
             for (KanbanColumn col : s.kanban().columns()) {
                 assertTrue(Kanban.protectedColumn(col.name()));
@@ -150,7 +151,7 @@ class KanbanTest {
     }
 
     @Test void doneFieldPersistsAndDefaultsEmpty() {
-        try (Db db = Db.open(dir.resolve("done.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
             int todo = s.kanban().columns().getFirst().id();
             KanbanCard card = s.kanban().createCard("T", "desc", todo);
@@ -162,7 +163,7 @@ class KanbanTest {
     }
 
     @Test void reorderColumnsByPosition() {
-        try (Db db = Db.open(dir.resolve("reorder.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
             KanbanColumn extra = s.kanban().createColumn("Extra");
             List<KanbanColumn> before = s.kanban().columns();

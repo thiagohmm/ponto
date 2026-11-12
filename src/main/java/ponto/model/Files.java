@@ -114,7 +114,7 @@ public final class Files implements AutoCloseable {
                     q.setLong(4, up.size()); q.setString(5, up.ctype());
                     q.executeUpdate();
                     queue(up.key(), "PUT", up.staged().toString(), up.ctype());
-                    try (var rs = q.getGeneratedKeys()) { return rs.getInt(1); }
+                    try (var rs = q.getGeneratedKeys()) { return rs.next() ? rs.getInt(1) : 0; }
                 } catch (SQLException e) { throw problem(e); }
             });
         } catch (RuntimeException e) { deleteStaged(up.staged().toString()); throw e; }
@@ -152,7 +152,7 @@ public final class Files implements AutoCloseable {
                     q.setLong(4, up.size()); q.setString(5, up.ctype());
                     q.executeUpdate();
                     queue(up.key(), "PUT", up.staged().toString(), up.ctype());
-                    try (var rs = q.getGeneratedKeys()) { return rs.getInt(1); }
+                    try (var rs = q.getGeneratedKeys()) { return rs.next() ? rs.getInt(1) : 0; }
                 } catch (SQLException e) { throw problem(e); }
             });
         } catch (RuntimeException e) { deleteStaged(up.staged().toString()); throw e; }
@@ -244,7 +244,7 @@ public final class Files implements AutoCloseable {
         if (safe.isBlank()) safe = "file";
         String key = keyPrefix + UUID.randomUUID() + "-" + safe;
         try {
-            Path dir = db.file.toAbsolutePath().getParent().resolve("uploads");
+            Path dir = db.dataDir.resolve("uploads");
             java.nio.file.Files.createDirectories(dir);
             Path staged = java.nio.file.Files.createTempFile(dir, "upload-", ".bin");
             java.nio.file.Files.write(staged, data);
@@ -321,7 +321,7 @@ public final class Files implements AutoCloseable {
         if (s3 == null) return;
         List<String> keys = new ArrayList<>();
         synchronized (lock) {
-            try (var q = db.conn().createStatement(); var rs = q.executeQuery("SELECT key FROM object_job WHERE attempts<3 ORDER BY rowid")) {
+            try (var q = db.conn().createStatement(); var rs = q.executeQuery("SELECT key FROM object_job WHERE attempts<3 ORDER BY key")) {
                 while (rs.next()) keys.add(rs.getString(1));
             } catch (SQLException e) { System.err.println("object queue: " + e.getMessage()); return; }
         }
@@ -333,7 +333,7 @@ public final class Files implements AutoCloseable {
 
     public int pending() {
         synchronized (lock) {
-            try (var q = db.conn().createStatement(); var rs = q.executeQuery("SELECT count(*) FROM object_job")) { return rs.getInt(1); }
+            try (var q = db.conn().createStatement(); var rs = q.executeQuery("SELECT count(*) FROM object_job")) { return rs.next() ? rs.getInt(1) : 0; }
             catch (SQLException e) { throw problem(e); }
         }
     }

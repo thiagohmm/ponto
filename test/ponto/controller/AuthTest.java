@@ -2,6 +2,7 @@ package ponto.controller;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ponto.TestDb;
 import ponto.model.Db;
 import ponto.model.Service;
 import ponto.view.Json3;
@@ -19,7 +20,7 @@ class AuthTest {
     @TempDir Path dir;
 
     @Test void loginProtectsApiAndHealthStaysOpen() throws Exception {
-        try (Db db = Db.open(dir.resolve("auth.db").toString())) {
+        try (Db db = TestDb.open(dir)) {
             var auth = new Auth("alice", "s3cret!");
             var app = new Web(new Service(db), 0, auth).application().start("127.0.0.1", 0);
             String base = "http://127.0.0.1:" + app.port();

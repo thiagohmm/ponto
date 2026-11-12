@@ -10,7 +10,7 @@ import ponto.model.Service;
  *
  *   ponto                 -> the menu (that's the normal way to use it)
  *   ponto --serve         -> the same database, in the browser
- *   ponto --db=path     -> another database file
+ *   ponto --db=url      -> another PostgreSQL database
  *   ponto --help        -> this text
  *   ponto --version
  *
@@ -20,13 +20,13 @@ import ponto.model.Service;
 public final class Main {
 
     private static final String HELP = """
-        ponto %s - electronic timesheet (SQLite): terminal or web
+        ponto %s - electronic timesheet (PostgreSQL): terminal or web
 
         usage
           ponto                     open the menu
           ponto --serve             same database, in the browser
           ponto --serve --port=8090
-          ponto --db=<file>       use another database
+          ponto --db=<jdbc-url>   use another PostgreSQL database
           ponto --version | --help
 
         the menu
@@ -40,7 +40,7 @@ public final class Main {
           7 pdf       report as PDF
           8 xls       report as real Excel .xls
           9 csv       report as CSV (BOM + ';')
-          c config    user name, your own days off, database path, vacuum
+          c config    user name, your own days off, database url, vacuum
           x clear     wipe the screen
           0 quit
 
@@ -57,7 +57,8 @@ public final class Main {
           your own days off: c config, "27/10/2026 31/12" (space, comma or ;)
 
         environment
-          PONTO_DB          database path (default ~/.local/share/ponto/ponto.db)
+          PONTO_DB          JDBC URL (default jdbc:postgresql://127.0.0.1:5432/ponto)
+          PONTO_DATA_DIR    upload staging (default ~/.local/share/ponto)
           PONTO_JAVA        JDK 25+ used by the launcher
           PONTO_CSV_SEP     ',' if you prefer commas over semicolons
           PONTO_PORT        listen port for --serve (default 8090)

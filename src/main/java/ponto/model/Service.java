@@ -17,7 +17,7 @@ import java.util.function.Consumer;
 
 /**
  * Shared timesheet rules for the terminal menu and the web API.
- * One lock around SQLite: the JDBC connection is not thread-safe.
+ * One lock around PostgreSQL: the JDBC connection is not thread-safe.
  */
 public final class Service {
 
@@ -63,7 +63,30 @@ public final class Service {
     public boolean healthy() { return db.healthy(); }
     public java.time.LocalDate today() { return Time.today(); }
     public int companyId() { synchronized (lock) { return db.company(); } }
-    public java.nio.file.Path dataDir() { return db.file.toAbsolutePath().getParent(); }
+    public java.nio.file.Path dataDir() { return db.dataDir; }
+
+    /** The DB URL shown in reports/UI must not leak the password. */
+    static String maskDbUrl(String url) {
+        if (url == null || url.isBlank() || !url.startsWith("jdbc:")) return url;
+        String core = url;
+        String params = "";
+        int q = url.indexOf('?');
+        if (q >= 0) { core = url.substring(0, q); params = url.substring(q); }
+        int at = core.lastIndexOf('@');
+        if (at >= 0) core = "jdbc:postgresql://***@" + core.substring(at + 1);
+        StringBuilder masked = new StringBuilder(core);
+        if (!params.isEmpty()) {
+            StringBuilder p = new StringBuilder();
+            for (String pair : params.substring(1).split("&")) {
+                int eq = pair.indexOf('=');
+                String key = eq < 0 ? pair : pair.substring(0, eq);
+                String val = eq < 0 ? "" : pair.substring(eq + 1);
+                p.append(p.isEmpty() ? '?' : '&').append(key).append('=').append(key.equalsIgnoreCase("password") ? "***" : val);
+            }
+            masked.append(p);
+        }
+        return masked.toString();
+    }
 
     public void deleteNote(int id) {
         Files attachments = files();
@@ -105,7 +128,7 @@ public final class Service {
         if (attachments != null) attachments.close();
     }
 
-    /** Markdown notes: same SQLite file, unrelated to the timesheet. */
+    /** Markdown notes: same database, unrelated to the timesheet. */
     public Notes notes() { return notes; }
 
     /** Kanban board: columns and cards of the active company. */
@@ -114,7 +137,7 @@ public final class Service {
     /** Workplaces: punches, notes, jornada and folgas of the active one. */
     public Companies companies() { return companies; }
 
-    /** Files attached to notes: index in SQLite, bytes in S3 (MinIO). */
+    /** Files attached to notes: index in PostgreSQL, bytes in S3 (MinIO). */
     public Files files() {
         synchronized (lock) {
             if (storage == null) storage = Minio.env();
@@ -159,7 +182,7 @@ public final class Service {
 
     public int countDay(String pattern) { synchronized (lock) { return repo.countDay(pattern); } }
 
-    public String dbPath() { synchronized (lock) { return db.file.toString(); } }
+    public String dbPath() { synchronized (lock) { return maskDbUrl(db.url); } }
 
     /** Active company's `off` as saved (the terminal edits + echoes it verbatim). */
     public String rawOff() { synchronized (lock) { return companyLocked().off(); } }
@@ -288,7 +311,7 @@ public final class Service {
             m.put("bankNeg", b.neg());
             m.put("open", half.size());
             m.put("openSince", since);
-            m.put("db", db.file.toString());
+            m.put("db", maskDbUrl(db.url));
             m.put("min", min == null ? "" : Str.iso(min));
             m.put("max", max == null ? "" : Str.iso(max));
             m.put("from", Str.d(min));
@@ -732,12 +755,12 @@ public final class Service {
             m.put("off", c.off());
             m.put("daily", c.daily());
             m.put("dailyMins", dailyMinutes());
-            m.put("db", db.file.toString());
+            m.put("db", maskDbUrl(db.url));
             m.put("records", repo.count());
             m.put("from", Str.d(repo.min()));
             m.put("to", Str.d(repo.max()));
             m.put("java", System.getProperty("java.version"));
-            m.put("sqlite", db.version());
+            m.put("postgres", db.version());
             m.put("storage", storageReady);
             m.put("pendingObjects", files().pending());
             m.put("uploadMib", Files.maxUpload() / (1024*1024));

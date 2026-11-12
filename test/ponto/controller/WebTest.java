@@ -2,6 +2,7 @@ package ponto.controller;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ponto.TestDb;
 import ponto.model.*;
 import ponto.view.Json3;
 import java.nio.file.Path;
@@ -25,7 +26,7 @@ class WebTest {
     }
     private Map<?,?> json(String body){return new Json3().fromJsonString(body,Map.class);}
     @Test void contextsErrorsRevisionAndExports()throws Exception {
-        try(Db db=Db.open(dir.resolve("web.db").toString())) {
+        try(Db db=TestDb.open(dir)) {
             var service=new Service(db);
             int a=service.companyId(),b=service.companies().create("B","","8").id();
             Service sa=service.forCompany(a),sb=service.forCompany(b);

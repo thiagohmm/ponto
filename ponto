@@ -34,7 +34,7 @@ if [ ! -x "$java" ]; then
     exit 1
 fi
 
-# The native-access flag only exists on Java 21+; the sqlite driver is noisy without it.
+# The native-access flag only exists on Java 21+; keep the JVM quiet on newer JDKs.
 if "$java" --enable-native-access=ALL-UNNAMED -version >/dev/null 2>&1; then
     exec "$java" --enable-native-access=ALL-UNNAMED -jar "$jar" "$@"
 fi

@@ -5,6 +5,7 @@ import ponto.Problema;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -17,7 +18,7 @@ import java.util.List;
 public final class Repo {
 
     private static final String COLS = "id, dia, tin, tout, just, crea";
-    private static final String ORDER = " ORDER BY dia DESC, ifnull(tin,'99:99') DESC, id DESC";
+    private static final String ORDER = " ORDER BY dia DESC, coalesce(tin,'99:99') DESC, id DESC";
 
     private final Db db;
 
@@ -44,7 +45,7 @@ public final class Repo {
 
     /** INSERT: the new id. */
     private int insertId(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = db.conn().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             bind(q, args);
             q.executeUpdate();
             try (var ks = q.getGeneratedKeys()) { return ks.next() ? ks.getInt(1) : 0; }
@@ -146,7 +147,7 @@ public final class Repo {
 
     public List<Entry> search(String q) {
         String like = "%" + q.trim().replace('%', ' ').replace('_', ' ') + "%";
-        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND just LIKE ? COLLATE NOCASE"
+        return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ? AND just ILIKE ?"
                     + ORDER, cid(), like);
     }
 
@@ -161,7 +162,7 @@ public final class Repo {
     public List<Entry> openAll() {
         return rows("SELECT " + COLS + " FROM ponto"
                   + " WHERE company_id = ? AND (tin IS NULL OR tout IS NULL)"
-                  + " ORDER BY dia ASC, ifnull(tin,'99:99') ASC, id ASC", cid());
+                  + " ORDER BY dia ASC, coalesce(tin,'99:99') ASC, id ASC", cid());
     }
 
     List<Entry> open(LocalDate d) {

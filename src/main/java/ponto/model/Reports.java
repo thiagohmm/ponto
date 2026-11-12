@@ -17,7 +17,7 @@ final class Reports {
                 .filter(day -> !day.isBefore(from) && !day.isAfter(to)).count();
         var now = Time.stamp();
         String stamp = Str.d(now.toLocalDate()) + " " + Str.t(now.toLocalTime());
-        return new Report(new Report.Head(who.get(), company.get(), db.file.toString(), new Period(from,to), stamp),
+        return new Report(new Report.Head(who.get(), company.get(), Service.maskDbUrl(db.url), new Period(from,to), stamp),
                 repo.between(from,to), balance, faltas, plan);
     }
 }

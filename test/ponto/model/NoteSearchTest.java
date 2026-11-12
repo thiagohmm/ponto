@@ -2,13 +2,14 @@ package ponto.model;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ponto.TestDb;
 import java.nio.file.Path;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NoteSearchTest {
     @TempDir Path dir;
-    private Db open(String name) { return Db.open(dir.resolve(name).toString()); }
+    private Db open(String name) { return TestDb.open(dir); }
 
     static class Mem implements ObjectStore {
         public boolean up() { return true; }

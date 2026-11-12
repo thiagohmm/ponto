@@ -1,6 +1,6 @@
 # ponto
 
-Timesheet in the terminal: SQLite, Java 25, one command, one database file,
+Timesheet in the terminal: PostgreSQL, Java 25, one command, one database,
 three report formats. Built for the Brazilian "punch card" habit — day, in, out,
 justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
 
@@ -10,7 +10,7 @@ justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
   Ana                   12 records
   this month 46:30   open 1   since 20/05/2026
   saldo do mês +5:02   ·   plano 40 min a menos/dia
-  /Users/ana/.local/share/ponto/ponto.db
+  jdbc:postgresql://127.0.0.1:5432/ponto
 --------------------------------------------------------
   1 new     2 edit    3 delete  4 list
   5 sum     6 find    7 pdf     8 xls
@@ -24,7 +24,7 @@ justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
 
 * **Java 25** — the sources are compiled with `--release 25`.
 * Maven, only to build; the produced jar runs on its own.
-* SQLite, PDFBox and POI are already inside the jar. So is **jollyday**
+* The PostgreSQL JDBC driver, PDFBox and POI are already inside the jar. So is **jollyday**
   (`jollyday-core` + `jollyday-jackson`, about 5.6 MB of the ~29 MB jar), which
   keeps the Brazilian calendar. Nothing in the app reaches the network.
 
@@ -40,7 +40,7 @@ ponto             # anywhere afterwards
 
 See [operation, backup and recovery](deploy/README.md) for the verified deploy and rollback procedure.
 
-The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (default 8090) and serves the React build from the jar. Both talk to the same SQLite file (`$PONTO_DB` / `--db=`). Web requests select their company explicitly with `companyId`; each tab remembers its own choice without changing the terminal preference.
+The terminal menu is unchanged. `--serve` starts Javalin on `$PONTO_PORT` (default 8090) and serves the React build from the jar. Both talk to the same PostgreSQL database (`$PONTO_DB` / `--db=`, a JDBC URL). Web requests select their company explicitly with `companyId`; each tab remembers its own choice without changing the terminal preference.
 
 The web app is a **PWA**: open it over HTTPS (or localhost) to install it and use the offline shell. Plain LAN HTTP serves the web interface; service workers require a secure context. See `web/public/sw.js`, registered in production only. Every response carries the security headers (CSP, HSTS, `nosniff`, frame-deny) set in `controller/Web.java`, and the Jetty and Caddy layers keep their `Server` identity hidden; the plain LAN address is meant for the home network only.
 
@@ -56,7 +56,7 @@ mvn package
 ./ponto --serve --port=8090
 ```
 
-On the LAN host `192.168.0.8` the existing `/home/thiagohmm/.local/share/ponto/ponto.db` is bind-mounted into Docker. The deploy script copies **only** the jar and compose files — never a `.db` from this machine.
+On the LAN host `192.168.0.8` the database is the `ponto` role and database inside the existing `marketing-postgres` container (`PONTO_DB_URL` in the server `.env`). The deploy script copies **only** the jar and compose files — never a database dump from this machine.
 
 ```sh
 ./deploy/deploy.sh    # http://192.168.0.8:8090
@@ -90,7 +90,7 @@ parse de data/hora não passam pelo modelo.
 ### Files attached to notes
 
 Each note can hold files (drag them onto the note, or the *anexar* button).
-The row lives in SQLite (`note_file`), the bytes in an S3-compatible object
+The row lives in PostgreSQL (`note_file`), the bytes in an S3-compatible object
 store — no SDK, a minimal SigV4 client in `ponto/model/Minio.java`:
 
 * **MinIO** runs next to the app in `docker-compose.yml`: S3 API on the internal container network, browse/download web console bound to `127.0.0.1:9001`, data in
@@ -107,11 +107,12 @@ store — no SDK, a minimal SigV4 client in `ponto/model/Minio.java`:
 
 The launcher finds a Java 25+ runtime by itself (`$PONTO_JAVA`, then
 `/usr/libexec/java_home -v 25`, then the asdf install, then `java` on the PATH)
-and adds `--enable-native-access=ALL-UNNAMED` so the SQLite driver stays quiet.
+and adds `--enable-native-access=ALL-UNNAMED` so the JVM stays quiet on Java 25.
 
 ## Data
 
-* Database: `$PONTO_DB`, default `~/.local/share/ponto/ponto.db` (or `--db=path`).
+* Database: `$PONTO_DB`, a JDBC URL (default `jdbc:postgresql://127.0.0.1:5432/ponto`, or `--db=`).
+* Upload staging: `$PONTO_DATA_DIR`, default `~/.local/share/ponto`.
 * One table, `ponto`: `id, dia, tin, tout, just, crea`.
 * One flag table, `dia_flag`: `dia, flag` — whole-day flags: the banco de
   horas **falta** (`f` / the web button) and **normal** (a day off ruled as a
@@ -261,7 +262,7 @@ Enter    keeps the value shown in brackets
 
 | variable | meaning |
 |----------|---------|
-| `PONTO_DB` | database path |
+| `PONTO_DB` | PostgreSQL JDBC URL |
 | `PONTO_USER` | name printed on the reports (handy in scripts) |
 | `PONTO_JAVA` | Java runtime used by the launcher |
 | `PONTO_CSV_SEP` | set to `,` to get commas instead of semicolons |
@@ -300,7 +301,7 @@ src/main/java/ponto/
   Main        composition root: one Db, one Service, one UI per mode
   Problema, Bad, NeedConfirm, Eof   the shared failure types
   Ver         NAME and VERSION
-  model/      domain: rules and SQLite, no printing
+  model/      domain: rules and PostgreSQL, no printing
     Entry       one line: day, in, out, justification (open / note / closed)
     Report      totals per day and grand total, shared by the three exporters
     Db          connection, schema, the `cfg` table

@@ -68,7 +68,8 @@ por túnel SSH: `ssh -L 9001:127.0.0.1:9001 thiagohmm@192.168.0.8`.
 O deploy instala uma entrada identificada por `# ponto-backup` no crontab do
 usuário, às 03:15 no fuso do servidor, preservando as outras entradas.
 O backup interrompe brevemente os dois serviços para manter banco e objetos
-coerentes. Não copie somente o arquivo SQLite em uso: há dados no WAL.
+coerentes. O banco é um `pg_dump` do PostgreSQL (`marketing-postgres`, banco
+`ponto`); não copie um arquivo `.db` — ele não existe mais.
 
 ```sh
 python3 deploy/backup.py backup --project /home/thiagohmm/ponto-web
@@ -79,7 +80,7 @@ O destino padrão é `~/.local/share/ponto-backups` (ou `PONTO_BACKUP_DIR`):
 sete snapshots diários, quatro semanais e três anteriores a deploys.
 Snapshots incluem segredos da configuração; diretórios e arquivos são privados
 ao usuário. O `manifest.json` contém hashes e a verificação também executa
-`PRAGMA integrity_check`. Snapshots incompletos não entram na retenção.
+`pg_restore --list` (as tabelas centrais precisam estar no dump). Snapshots incompletos não entram na retenção.
 Os backups ficam no mesmo host; uma cópia fora desse host deve ser mantida
 se a recuperação de falha física do disco for necessária.
 
@@ -116,7 +117,7 @@ Para ensaiar sem tocar na instalação, use `--offline`, destinos `--data` e
   recebe 409 e o texto salvo permanece intacto. A interface permite baixar o
   rascunho e reabrir a versão salva.
 - Anexos têm estado `uploading`, `ready` ou `failed`. Operações pendentes ficam
-  no SQLite, com upload temporário no volume `uploads`, e têm no máximo três
+  no PostgreSQL, com upload temporário no volume `uploads`, e têm no máximo três
   tentativas automáticas. Configurações permite reagendá-las por
   `POST /api/storage/retry?companyId=N`.
 - `PONTO_UPLOAD_MIB` aceita 1 a 100, padrão 20. `PONTO_TZ` tem padrão

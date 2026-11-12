@@ -7,13 +7,16 @@ import os
 from pathlib import Path
 import secrets
 import shutil
-import sqlite3
 import subprocess
 import tempfile
 import time
 import urllib.request
 
 os.umask(0o077)
+
+CONTAINER = os.environ.get('PONTO_PG_CONTAINER', 'marketing-postgres')
+SUPERUSER = os.environ.get('PONTO_PG_SUPERUSER', 'marketing')
+DATABASE = os.environ.get('PONTO_PG_DATABASE', 'ponto')
 
 
 def run(args, project, **kwargs):
@@ -61,12 +64,16 @@ def module(path, name):
     return result
 
 
-def counts(file):
-    with sqlite3.connect(f'file:{file}?mode=ro', uri=True) as db:
-        names = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        return {table: db.execute('SELECT count(*) FROM ' + table).fetchone()[0]
-                for table in ('ponto', 'note', 'note_file', 'folder', 'tag', 'note_tag', 'company', 'dia_flag') if table in names}
-
+def counts(database=DATABASE):
+    out = subprocess.run(['docker', 'exec', CONTAINER, 'psql', '-U', SUPERUSER, '-d', database,
+                           '-v', 'ON_ERROR_STOP=1', '-t', '-A', '-c',
+                           'SELECT count(*) FROM ponto UNION ALL SELECT count(*) FROM note UNION ALL '
+                           'SELECT count(*) FROM note_file UNION ALL SELECT count(*) FROM folder UNION ALL '
+                           'SELECT count(*) FROM tag UNION ALL SELECT count(*) FROM note_tag UNION ALL '
+                           'SELECT count(*) FROM company UNION ALL SELECT count(*) FROM dia_flag'],
+                          check=True, capture_output=True, text=True).stdout.strip().splitlines()
+    return dict(zip(('ponto', 'note', 'note_file', 'folder', 'tag', 'note_tag', 'company', 'dia_flag'),
+                    (int(x) for x in out)))
 
 def wait(base):
     for _ in range(90):
@@ -117,13 +124,26 @@ def main():
     print('Deployment snapshot: ' + str(snapshot), flush=True)
     installed = False
     try:
-        baseline = counts(snapshot / 'ponto.db')
-        with tempfile.TemporaryDirectory(prefix='migration-check-', dir=project) as trial:
-            shutil.copy2(snapshot / 'ponto.db', Path(trial) / 'ponto.db')
-            run(['docker', 'run', '--rm', '--network', 'none', '-v', trial + ':/data', candidate,
-                 '--db=/data/ponto.db', '--check-db'], project)
-            migrated = counts(Path(trial) / 'ponto.db')
+        baseline = counts()
+        trial_db = 'ponto_trial_' + secrets.token_hex(3)
+        url = env['PONTO_DB_URL']
+        base_url, params = url.split('?', 1) if '?' in url else (url, '')
+        trial_url = base_url.rstrip('/') + '/' + trial_db + ('?' + params if params else '')
+        run(['docker', 'exec', CONTAINER, 'psql', '-U', SUPERUSER, '-d', 'postgres',
+             '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE DATABASE ' + trial_db + ' OWNER ponto;'], project)
+        subprocess.run(['docker', 'cp', str(snapshot / 'ponto.dump'), CONTAINER + ':/tmp/ponto.dump'],
+                       check=True, capture_output=True)
+        try:
+            run(['docker', 'exec', CONTAINER, 'pg_restore', '-U', SUPERUSER, '-d', trial_db,
+                 '--no-owner', '/tmp/ponto.dump'], project)
+            run(['docker', 'run', '--rm', '--network', 'agenttk_default',
+                 '-e', 'TZ=' + env['PONTO_TZ'], '-e', 'PONTO_DB=' + trial_url, candidate, '--check-db'], project)
+            migrated = counts(trial_db)
             assert all(migrated.get(name) == value for name, value in baseline.items()), 'Migration changed existing row counts'
+        finally:
+            run(['docker', 'exec', CONTAINER, 'psql', '-U', SUPERUSER, '-d', 'postgres',
+                 '-v', 'ON_ERROR_STOP=1', '-c', 'DROP DATABASE IF EXISTS ' + trial_db + ' WITH (FORCE);'], project)
+            subprocess.run(['docker', 'exec', CONTAINER, 'rm', '-f', '/tmp/ponto.dump'], check=False)
         for name in ('Dockerfile', '.dockerignore', 'docker-compose.yml', 'Caddyfile', '.env', 'target/ponto.jar',
                      'deploy/backup.py', 'deploy/smoke.py', 'deploy/remote.py'):
             destination = project / name
@@ -137,12 +157,8 @@ def main():
         base = 'http://127.0.0.1:' + env['PONTO_PORT']
         wait(base)
         smoke.check(base, user=env['PONTO_WEB_USER'], password=env['PONTO_WEB_PASSWORD'])
-        after = counts(Path(env['PONTO_DATA_DIR']) / 'ponto.db')
+        after = counts()
         assert all(after.get(name, 0) >= value for name, value in baseline.items()), 'Existing row count decreased'
-        # Also verify database-level constraints on the real migrated database.
-        with sqlite3.connect(Path(env['PONTO_DATA_DIR']) / 'ponto.db') as db:
-            assert db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
-            assert db.execute('PRAGMA foreign_key_check').fetchone() is None
         for _ in range(15):
             if urllib.request.urlopen(base + '/api/health', timeout=5):
                 with urllib.request.urlopen(base + '/api/health', timeout=5) as response:

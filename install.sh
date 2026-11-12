@@ -40,4 +40,4 @@ chmod +x "$bin/ponto"
 print "  java      $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
 "$bin/ponto" --version
 print "  installed   $bin/ponto"
-print "  database    \${PONTO_DB:-$HOME/.local/share/ponto/ponto.db}"
+print "  database    \${PONTO_DB:-jdbc:postgresql://127.0.0.1:5432/ponto}"
