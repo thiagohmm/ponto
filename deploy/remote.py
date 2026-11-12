@@ -16,6 +16,7 @@ os.umask(0o077)
 
 CONTAINER = os.environ.get('PONTO_PG_CONTAINER', 'marketing-postgres')
 SUPERUSER = os.environ.get('PONTO_PG_SUPERUSER', 'marketing')
+OWNER = os.environ.get('PONTO_PG_OWNER', 'ponto')
 DATABASE = os.environ.get('PONTO_PG_DATABASE', 'ponto')
 
 
@@ -128,14 +129,21 @@ def main():
         trial_db = 'ponto_trial_' + secrets.token_hex(3)
         url = env['PONTO_DB_URL']
         base_url, params = url.split('?', 1) if '?' in url else (url, '')
-        trial_url = base_url.rstrip('/') + '/' + trial_db + ('?' + params if params else '')
+        # The base URL may already carry a database name (e.g. "…/5432/ponto").
+        # Drop any existing last path segment and insert only the trial db name,
+        # so the trial URL becomes "…/5432/ponto_trial_xxx" and the driver parses it.
+        scheme, _, rest = base_url.partition('://')
+        slash = rest.rfind('/')
+        hostport = rest[:slash] if slash >= 0 else rest
+        trial_url = scheme + '://' + hostport + '/' + trial_db + ('?' + params if params else '')
         run(['docker', 'exec', CONTAINER, 'psql', '-U', SUPERUSER, '-d', 'postgres',
-             '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE DATABASE ' + trial_db + ' OWNER ponto;'], project)
+             '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE DATABASE ' + trial_db + ' OWNER ' + OWNER + ';'], project)
         subprocess.run(['docker', 'cp', str(snapshot / 'ponto.dump'), CONTAINER + ':/tmp/ponto.dump'],
                        check=True, capture_output=True)
         try:
+            # --role so objects land as OWNER even though restore runs as SUPERUSER.
             run(['docker', 'exec', CONTAINER, 'pg_restore', '-U', SUPERUSER, '-d', trial_db,
-                 '--no-owner', '/tmp/ponto.dump'], project)
+                 '--no-owner', '--role=' + OWNER, '/tmp/ponto.dump'], project)
             run(['docker', 'run', '--rm', '--network', 'agenttk_default',
                  '-e', 'TZ=' + env['PONTO_TZ'], '-e', 'PONTO_DB=' + trial_url, candidate, '--check-db'], project)
             migrated = counts(trial_db)

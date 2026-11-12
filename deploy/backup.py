@@ -274,7 +274,7 @@ def restore(args, project, data, objects, root):
                                check=True, capture_output=True)
                 subprocess.run(['docker', 'exec', CONTAINER,
                                 'pg_restore', '-U', SUPERUSER, '-d', DATABASE, '--no-owner',
-                                '/tmp/' + DUMP_NAME],
+                                '--role=' + OWNER, '/tmp/' + DUMP_NAME],
                                check=True, capture_output=True)
             finally:
                 subprocess.run(['docker', 'exec', CONTAINER, 'rm', '-f', '/tmp/' + DUMP_NAME], check=False)
@@ -282,7 +282,7 @@ def restore(args, project, data, objects, root):
             pg_maintenance('DROP DATABASE IF EXISTS ' + DATABASE + ' WITH (FORCE)')
             pg_maintenance('CREATE DATABASE ' + DATABASE + ' OWNER ' + OWNER)
             subprocess.run(['pg_restore', '--dbname=' + PG_URL, '--no-owner',
-                            str(snapshot / DUMP_NAME)],
+                            '--role=' + OWNER, str(snapshot / DUMP_NAME)],
                            check=True, capture_output=True)
         if args.restore_config:
             for original in (snapshot / 'config').rglob('*'):

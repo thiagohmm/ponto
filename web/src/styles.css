@@ -410,10 +410,23 @@ button, input, textarea {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  margin-top: 14px;
+  margin-top: 8px;
+  align-items: start;
+}
+
+.charts .card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .charts .card p { margin: 0 0 10px; }
+
+.chart-hint { font-size: 12px; margin: 18px 0 0; opacity: 0.75; }
+
+/* barras clicáveis: indica clique com o cursor */
+.charts .recharts-surface { cursor: pointer; }
+.charts .recharts-bar-rectangle { cursor: pointer; }
 
 .btn.falta-on {
   background: var(--stamp);

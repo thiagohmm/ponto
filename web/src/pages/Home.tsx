@@ -16,7 +16,7 @@ import { useCompany } from "../Company";
 import { JUST_CATEGORIES, matchesJustCategory, type JustCategoryCode } from "../justTaxonomy";
 import { useConfirm } from "../ui/Confirm";
 import { isEscuro, toggleTema } from "../theme";
-import type { Bank, BankDay, Entry, Home } from "../types";
+import type { Bank, BankDay, Entry, Home, MonthSaldo } from "../types";
 import { ApiError } from "../types";
 
 function minsOf(e: Entry): number {
@@ -58,17 +58,24 @@ function otCap(mins: number): string {
   return (Math.abs(mins) / 60).toFixed(2) + " h " + (mins < 0 ? "banco de horas" : "extras");
 }
 
-/** "2026-09" para o seletor, a partir de "09/2026" ou "2026-09" (dia textual). */
+/** "2026-09" para o seletor, a partir de mês ou dia (ISO ou BR). */
 function mesFromDia(d: string): string {
   const t = d.trim();
   let y = "", m = "";
-  const a = t.match(/^(\d{1,2})\/(\d{4})$/);
-  const b = t.match(/^(\d{4})-(\d{1,2})$/);
+  const a = t.match(/^(\d{1,2})\/(\d{4})$/);                 // mm/yyyy
+  const b = t.match(/^(\d{4})-(\d{1,2})$/);                   // yyyy-mm
+  const c = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);       // dd/mm/yyyy
+  const e = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);         // yyyy-mm-dd
   if (a) { m = a[1]; y = a[2]; }
   else if (b) { y = b[1]; m = b[2]; }
+  else if (c) { m = c[2]; y = c[3]; }
+  else if (e) { y = e[1]; m = e[2]; }
   else return "";
   return y + "-" + m.padStart(2, "0");
 }
+
+const CHART_MARGIN = { top: 8, right: 8, bottom: 4, left: 0 };
+const CHART_Y_WIDTH = 40;
 
 /** "2026-11" para o seletor de mês; o mês corrente é o padrão. */
 function mesPickerAtual(): string {
@@ -189,6 +196,41 @@ export function HomePage() {
   const groups = useMemo(() => groupByDay(visible), [visible]);
   const pageMins = useMemo(() => visible.reduce((s, e) => s + minsOf(e), 0), [visible]);
   const selDay = bank?.days.find((d) => d.diaIso === sel) ?? null;
+
+  /** Clique numa barra do gráfico diário: filtra a lista por esse dia. */
+  function onChartDayClick(d: BankDay) {
+    setDia(d.diaIso);
+    setJustCat("");
+    setSel("");
+    void load(q, d.diaIso, de, ate);
+  }
+
+  /** Resolve o dia a partir do evento do Recharts 3 (payload, campos espalhados ou índice). */
+  function dayFromBarEvent(data: unknown, index: number): BankDay | null {
+    if (!bank) return null;
+    const row = data as { payload?: BankDay; diaIso?: string; originalDataIndex?: number } | null;
+    const i = row?.originalDataIndex ?? index;
+    if (Number.isInteger(i) && i >= 0 && i < bank.days.length) return bank.days[i];
+    const iso = row?.payload?.diaIso ?? row?.diaIso;
+    return iso ? bank.days.find((d) => d.diaIso === iso) ?? null : null;
+  }
+
+  /** Clique numa barra do gráfico de banco de horas (mês): filtra a lista por esse mês. */
+  function onChartMonthClick(ym: string) {
+    setDia("");
+    setDe(ym);
+    setAte(ym);
+    setSel("");
+    void load(q, "", ym, ym);
+  }
+
+  function monthFromBarEvent(data: unknown, index: number): string | null {
+    if (!bank) return null;
+    const row = data as { payload?: MonthSaldo; ym?: string; originalDataIndex?: number } | null;
+    const i = row?.originalDataIndex ?? index;
+    if (Number.isInteger(i) && i >= 0 && i < bank.months.length) return bank.months[i].ym;
+    return row?.payload?.ym ?? row?.ym ?? null;
+  }
 
   async function del(id: number) {
     if (!(await confirm({
@@ -413,22 +455,31 @@ export function HomePage() {
       </div>
 
       {bank && (
-        <div className="charts">
+        <>
+          <p className="muted chart-hint">Clique numa barra para filtrar a lista por esse dia ou mês.</p>
+          <div className="charts">
           <div className="card">
             <p className="muted">
               minutos por dia · {hm(bank.dailyMins)} por dia
               {bank.planLabel && <> · plano <b>{bank.planLabel}</b> (linha a {hm(bank.dailyMins + bank.planMins)})</>}
             </p>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={bank.days.map((d) => ({ ...d, dnum: Number(d.diaIso.slice(8, 10)) }))}>
+              <BarChart margin={CHART_MARGIN}
+                data={bank.days.map((d) => ({ ...d, dnum: Number(d.diaIso.slice(8, 10)) }))}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="dnum" tick={{ fontSize: 10 }} interval={1} tickLine={false} />
-                <YAxis tick={{ fontSize: 10 }} width={34} tickLine={false} axisLine={false}
+                <YAxis tick={{ fontSize: 10 }} width={CHART_Y_WIDTH} tickLine={false} axisLine={false}
                   tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
                 <Tooltip contentStyle={{ background: "var(--card)", borderColor: "var(--line)", color: "var(--ink)" }} formatter={(v) => hm(Number(v))}
                   labelFormatter={(l, p) => String(p?.[0]?.payload?.dia ?? l)} />
                 <ReferenceLine y={bank.dailyMins + bank.planMins} stroke="#ff9f0a" strokeDasharray="4 4" />
-                <Bar dataKey="mins" isAnimationActive={false}>
+                {/* minPointSize: Recharts 3 descarta barras com altura 0 — sem isso dias vazios não recebem clique. */}
+                <Bar dataKey="mins" isAnimationActive={false} cursor="pointer" minPointSize={3}
+                  background={{ fill: "transparent" }}
+                  onClick={(data, index) => {
+                    const day = dayFromBarEvent(data, index);
+                    if (day) onChartDayClick(day);
+                  }}>
                   {bank.days.map((d) => <Cell key={d.diaIso} fill={dayColor(d)} />)}
                 </Bar>
               </BarChart>
@@ -466,14 +517,20 @@ export function HomePage() {
           <div className="card">
             <p className="muted">banco de horas · últimos 12 meses</p>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={bank.months.map((m) => ({ ...m, mes: m.ym.slice(5) + "/" + m.ym.slice(2, 4) }))}>
+              <BarChart margin={CHART_MARGIN}
+                data={bank.months.map((m) => ({ ...m, mes: m.ym.slice(5) + "/" + m.ym.slice(2, 4) }))}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="mes" tick={{ fontSize: 10 }} interval={0} tickLine={false} />
-                <YAxis tick={{ fontSize: 10 }} width={40} tickLine={false} axisLine={false}
+                <YAxis tick={{ fontSize: 10 }} width={CHART_Y_WIDTH} tickLine={false} axisLine={false}
                   tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
                 <Tooltip contentStyle={{ background: "var(--card)", borderColor: "var(--line)", color: "var(--ink)" }} formatter={(v) => otVal(Number(v))} />
                 <ReferenceLine y={0} stroke="rgba(127,127,127,0.6)" />
-                <Bar dataKey="saldoMins" isAnimationActive={false}>
+                <Bar dataKey="saldoMins" isAnimationActive={false} cursor="pointer" minPointSize={3}
+                  background={{ fill: "transparent" }}
+                  onClick={(data, index) => {
+                    const ym = monthFromBarEvent(data, index);
+                    if (ym) onChartMonthClick(ym);
+                  }}>
                   {bank.months.map((m) => (
                     <Cell key={m.ym} fill={m.saldoMins < 0 ? "#ff3b30" : "#34c759"} />
                   ))}
@@ -481,7 +538,8 @@ export function HomePage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+          </div>
+        </>
       )}
     </>
   );
