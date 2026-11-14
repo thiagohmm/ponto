@@ -5,30 +5,36 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 /**
- * Versioned upgrades on Postgres. The schema is created in one atomic
- * transaction: Postgres DDL rolls back with everything else if it fails.
- *
- * This port of the app only ever sees a fresh database (the SQLite data was
- * moved in a one-off load), so it creates the v5 schema directly.
+ * Versioned upgrades on Postgres. Fresh installs create the current schema
+ * in one atomic transaction. Existing v5 databases upgrade to v6 in place.
  */
 final class Migrations {
-    static final int VERSION = 5;
+    static final int VERSION = 6;
 
     static void apply(Db db) {
         int version = 0;
         if (db.hasTable("schema_migrations")) version = db.migrationVersion();
         if (version > VERSION) throw new Problema("banco de uma versão mais recente; restaure o backup para voltar");
         if (version == VERSION) return;
-        if (version > 0) throw new Problema("banco PostgreSQL da versão " + version + "; migre para a v" + VERSION + " manualmente");
-        db.transaction(() -> {
-            schema(db);
-            db.exec("CREATE TABLE schema_migrations (version INTEGER NOT NULL PRIMARY KEY)");
-            db.exec("INSERT INTO schema_migrations(version) VALUES(" + VERSION + ")");
-            // One active company per database: seed it from cfg (worker name),
-            // mirroring the old SQLite migrateCompanies().
-            seedCompany(db);
-            return null;
-        });
+        if (version == 0) {
+            db.transaction(() -> {
+                schema(db);
+                db.exec("CREATE TABLE schema_migrations (version INTEGER NOT NULL PRIMARY KEY)");
+                db.exec("INSERT INTO schema_migrations(version) VALUES(" + VERSION + ")");
+                seedCompany(db);
+                return null;
+            });
+            return;
+        }
+        if (version == 5) {
+            db.transaction(() -> {
+                createDayDigest(db);
+                db.exec("UPDATE schema_migrations SET version = " + VERSION);
+                return null;
+            });
+            return;
+        }
+        throw new Problema("banco PostgreSQL da versão " + version + "; migre para a v" + VERSION + " manualmente");
     }
 
     private static void seedCompany(Db db) {
@@ -123,7 +129,8 @@ final class Migrations {
                 + "path TEXT NOT NULL DEFAULT '', ctype TEXT NOT NULL DEFAULT '', "
                 + "attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '')");
 
-        // Indexes
+        createDayDigest(db);
+
         db.exec("CREATE INDEX ix_note_upd ON note(upd)");
         db.exec("CREATE INDEX ix_note_company ON note(company_id, upd)");
         db.exec("CREATE INDEX ix_note_folder ON note(folder_id)");
@@ -138,7 +145,6 @@ final class Migrations {
         db.exec("CREATE UNIQUE INDEX ux_kanban_block_open ON kanban_block(company_id, card_id) WHERE cleared IS NULL");
         db.exec("CREATE INDEX ix_kanban_card_file_card ON kanban_card_file(card_id)");
 
-        // note_tag links a note to a tag: both must belong to the same company.
         db.exec("CREATE FUNCTION check_note_tag_company() RETURNS trigger AS $$ "
                 + "BEGIN "
                 + "IF (SELECT company_id FROM note WHERE id = NEW.note_id) != (SELECT company_id FROM tag WHERE id = NEW.tag_id) "
@@ -146,6 +152,17 @@ final class Migrations {
                 + "RETURN NEW; END $$ LANGUAGE plpgsql");
         db.exec("CREATE TRIGGER trg_note_tag_company BEFORE INSERT ON note_tag "
                 + "FOR EACH ROW EXECUTE FUNCTION check_note_tag_company()");
+    }
+
+    static void createDayDigest(Db db) {
+        String created = "crea TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI')";
+        String company = "company_id INTEGER NOT NULL REFERENCES company(id)";
+        db.exec("CREATE TABLE day_digest ("
+                + company + ", dia TEXT NOT NULL, "
+                + "summary TEXT NOT NULL DEFAULT '', facts TEXT NOT NULL DEFAULT '', "
+                + "model TEXT NOT NULL DEFAULT '', " + created + ", "
+                + "upd TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI'), "
+                + "PRIMARY KEY (company_id, dia))");
     }
 
     static void seedKanbanColumns(Db db, int companyId) {

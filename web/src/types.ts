@@ -273,6 +273,46 @@ export type AssistStatus = {
 export type AssistNoteTags = { tagIds: number[] };
 export type AssistJust = { category: string; phrases: string[] };
 
+export type DayDigest = {
+  diaIso: string;
+  summary: string;
+  facts: string;
+  model: string;
+  crea: string;
+  upd: string;
+};
+
+export type DiarioTimelineItem = {
+  kind: string;
+  at: string;
+  id: number;
+  title: string;
+  detail: string;
+};
+
+export type DiarioCharts = {
+  pairs: { label: string; mins: number; index: number }[];
+  counts: { ponto: number; notas: number; kanban: number };
+  dayMins: number;
+  dailyMins: number;
+};
+
+export type Diario = {
+  dia: string;
+  diaIso: string;
+  d3: string;
+  holiday: string;
+  falta: boolean;
+  normal: boolean;
+  entries: Entry[];
+  notes: { id: number; title: string; excerpt: string; crea: string; upd: string }[];
+  kanbanCards: { id: number; title: string; excerpt: string; column: string; done: string; crea: string; upd: string }[];
+  kanbanBlocks: { id: number; cardId: number; cardTitle: string; kind: string; kindLabel: string; reason: string; crea: string; cleared: string }[];
+  timeline: DiarioTimelineItem[];
+  charts: DiarioCharts;
+  digest: DayDigest | null;
+};
+
 export class ApiError extends Error {
   status: number;
   need?: string;

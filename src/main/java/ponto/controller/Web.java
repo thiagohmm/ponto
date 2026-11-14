@@ -162,6 +162,7 @@ public final class Web {
         new NoteRoutes(this::service).register(app);
         new KanbanRoutes(this::service).register(app);
         new AssistRoutes(assist).register(app);
+        new DiarioRoutes(this::service, assist).register(app);
         app.events(events -> events.serverStopped(svc::closeResources));
         return app;
     }

@@ -39,11 +39,13 @@ test("a failed note save keeps editing and the navigation dialog traps keyboard 
   const note = await (await request.post("/api/notes?companyId=" + catalog.activeId, { data: { title: "Falha de rede", body: "original" } })).json();
   await uiLogin(page);
   await page.goto("/notas/" + note.id);
-  await page.getByPlaceholder("Sem título").fill("rascunho importante");
+  await expect(page.getByPlaceholder("Sem título")).toHaveValue("Falha de rede");
   await page.route("**/api/notes/*?*", async route => {
     if (route.request().method() === "PUT") await route.fulfill({ status: 503, json: { error: "sem conexão" } });
     else await route.continue();
   });
+  await page.getByPlaceholder("Sem título").fill("rascunho importante");
+  await expect(page.getByRole("button", { name: "Salvar", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("sem conexão");
   await page.getByRole("link", { name: "Registros", exact: true }).click();
@@ -93,6 +95,17 @@ test("the installed shell loads offline and tells the user the connection was lo
   await page.reload();
   await expect(page.getByText(/Sem conexão\. Suas alterações/)).toBeVisible();
   await context.setOffline(false);
+});
+
+test("diario page shows day picker and can generate a saved summary", async ({ page, request }) => {
+  await apiLogin(request);
+  await uiLogin(page);
+  await page.getByRole("link", { name: "Diário", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Diário" })).toBeVisible();
+  await expect(page.getByLabel("Dia")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Gerar resumo|Regenerar resumo/ })).toBeEnabled();
+  await page.getByRole("button", { name: /Gerar resumo|Regenerar resumo/ }).click();
+  await expect(page.getByText(/salvo|Resumo salvo/i).first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("login is required before opening the workspace", async ({ page, request }) => {

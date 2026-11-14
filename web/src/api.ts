@@ -1,4 +1,4 @@
-import type { AssistJust, AssistNoteTags, AssistStatus, Bank, Company, CompanyList, Config, DayInfo, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanCardFile, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
+import type { AssistJust, AssistNoteTags, AssistStatus, Bank, Company, CompanyList, Config, DayDigest, DayInfo, Diario, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanCardFile, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
 import { ApiError } from "./types";
 
 export type EntrySave = { dia: string; tin: string; tout: string; just: string; closeOpen?: boolean; confirmMidnight?: boolean; confirmOverlap?: boolean };
@@ -194,4 +194,7 @@ export const api = {
     req<AssistNoteTags>("/assist/note-tags", { method: "POST", body: JSON.stringify(body) }),
   assistJust: (body: { text: string }) =>
     req<AssistJust>("/assist/just", { method: "POST", body: JSON.stringify(body) }),
+  diario: (dia: string) => req<Diario>("/diario?dia=" + encodeURIComponent(dia)),
+  gerarResumoDiario: (dia: string) =>
+    req<DayDigest>("/diario/resumo", { method: "POST", body: JSON.stringify({ dia }) }),
 };

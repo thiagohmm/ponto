@@ -727,6 +727,41 @@ public final class Service {
         synchronized (lock) { return repo.on(d); }
     }
 
+    /** Day digest snapshot (ponto + notes + kanban + charts + saved summary). */
+    public Map<String, Object> diario(LocalDate dia) {
+        synchronized (lock) {
+            applyOff();
+            return new Diario(db, lock, repo, calendar)
+                    .snapshot(dia, dailyMinutes(), falta(dia), normal(dia));
+        }
+    }
+
+    /**
+     * Build facts, ask Assist for a narrative, upsert {@code day_digest}.
+     * Works with Assist disabled (deterministic fallback).
+     */
+    public Map<String, Object> gerarResumoDiario(LocalDate dia, Assist assist) {
+        synchronized (lock) {
+            applyOff();
+            Diario d = new Diario(db, lock, repo, calendar);
+            Map<String, Object> snap = d.snapshot(dia, dailyMinutes(), falta(dia), normal(dia));
+            List<Entry> entries = d.entriesOf(dia);
+            String facts = d.factsText(snap, entries);
+            Assist helper = assist == null ? Assist.env() : assist;
+            Assist.DaySummary s = helper.summarizeDay(facts);
+            StringBuilder body = new StringBuilder(s.summary() == null ? "" : s.summary().trim());
+            if (s.bullets() != null) {
+                for (String b : s.bullets()) {
+                    if (b == null || b.isBlank()) continue;
+                    body.append("\n- ").append(b.trim());
+                }
+            }
+            String model = s.fromModel() ? helper.model() : "fallback";
+            Diario.Digest dig = d.upsert(dia, body.toString().trim(), facts, model);
+            return Diario.digestMap(dig);
+        }
+    }
+
     public String holiday(LocalDate d) {
         synchronized (lock) {
             applyOff();

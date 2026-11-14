@@ -11,13 +11,29 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { api } from "../api";
+import { api, type EntrySave } from "../api";
 import { useCompany } from "../Company";
 import { JUST_CATEGORIES, matchesJustCategory, type JustCategoryCode } from "../justTaxonomy";
+import { nowHm } from "../mask";
 import { useConfirm } from "../ui/Confirm";
 import { isEscuro, toggleTema } from "../theme";
-import type { Bank, BankDay, Entry, Home, MonthSaldo } from "../types";
+import type { Bank, BankDay, DayInfo, Entry, Home, MonthSaldo } from "../types";
 import { ApiError } from "../types";
+
+/** "YYYY-MM-DD" do relógio local — dia da batida rápida. */
+function todayIso(): string {
+  const d = new Date();
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+type PunchMode =
+  | { kind: "in" }
+  | { kind: "out"; open: Entry }
+  | { kind: "ambiguous"; opens: Entry[]; note: string };
 
 function minsOf(e: Entry): number {
   if (!e.closed || !e.hours) return 0;
@@ -144,7 +160,10 @@ export function HomePage() {
   const [faltas, setFaltas] = useState<Set<string>>(new Set());
   const [normais, setNormais] = useState<Set<string>>(new Set());
   const [bank, setBank] = useState<Bank | null>(null);
+  const [todayDay, setTodayDay] = useState<DayInfo | null>(null);
+  const [clock, setClock] = useState(nowHm);
   const [msg, setMsg] = useState("");
+  const [punchMsg, setPunchMsg] = useState("");
   const [sel, setSel] = useState("");
   const [q, setQ] = useState("");
   const [justCat, setJustCat] = useState<JustCategoryCode | "">("");
@@ -163,13 +182,15 @@ export function HomePage() {
     const useRange = !nextDia && nextDe && nextAte;
     const deV = useRange && nextAte < nextDe ? nextAte : nextDe;
     const ateV = useRange && nextAte < nextDe ? nextDe : nextAte;
+    const hoje = todayIso();
     try {
-      const [h, list, bk] = await Promise.all([
+      const [h, list, bk, day] = await Promise.all([
         api.home(),
         useRange
           ? api.entriesRange(deV + "-01", lastDiaIso(ateV), 500, nextQ)
           : api.entries({ q: nextQ, dia: nextDia, n: 500 }),
         api.bank(useRange ? ateV : (mesFromDia(nextDia) || undefined)),
+        api.day(hoje),
       ]);
       if (current !== request.current) return;
       setHome(h);
@@ -182,12 +203,24 @@ export function HomePage() {
       setFaltas(new Set(list.faltas));
       setNormais(new Set(list.normais));
       setBank(bk);
+      setTodayDay(day);
+      setClock(nowHm());
     } catch (e) {
       if (current === request.current) setErr(e instanceof Error ? e.message : "Não foi possível carregar os registros.");
     } finally { if (current === request.current) setLoading(false); }
   }
 
   useEffect(() => { void load(); }, [active?.id]);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setClock(nowHm()), 30_000);
+    const onFocus = () => setClock(nowHm());
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(tick);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
   const visible = useMemo(() => {
     if (!justCat) return rows;
@@ -196,6 +229,82 @@ export function HomePage() {
   const groups = useMemo(() => groupByDay(visible), [visible]);
   const pageMins = useMemo(() => visible.reduce((s, e) => s + minsOf(e), 0), [visible]);
   const selDay = bank?.days.find((d) => d.diaIso === sel) ?? null;
+
+  const punchMode: PunchMode = useMemo(() => {
+    const todayOpens = todayDay?.open ?? [];
+    const openCount = home?.open ?? 0;
+    if (todayOpens.length === 1) return { kind: "out", open: todayOpens[0] };
+    if (todayOpens.length > 1) {
+      return {
+        kind: "ambiguous",
+        opens: todayOpens,
+        note: todayOpens.length + " abertos hoje — feche no formulário",
+      };
+    }
+    if (openCount > 0) {
+      const fromList = rows.filter((e) => e.open);
+      return {
+        kind: "ambiguous",
+        opens: fromList,
+        note: openCount === 1
+          ? "Há 1 aberto de outro dia — edite no formulário"
+          : "Há " + openCount + " abertos de outro dia — edite no formulário",
+      };
+    }
+    return { kind: "in" };
+  }, [todayDay, home, rows]);
+
+  async function createPunch(body: EntrySave, confirmMidnight = false, confirmOverlap = false): Promise<Entry> {
+    try {
+      return await api.create({ ...body, confirmMidnight, confirmOverlap });
+    } catch (e) {
+      if (e instanceof ApiError && e.need === "midnight") {
+        if (!(await confirm({
+          title: "Virada de meia-noite",
+          message: e.message + " — confirmar mesmo assim?",
+          ok: "Confirmar",
+          tone: "accent",
+        }))) throw e;
+        return createPunch(body, true, confirmOverlap);
+      }
+      if (e instanceof ApiError && e.need === "overlap") {
+        if (!(await confirm({
+          title: "Sobreposição",
+          message: e.message + " — confirmar mesmo assim?",
+          ok: "Confirmar",
+          tone: "accent",
+        }))) throw e;
+        return createPunch(body, confirmMidnight, true);
+      }
+      throw e;
+    }
+  }
+
+  async function punch() {
+    if (busy || punchMode.kind === "ambiguous") return;
+    const hoje = todayIso();
+    const hm = nowHm();
+    setBusy(true);
+    setErr("");
+    setPunchMsg("");
+    setMsg("");
+    try {
+      if (punchMode.kind === "in") {
+        const e = await createPunch({ dia: hoje, tin: hm, tout: "", just: "", closeOpen: false });
+        setPunchMsg("Entrada " + e.tin + " registrada (#" + e.id + ")");
+      } else {
+        const e = await createPunch({ dia: hoje, tin: "", tout: hm, just: "", closeOpen: true });
+        setPunchMsg("Saída " + e.tout + " — fechou #" + e.id);
+      }
+      setClock(nowHm());
+      await load();
+    } catch (e) {
+      if (e instanceof ApiError && e.need) return; // cancelou a confirmação
+      setErr(e instanceof Error ? e.message : "não bateu");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   /** Clique numa barra do gráfico diário: filtra a lista por esse dia. */
   function onChartDayClick(d: BankDay) {
@@ -286,6 +395,45 @@ export function HomePage() {
 
   return (
     <>
+      <section className="punch" aria-label="Batida rápida">
+        <div className="punch-info">
+          <b>{clock}</b>
+          <span>
+            {punchMode.kind === "in" && (todayDay?.lastOut
+              ? "próxima entrada · última saída " + todayDay.lastOut
+              : "sem aberto hoje")}
+            {punchMode.kind === "out" && (
+              <>aberto #{punchMode.open.id} desde {punchMode.open.tin}{punchMode.open.diaIso !== todayIso() ? " · " + punchMode.open.dia : ""}</>
+            )}
+            {punchMode.kind === "ambiguous" && punchMode.note}
+          </span>
+        </div>
+        {punchMode.kind === "ambiguous" ? (
+          <div className="punch-actions">
+            {punchMode.opens[0] ? (
+              <Link className="btn primary" to={"/edit/" + punchMode.opens[0].id}>
+                editar #{punchMode.opens[0].id}
+              </Link>
+            ) : (
+              <Link className="btn primary" to="/novo">Abrir formulário</Link>
+            )}
+            {punchMode.opens.length > 1 && (
+              <span className="muted">+{punchMode.opens.length - 1} outro(s)</span>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn primary"
+            disabled={busy || loading}
+            onClick={() => void punch()}
+          >
+            {busy ? "Batendo…" : punchMode.kind === "in" ? "Entrada agora" : "Saída agora"}
+          </button>
+        )}
+      </section>
+      {punchMsg && <p className="ok" role="status">{punchMsg}</p>}
+
       {home && (
         <section className="stats">
           <div className="stat"><b>{home.monthHours} h</b><span>Horas trabalhadas neste mês</span></div>

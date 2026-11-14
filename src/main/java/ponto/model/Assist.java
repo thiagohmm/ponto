@@ -35,6 +35,7 @@ public final class Assist {
 
     private static final Duration CONNECT = Duration.ofMillis(800);
     private static final Duration REQUEST = Duration.ofMillis(2000);
+    private static final Duration DIGEST_REQUEST = Duration.ofSeconds(30);
     private static final Pattern FENCE = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
     private static final Pattern INT = Pattern.compile("-?\\d+");
 
@@ -46,6 +47,7 @@ public final class Assist {
 
     public record TagRef(int id, String name) { }
     public record JustSuggestion(String category, List<String> phrases) { }
+    public record DaySummary(String summary, List<String> bullets, boolean fromModel) { }
 
     public Assist(URI base, String model, boolean enabled) {
         this(base, model, enabled, HttpClient.newBuilder().connectTimeout(CONNECT).build());
@@ -131,6 +133,66 @@ public final class Assist {
                 """.formatted(catalog, clip(title, 200), clip(body, 800));
         String raw = generate(prompt);
         return parseTagIds(raw, allowed);
+    }
+
+    /**
+     * Narrative day digest in Portuguese. Falls back to a deterministic
+     * summary when Ollama is off or fails — never throws.
+     */
+    public DaySummary summarizeDay(String factsPt) {
+        String facts = factsPt == null ? "" : factsPt.trim();
+        if (facts.isEmpty()) {
+            return new DaySummary("Nenhuma atividade registrada neste dia.", List.of(), false);
+        }
+        if (enabled) {
+            String prompt = """
+                    Você resume o diário de trabalho de um dia. Responda só com JSON:
+                    {"summary":"um parágrafo em português","bullets":["fato 1","fato 2"]}
+                    Use 1 parágrafo curto e 3 a 5 bullets objetivos. Sem inventar fatos.
+                    Fatos do dia:
+                    %s
+                    """.formatted(clip(facts, 3500));
+            String raw = generateDigest(prompt);
+            DaySummary parsed = parseDaySummary(raw);
+            if (parsed != null) return parsed;
+        }
+        return fallbackDaySummary(facts);
+    }
+
+    /** Package-visible for unit tests. */
+    static DaySummary parseDaySummary(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String json = extractJson(raw);
+        try {
+            var tree = new tools.jackson.databind.json.JsonMapper().readTree(json);
+            String summary = tree.path("summary").asString("").trim();
+            List<String> bullets = new ArrayList<>();
+            var arr = tree.get("bullets");
+            if (arr != null && arr.isArray()) {
+                for (var n : arr) {
+                    String b = n.asString("").trim();
+                    if (!b.isEmpty() && bullets.size() < 5) bullets.add(b);
+                }
+            }
+            if (summary.isEmpty()) return null;
+            return new DaySummary(summary, List.copyOf(bullets), true);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static DaySummary fallbackDaySummary(String facts) {
+        String[] lines = facts.split("\n");
+        List<String> bullets = new ArrayList<>();
+        for (String line : lines) {
+            String t = line.trim();
+            if (t.startsWith("- ") && bullets.size() < 5) bullets.add(t.substring(2).trim());
+        }
+        String first = lines.length > 0 ? lines[0].trim() : "Resumo do dia";
+        String summary = "Resumo automático de " + first
+                + (bullets.isEmpty() ? "." : " com " + bullets.size() + " ponto(s) de atenção.");
+        if (bullets.isEmpty()) bullets = List.of("Sem itens detalhados além do cabeçalho do dia.");
+        return new DaySummary(summary, List.copyOf(bullets), false);
     }
 
     /**
@@ -226,16 +288,24 @@ public final class Assist {
     }
 
     private String generate(String prompt) {
+        return generate(prompt, REQUEST, 128);
+    }
+
+    private String generateDigest(String prompt) {
+        return generate(prompt, DIGEST_REQUEST, 400);
+    }
+
+    private String generate(String prompt, Duration timeout, int numPredict) {
         try {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", model);
             body.put("stream", false);
             body.put("prompt", prompt);
             body.put("format", "json");
-            body.put("options", Map.of("temperature", 0, "num_predict", 128));
+            body.put("options", Map.of("temperature", 0, "num_predict", numPredict));
             String payload = json.writeValueAsString(body);
             HttpRequest req = HttpRequest.newBuilder(base.resolve("/api/generate"))
-                    .timeout(REQUEST)
+                    .timeout(timeout)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
                     .build();

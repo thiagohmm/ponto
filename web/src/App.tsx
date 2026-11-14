@@ -12,6 +12,7 @@ import { FormPage } from "./pages/Form";
 import { HomePage } from "./pages/Home";
 import { KanbanPage } from "./pages/Kanban";
 import { NotesPage } from "./pages/Notes";
+import { DiarioPage } from "./pages/Diario";
 import { SumPage } from "./pages/Sum";
 
 function Ico({ path }: { path: string }) {
@@ -26,6 +27,7 @@ const TABS = [
   { to: "/", end: true, label: "Registros", path: "M8 4h8l1 3H7zM5 8h14v12H5zM9 12h6" },
   { to: "/novo", label: "Novo registro", path: "M12 5v14M5 12h14" },
   { to: "/soma", label: "Resumo de horas", path: "M5 7h14M12 7v4M7 17h10M12 13v8" },
+  { to: "/diario", label: "Diário", path: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
   { to: "/notas", label: "Notas", path: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-5zM14 3v5h5" },
   { to: "/kanban", label: "Kanban", path: "M4 5h4v14H4zM10 5h4v8h-4zM16 5h4v11h-4z" },
   { to: "/exportar", label: "Exportar", path: "M12 4v12M8 12l4 4 4-4M5 20h14" },
@@ -49,7 +51,15 @@ function Shell() {
   const kanban = loc.pathname.startsWith("/kanban");
   const editing = loc.pathname.startsWith("/edit");
   const [menu, setMenu] = useState(false);
+  const diario = loc.pathname.startsWith("/diario");
   const title = editing ? "Editar registro" : TABS.find(t => t.to === loc.pathname)?.label ?? "Notas";
+  const blurb = vault
+    ? "Suas ideias, tarefas e arquivos em um só lugar."
+    : kanban
+      ? "Arraste cartões entre colunas da empresa ativa."
+      : diario
+        ? "Tudo o que aconteceu no dia — ponto, notas, kanban e um resumo com IA."
+        : "Organize sua rotina e acompanhe cada hora.";
   return (
     <ConfirmProvider><UnsavedProvider><Connection /><CompanyProvider>
       <div className={vault ? "workspace notes-workspace" : kanban ? "workspace kanban-workspace" : "workspace"}>
@@ -74,7 +84,7 @@ function Shell() {
           <header className="workspace-header"><span>Espaço de trabalho <span className="muted">/ {title}</span></span><CompanyBar /></header>
           <main id="conteudo" className="page-content" tabIndex={-1}>
             <div className="page-heading"><div><p className="eyebrow">GESTÃO DE JORNADA</p><h1>{title}</h1>
-              <p className="muted">{vault ? "Suas ideias, tarefas e arquivos em um só lugar." : kanban ? "Arraste cartões entre colunas da empresa ativa." : "Organize sua rotina e acompanhe cada hora."}</p></div></div>
+              <p className="muted">{blurb}</p></div></div>
             <Pages />
           </main>
         </div>
@@ -103,6 +113,7 @@ function Pages() {
       <Route path="/novo" element={<FormPage />} />
       <Route path="/edit/:id" element={<FormPage />} />
       <Route path="/soma" element={<SumPage />} />
+      <Route path="/diario" element={<DiarioPage />} />
       <Route path="/notas" element={<NotesPage />} />
       <Route path="/notas/:id" element={<NotesPage />} />
       <Route path="/kanban" element={<KanbanPage />} />

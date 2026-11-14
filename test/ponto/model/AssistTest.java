@@ -101,6 +101,27 @@ class AssistTest {
         assertEquals("atestado", a.suggestJust("atestado médico").category());
     }
 
+    @Test void parseDaySummaryAndFallback() {
+        var ok = Assist.parseDaySummary("{\"summary\":\"Dia produtivo.\",\"bullets\":[\"Reunião\",\"Entrega\"]}");
+        assertNotNull(ok);
+        assertEquals("Dia produtivo.", ok.summary());
+        assertEquals(List.of("Reunião", "Entrega"), ok.bullets());
+        assertTrue(ok.fromModel());
+
+        assertNull(Assist.parseDaySummary(""));
+        assertNull(Assist.parseDaySummary("not json"));
+
+        var fb = Assist.fallbackDaySummary("Dia 13/11/2026 (sex)\n- #1 09:00-12:00\n- nota X");
+        assertFalse(fb.fromModel());
+        assertTrue(fb.summary().contains("13/11/2026"));
+        assertEquals(2, fb.bullets().size());
+
+        Assist off = new Assist(URI.create("http://127.0.0.1:9"), "qwen2.5:0.5b", false);
+        var s = off.summarizeDay("Dia 01/01/2026\n- algo");
+        assertFalse(s.fromModel());
+        assertFalse(s.summary().isBlank());
+    }
+
     private static String quote(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
