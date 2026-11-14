@@ -1,12 +1,7 @@
 package ponto.model;
 
-import de.focus_shift.jollyday.core.Holiday;
-import de.focus_shift.jollyday.core.HolidayManager;
-import de.focus_shift.jollyday.core.HolidayType;
-import de.focus_shift.jollyday.core.ManagerParameters;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.Year;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -17,27 +12,28 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Weekends and the days off in Brazil, seen from São Paulo.
  *
- * jollyday does the calendar: `holidays/Holidays_br.xml` is the national list,
- * and the ISO 3166-2 codes `sp` (state) and `csp` (city) add the local days --
- * 09/07 and 20/11 for the state, 25/01 for the city. That XML was compared here
- * against the city's own calendar (Prefecture of São Paulo, Decree 64.862/2025
- * for 2026) and three days are missing from it, two of them "pontos
- * facultativos", the optional days off, where a punch is normal work and not
- * a mistake. They are added below, each one saying why.
+ * The calendar is written here, in plain Java: national days plus the state of
+ * São Paulo and the city of São Paulo. The mobile holidays are the ones that
+ * move with Easter (Carnival, Ash Wednesday, Good Friday, Corpus Christi), so
+ * the only calculation is the Easter date.
+ *
+ * That list came from jollyday's `holidays/Holidays_br.xml` (BR + `sp` + `csp`)
+ * and was compared against the city's own calendar (Prefecture of São Paulo,
+ * Decree 64.862/2025 for 2026); three days are missing from it, two of them
+ * "pontos facultativos", the optional days off, where a punch is normal work
+ * and not a mistake. They are added below, each one saying why.
  *
  * Two more come from the same decree: Carnival Tuesday and Ash Wednesday are
- * listed as facultative there, while jollyday calls them PUBLIC, so they are
- * marked optional here. The Corpus Christi date is left exactly as jollyday and
+ * listed as facultative there, while the XML called them PUBLIC, so they are
+ * marked optional here. The Corpus Christi date is left exactly as the XML and
  * Nager give it (04/06/2026) -- the city decree agrees, so it is not a bug.
  *
- * Nothing here touches the network, and a failure inside jollyday can only ever
- * hide a warning; it must never stop a punch.
+ * Having the dates in Java (instead of a calendar library that loads XML) means
+ * one less dependency, no parser at startup and no way for a broken resource to
+ * change a working day. A failure here can only ever hide a warning; it must
+ * never stop a punch.
  */
 public final class Holidays {
-
-    private static final String BR = "BR";
-    /** ISO 3166-2: the state of São Paulo, and the city itself. */
-    private static final List<String> SP = List.of("sp", "csp");
 
     /** One year, built once and kept: date -> the day off on it. */
     private static final ConcurrentHashMap<Integer, Map<LocalDate, Off>> YEARS = new ConcurrentHashMap<>();
@@ -52,42 +48,19 @@ public final class Holidays {
         String text() { return (optional ? "facultativo: " : "feriado: ") + label; }
     }
 
-    /** A fixed date the XML has to be patched with: the date, the name, the tier. */
+    /** A fixed date the calendar has to be patched with: the date, the name, the tier. */
     private record Fix(int month, int day, String label, boolean optional) {
         LocalDate in(int year) { return LocalDate.of(year, month, day); }
     }
 
-    /** Days the BR XML does not have. */
+    /** Days the national/state/city list does not have. */
     private static final List<Fix> MISSING = List.of(
-        new Fix(12, 26, "Confraternização Universal", false),  // national day off, not in the XML
+        new Fix(12, 26, "Confraternização Universal", false),  // national day off, not in the list
         new Fix(12, 24, "Véspera de Natal", true),             // optional day off, city decree
         new Fix(12, 31, "Véspera de Ano Novo", true));         // optional day off, city decree
 
-    /** jollyday says PUBLIC; the city decree lists these as facultative. */
-    private static final List<String> OPTIONAL_KEYS = List.of("christian.CARNIVAL", "christian.ASH_WEDNESDAY");
-
-    /** The Monday of Carnival: the XML knows the Tuesday only. */
+    /** The Monday of Carnival: the list knows the Tuesday only. */
     private static final long CARNIVAL_MONDAY_BEFORE_EASTER = 48;
-
-    /** Names on the screen: jollyday's are long and one is broken ("Fiéis Defuntos"). */
-    private static final Map<String, String> NAME = Map.ofEntries(
-        Map.entry("NEW_YEAR", "Confraternização Universal"),
-        Map.entry("FOUNDATION", "Fundação de São Paulo (cidade)"),
-        Map.entry("christian.CARNIVAL", "Terça-feira de Carnaval"),
-        Map.entry("christian.ASH_WEDNESDAY", "Quarta-feira de Cinzas (até 12h)"),
-        Map.entry("christian.GOOD_FRIDAY", "Sexta-feira Santa"),
-        Map.entry("christian.EASTER", "Domingo de Páscoa"),
-        Map.entry("TIRADENTES", "Tiradentes"),
-        Map.entry("LABOUR_DAY", "Dia do Trabalho"),
-        Map.entry("christian.CORPUS_CHRISTI", "Corpus Christi"),
-        Map.entry("CONST_REVOLUTION", "Revolução de 1932 (São Paulo)"),
-        Map.entry("INDEPENDENCE_DAY", "Independência"),
-        Map.entry("APARECIDA", "Nossa Senhora Aparecida"),
-        Map.entry("ALL_SOULS", "Finados"),
-        Map.entry("NATIONAL_DAY", "Proclamação da República"),
-        Map.entry("NATIONAL_DAY_OF_ZUMBI_AND_BLACK_AWARENESS", "Dia da Consciência Negra"),
-        Map.entry("BLACK_AWARENESS", "Dia da Consciência Negra (São Paulo)"),
-        Map.entry("CHRISTMAS", "Natal"));
 
     /** "" on a working day; otherwise what to say after the date. */
     public String off(LocalDate d) {
@@ -123,28 +96,66 @@ public final class Holidays {
         Map<LocalDate, Off> hit = YEARS.get(year);
         if (hit != null) return hit;
         TreeMap<LocalDate, Off> t = new TreeMap<>();
-        LocalDate easter = null;
-        for (Holiday h : holidays(year)) {
-            if (h.getPropertiesKey().endsWith(".EASTER")) easter = h.getDate();
-            t.putIfAbsent(h.getDate(),
-                new Off(NAME.getOrDefault(h.getPropertiesKey(), h.getDescription()), OPTIONAL_KEYS.contains(h.getPropertiesKey())));
-        }
+        LocalDate easter = easter(year);
+
+        // national
+        put(t, year, 1, 1, "Confraternização Universal", false);
+        put(t, year, 4, 21, "Tiradentes", false);
+        put(t, year, 5, 1, "Dia do Trabalho", false);
+        put(t, year, 9, 7, "Independência", false);
+        if (year >= 1980) put(t, year, 10, 12, "Nossa Senhora Aparecida", false);
+        put(t, year, 11, 2, "Finados", false);
+        put(t, year, 11, 15, "Proclamação da República", false);
+        if (year >= 2024) put(t, year, 11, 20, "Dia da Consciência Negra", false);
+        put(t, year, 12, 25, "Natal", false);
+
+        // the state of São Paulo, and the city itself
+        put(t, year, 7, 9, "Revolução de 1932 (São Paulo)", false);
+        put(t, year, 11, 20, "Dia da Consciência Negra (São Paulo)", false);
+        put(t, year, 1, 25, "Fundação de São Paulo (cidade)", false);
+
+        // Easter and the days that walk with it
+        put(t, easter, "Domingo de Páscoa", false);
+        put(t, easter.minusDays(CARNIVAL_MONDAY_BEFORE_EASTER), "Segunda-feira de Carnaval", true);
+        put(t, easter.minusDays(CARNIVAL_MONDAY_BEFORE_EASTER - 1), "Terça-feira de Carnaval", true);
+        put(t, easter.minusDays(CARNIVAL_MONDAY_BEFORE_EASTER - 2), "Quarta-feira de Cinzas (até 12h)", true);
+        put(t, easter.minusDays(2), "Sexta-feira Santa", false);
+        put(t, easter.plusDays(60), "Corpus Christi", false);
+
         for (Fix f : MISSING) t.putIfAbsent(f.in(year), new Off(f.label(), f.optional()));
-        if (easter != null) t.putIfAbsent(easter.minusDays(CARNIVAL_MONDAY_BEFORE_EASTER), new Off("Segunda-feira de Carnaval", true));
         Map<LocalDate, Off> made = Collections.unmodifiableSortedMap(t);
         YEARS.put(year, made);
         return made;
     }
 
-    /** jollyday, or an empty year: a calendar that will not load must not stop a punch. */
-    private static List<Holiday> holidays(int year) {
-        try {
-            HolidayManager hm = HolidayManager.getInstance(ManagerParameters.create(BR));
-            return hm.getHolidays(Year.of(year), SP.toArray(new String[0])).stream()
-                .filter(h -> h.getType() != HolidayType.BANK_HOLIDAY)      // a bank day is not a day off
-                .sorted().toList();
-        } catch (RuntimeException | Error e) {
-            return List.of();
-        }
+    private static void put(Map<LocalDate, Off> t, int year, int month, int day, String label, boolean optional) {
+        put(t, LocalDate.of(year, month, day), label, optional);
+    }
+
+    /** First name wins: the national label beats the state one on the same date. */
+    private static void put(Map<LocalDate, Off> t, LocalDate d, String label, boolean optional) {
+        t.putIfAbsent(d, new Off(label, optional));
+    }
+
+    /**
+     * Easter Sunday in the Gregorian calendar (Anonymous computus). Easter is
+     * the anchor of every mobile day off in Brazil.
+     */
+    static LocalDate easter(int year) {
+        int a = year % 19;
+        int b = year / 100;
+        int c = year % 100;
+        int d = b / 4;
+        int e = b % 4;
+        int f = (b + 8) / 25;
+        int g = (b - f + 1) / 3;
+        int h = (19 * a + b - d - g + 15) % 30;
+        int i = c / 4;
+        int k = c % 4;
+        int l = (32 + 2 * e + 2 * i - h - k) % 7;
+        int m = (a + 11 * h + 22 * l) / 451;
+        int month = (h + l - 7 * m + 114) / 31;
+        int day = (h + l - 7 * m + 114) % 31 + 1;
+        return LocalDate.of(year, month, day);
     }
 }

@@ -24,9 +24,9 @@ justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
 
 * **Java 25** — the sources are compiled with `--release 25`.
 * Maven, only to build; the produced jar runs on its own.
-* The PostgreSQL JDBC driver, PDFBox and POI are already inside the jar. So is **jollyday**
-  (`jollyday-core` + `jollyday-jackson`, about 5.6 MB of the ~29 MB jar), which
-  keeps the Brazilian calendar. Nothing in the app reaches the network.
+* The PostgreSQL JDBC driver, PDFBox, POI and Jackson are already inside the jar,
+  as is the React build. The Brazilian calendar is code (`model/Holidays.java`),
+  not a library. Nothing in the app reaches the network.
 
 ## Build and run
 
@@ -182,18 +182,20 @@ punch costs more than a punch on the wrong day. `c config` lists the next days o
 and asks for `off`, your own days off — `27/10/2026 31/12`, separated by space,
 comma or `;`.
 
-The calendar comes from [jollyday](https://jollyday.focus-shift.de): the country
-list for `BR` plus the ISO 3166-2 codes `sp` (state) and `csp` (city), so
-09/07 and 20/11 count as São Paulo days and 25/01 counts for the city. Four days
-are added by hand in `Holidays.java`, checked against the city's own calendar
+The calendar is written in `Holidays.java`: the country list for `BR` plus the
+state of São Paulo and the city, so 09/07 and 20/11 count as São Paulo days and
+25/01 counts for the city, and Easter (computed there) anchors Carnival, Ash
+Wednesday, Good Friday and Corpus Christi. It used to come from jollyday, whose
+XML was read at startup — 3 MB of dependency and a parser to load a fixed list.
+Four days are added by hand alongside it, checked against the city's own calendar
 (Prefecture of São Paulo, Decree 64.862/2025) and listed there with the reason:
 
 | day | what it is |
 |---|---|
-| 26/12 | Boxing Day, national, missing from the country XML |
-| Carnival Monday | the XML knows the Tuesday only |
+| 26/12 | Boxing Day, national, missing from the country list |
+| Carnival Monday | the list knew the Tuesday only |
 | 24/12 · 31/12 | Christmas Eve, New Year's Eve — optional days off |
-| Carnival Tuesday · Ash Wednesday | the XML says *public*, the decree says *facultative* |
+| Carnival Tuesday · Ash Wednesday | the list says *public*, the decree says *facultative* |
 
 (28/10 "Servant's Day" was removed: it is a public-servant day, not a private
 holiday, and the bank must treat a punch there as a normal working day.)

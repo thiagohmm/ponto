@@ -521,9 +521,117 @@ button, input, textarea {
 
 .chart-hint { font-size: 12px; margin: 18px 0 0; opacity: 0.75; }
 
-/* barras clicáveis: indica clique com o cursor */
-.charts .recharts-surface { cursor: pointer; }
-.charts .recharts-bar-rectangle { cursor: pointer; }
+/* gráfico de barras sem dependência (web/src/ui/Bars.tsx) */
+.bars {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  padding-top: 10px;
+  margin-bottom: 18px;
+}
+
+.bars-y {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.bars-tick {
+  position: absolute;
+  right: 2px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bars-plot {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--bars-h, 200px);
+}
+
+.bars-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--line);
+  pointer-events: none;
+}
+
+.bars-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px dashed var(--warn);
+  pointer-events: none;
+}
+
+.bars-zero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--muted);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.bars-cols {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.bars-col {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 var(--bars-gap, 2px);
+  border: 0;
+  background: none;
+  cursor: default;
+}
+
+.bars-col.pick { cursor: pointer; }
+
+.bars-col:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bars-bar {
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  border-radius: 3px 3px 0 0;
+  transition: opacity 120ms ease;
+}
+
+.bars-col:hover .bars-bar,
+.bars-col:focus-visible .bars-bar { opacity: 0.78; }
+
+.bars-x {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bars-tip {
+  position: absolute;
+  top: -2px;
+  transform: translateX(-50%);
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--card-shadow);
+}
 
 .btn.falta-on {
   background: var(--stamp);

@@ -19,8 +19,8 @@
     <postgresql.version>42.7.8</postgresql.version>
     <pdfbox.version>3.0.8</pdfbox.version>
     <poi.version>5.5.1</poi.version>
-    <jollyday.version>2.21.0</jollyday.version>
     <javalin.version>6.7.0</javalin.version>
+    <jackson.version>3.2.2</jackson.version>
   </properties>
 
   <dependencies>
@@ -64,19 +64,15 @@
     </dependency>
 
     <!-- Brazilian calendar, seen from São Paulo: the day-off warning in 1/2.
-         jollyday-core holds the country XML (holidays/Holidays_br.xml) and the
-         ISO 3166-2 subdivisions (sp = state, csp = city); jollyday-jackson is
-         the XML parser it loads through META-INF/services. Jackson 3 lives in
-         the tools.jackson namespace, so it cannot clash with anything else. -->
+         The dates live in model/Holidays.java (plain Java, Easter computus):
+         no calendar library, no XML parser, nothing to load at startup. -->
+
+    <!-- JSON in and out (view/Json3.java). Jackson 3 lives in the tools.jackson
+         namespace; only core + databind, no XML stack. -->
     <dependency>
-      <groupId>de.focus-shift</groupId>
-      <artifactId>jollyday-core</artifactId>
-      <version>${jollyday.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>de.focus-shift</groupId>
-      <artifactId>jollyday-jackson</artifactId>
-      <version>${jollyday.version}</version>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
     </dependency>
 
     <dependency>
@@ -94,6 +90,30 @@
       <resource><directory>web/dist</directory><targetPath>public</targetPath></resource>
     </resources>
     <plugins>
+      <!-- O build do React entra como recurso: os nomes levam o hash do conteúdo,
+           então um build novo não sobrescreve o antigo e o jar ia acumulando
+           assets mortos (14 MB de versões velhas numa cópia local). Limpar
+           apenas target/classes/public antes de copiar deixa no jar só o que
+           o web/dist atual tem. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.4.1</version>
+        <executions>
+          <execution>
+            <id>limpa-assets-antigos</id>
+            <phase>generate-resources</phase>
+            <goals><goal>clean</goal></goals>
+            <configuration>
+              <excludeDefaultDirectories>true</excludeDefaultDirectories>
+              <filesets>
+                <fileset><directory>${project.build.outputDirectory}/public</directory></fileset>
+              </filesets>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>

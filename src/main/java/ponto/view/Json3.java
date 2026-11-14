@@ -4,9 +4,7 @@ import io.javalin.json.JsonMapper;
 import java.lang.reflect.Type;
 
 /**
- * Javalin JSON via Jackson 3 (`tools.jackson`), already on the classpath for
- * jollyday. Jackson 2 (`com.fasterxml`) must stay off the path: it hides
- * annotations jollyday needs and the holiday calendar goes silent.
+ * Javalin JSON via Jackson 3 (`tools.jackson`): core + databind, no XML stack.
  */
 public final class Json3 implements JsonMapper {
 

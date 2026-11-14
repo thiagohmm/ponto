@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.concurrent.Executors;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class WebTest {
     @TempDir Path dir;
@@ -94,6 +95,43 @@ class WebTest {
                     }
                 }
             }finally{app.stop();}
+        }
+    }
+
+    @Test void gzipOnTheWireAndNoStoreOnTheShell() throws Exception {
+        try (Db db = TestDb.open(dir)) {
+            var service = new Service(db);
+            int a = service.companyId();
+            var sa = service.forCompany(a);
+            for (int i = 0; i < 20; i++)
+                sa.create(LocalDate.of(2026, 6, 1).plusDays(i), LocalTime.of(9, 0), LocalTime.of(17, 0),
+                    "uma justificativa longa o bastante para o gzip valer a pena", false, false, false);
+            var app = new Web(service, 0).application().start("127.0.0.1", 0);
+            base = "http://127.0.0.1:" + app.port();
+            try {
+                var req = HttpRequest.newBuilder(URI.create(base + "/api/entries?companyId=" + a))
+                    .header("Accept-Encoding", "gzip").build();
+                var res = client.send(req, HttpResponse.BodyHandlers.ofByteArray());
+                assertEquals(200, res.statusCode());
+                assertEquals("gzip", res.headers().firstValue("Content-Encoding").orElse(""));
+                try (var in = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(res.body()))) {
+                    String json = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    assertTrue(json.contains("gzip valer a pena"));
+                }
+                var shell = call("GET", "/", null);
+                assertEquals(200, shell.statusCode());
+                assertEquals("no-store", shell.headers().firstValue("Cache-Control").orElse(""));
+                // o build do React tem nome com hash: pode ficar em cache para sempre
+                var index = getClass().getResourceAsStream("/public/index.html");
+                assumeTrue(index != null, "web/dist não foi buildado nesta máquina");
+                var asset = java.util.regex.Pattern.compile("/assets/[\\w.-]+\\.js")
+                    .matcher(new String(index.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                assertTrue(asset.find());
+                var file = call("GET", asset.group(), null);
+                assertEquals(200, file.statusCode());
+                assertEquals("public, max-age=31536000, immutable",
+                    file.headers().firstValue("Cache-Control").orElse(""));
+            } finally { app.stop(); }
         }
     }
 }

@@ -61,10 +61,19 @@ public final class Web {
             cfg.jsonMapper(new Json3());
             cfg.jetty.modifyHttpConfiguration(httpConfig -> httpConfig.setSendServerVersion(false));
             if (Web.class.getResource("/public/index.html") != null) {
+                // assets com hash no nome: o navegador guarda para sempre, sem
+                // revalidar (o build novo = nome novo). A casca nunca é cacheada.
+                cfg.staticFiles.add(s -> {
+                    s.hostedPath = "/assets";
+                    s.directory = "/public/assets";
+                    s.location = Location.CLASSPATH;
+                    s.headers = Map.of("Cache-Control", "public, max-age=31536000, immutable");
+                });
                 cfg.staticFiles.add(s -> {
                     s.hostedPath = "/";
                     s.directory = "/public";
                     s.location = Location.CLASSPATH;
+                    s.headers = Map.of("Cache-Control", "no-store");
                     s.mimeTypes.add("application/manifest+json", "webmanifest");
                 });
                 cfg.spaRoot.addFile("/", "/public/index.html", Location.CLASSPATH);
@@ -96,9 +105,11 @@ public final class Web {
             ctx.attribute("service", svc.forCompany(id));
         });
         app.after(ctx -> {
-            String path = ctx.path();
-            if (!path.startsWith("/assets")) ctx.header("Cache-Control", "no-store");
+            // /assets tem o seu próprio Cache-Control (imutável, ver acima);
+            // o resto -- API, casca, sw.js -- nunca é cacheado
+            if (!ctx.path().startsWith("/assets/")) ctx.header("Cache-Control", "no-store");
         });
+        gzip(app);
         app.exception(NeedConfirm.class, (e, ctx) -> ctx.status(409).json(Map.of(
                 "need", e.code, "message", e.getMessage(), "requestId", requestId(ctx))));
         app.exception(ponto.Conflict.class, (e, ctx) -> error(ctx, 409, e.getMessage()));
@@ -178,6 +189,31 @@ public final class Web {
         try { stopped.await(); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         finally { app.stop(); try { Runtime.getRuntime().removeShutdownHook(hook); } catch (IllegalStateException ignored) { } }
+    }
+
+    /**
+     * gzip on the wire. Jetty's GzipHandler wraps the handler chain before the
+     * server starts: the React build (one entry + one file per tab) and the JSON
+     * answers travel about 4x smaller. Text types only, so PDF, .xls and uploads
+     * go out untouched, and a handler that refuses to install only costs
+     * bandwidth -- never the server.
+     */
+    private static void gzip(Javalin app) {
+        // serverStarting, e não serverStarted: o Jetty recusa insertHandler
+        // num handler já iniciado
+        app.events(events -> events.serverStarting(() -> {
+            try {
+                var handler = new org.eclipse.jetty.server.handler.gzip.GzipHandler();
+                handler.setMinGzipSize(1024);
+                handler.addIncludedMethods("GET", "POST", "PUT", "PATCH", "DELETE");
+                handler.addIncludedMimeTypes("text/html", "text/css", "text/plain", "text/javascript",
+                        "application/javascript", "application/json", "application/manifest+json",
+                        "image/svg+xml", "application/xml", "text/xml");
+                app.jettyServer().server().insertHandler(handler);
+            } catch (Exception e) {
+                System.err.println("gzip off: " + e.getClass().getSimpleName());
+            }
+        }));
     }
 
     private Service service(Context ctx) {

@@ -1,15 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bars } from "../ui/Bars";
 import { api } from "../api";
 import { useCompany } from "../Company";
 import type { Diario } from "../types";
@@ -157,17 +148,8 @@ export function DiarioPage() {
 
             <section className="card">
               <h2>Atividade</h2>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={countBars} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={28} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: "var(--card)", borderColor: "var(--line)", color: "var(--ink)" }} />
-                  <Bar dataKey="value" isAnimationActive={false} minPointSize={3}>
-                    {countBars.map((_, i) => <Cell key={i} fill={COUNT_COLORS[i % COUNT_COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <Bars height={180} yWidth={28} label="atividade do dia"
+                bars={countBars.map((b, i) => ({ value: b.value, label: b.name, color: COUNT_COLORS[i % COUNT_COLORS.length] }))} />
             </section>
           </div>
 
@@ -176,17 +158,15 @@ export function DiarioPage() {
             {data.charts.pairs.length === 0 ? (
               <p className="muted">Nenhum par fechado neste dia.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={data.charts.pairs} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} width={36} tickLine={false} axisLine={false}
-                    tickFormatter={(v: number) => Math.round(v / 60) + "h"} />
-                  <Tooltip contentStyle={{ background: "var(--card)", borderColor: "var(--line)", color: "var(--ink)" }}
-                    formatter={(v) => hm(Number(v))} />
-                  <Bar dataKey="mins" fill="#007aff" isAnimationActive={false} minPointSize={3} />
-                </BarChart>
-              </ResponsiveContainer>
+              <Bars height={200} yWidth={36} label="minutos por batida"
+                format={(v) => Math.round(v / 60) + "h"}
+                snap={60}
+                bars={data.charts.pairs.map((p) => ({
+                  value: p.mins,
+                  label: p.label,
+                  color: "#007aff",
+                  tip: p.label + " · " + hm(p.mins),
+                }))} />
             )}
           </section>
 

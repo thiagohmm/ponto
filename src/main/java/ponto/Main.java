@@ -52,7 +52,7 @@ public final class Main {
           -        clears the field
 
         days off
-          Brazil and São Paulo (state and city), from jollyday, no internet needed
+          Brazil and São Paulo (state and city), calculated here, no internet needed
           a line of yellow on 1 and 2, never a wall: work on those days is still recorded
           your own days off: c config, "27/10/2026 31/12" (space, comma or ;)
 

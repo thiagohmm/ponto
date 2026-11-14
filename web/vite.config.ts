@@ -10,6 +10,13 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    rollupOptions: { output: { manualChunks: { charts: ["recharts"] } } },
+    // navegador moderno: sem transpilação extra, sem polyfill
+    target: "es2022",
+    cssTarget: "safari16",
+    cssCodeSplit: true,
+    assetsInlineLimit: 2048,
+    // as páginas entram por import() dinâmico (ver App.tsx): o Rollup separa
+    // um arquivo por aba e o primeiro carregamento só traz a casca
+    rollupOptions: { output: {} },
   },
 });

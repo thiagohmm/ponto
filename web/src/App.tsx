@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, LoginPage, RequireAuth, useAuth } from "./Auth";
 import { CompanyBar, CompanyProvider, useCompany } from "./Company";
@@ -6,14 +6,17 @@ import { UnsavedProvider } from "./ui/Unsaved";
 import { Connection } from "./ui/Connection";
 import { BrandMark } from "./ui/BrandMark";
 import { ConfirmProvider } from "./ui/Confirm";
-import { ConfigPage } from "./pages/Config";
-import { ExportPage } from "./pages/Export";
-import { FormPage } from "./pages/Form";
-import { HomePage } from "./pages/Home";
-import { KanbanPage } from "./pages/Kanban";
-import { NotesPage } from "./pages/Notes";
-import { DiarioPage } from "./pages/Diario";
-import { SumPage } from "./pages/Sum";
+
+// Uma aba = um arquivo. O carregamento inicial leva só a casca e a tela que o
+// usuário abriu; notas, kanban, exportação e configurações vêm quando pedidas.
+const HomePage = lazy(() => import("./pages/Home").then((m) => ({ default: m.HomePage })));
+const FormPage = lazy(() => import("./pages/Form").then((m) => ({ default: m.FormPage })));
+const SumPage = lazy(() => import("./pages/Sum").then((m) => ({ default: m.SumPage })));
+const DiarioPage = lazy(() => import("./pages/Diario").then((m) => ({ default: m.DiarioPage })));
+const NotesPage = lazy(() => import("./pages/Notes").then((m) => ({ default: m.NotesPage })));
+const KanbanPage = lazy(() => import("./pages/Kanban").then((m) => ({ default: m.KanbanPage })));
+const ExportPage = lazy(() => import("./pages/Export").then((m) => ({ default: m.ExportPage })));
+const ConfigPage = lazy(() => import("./pages/Config").then((m) => ({ default: m.ConfigPage })));
 
 function Ico({ path }: { path: string }) {
   return (
@@ -108,17 +111,19 @@ function Logout() {
 function Pages() {
   const { active } = useCompany();
   return (
-    <Routes key={active?.id ?? 0}>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/novo" element={<FormPage />} />
-      <Route path="/edit/:id" element={<FormPage />} />
-      <Route path="/soma" element={<SumPage />} />
-      <Route path="/diario" element={<DiarioPage />} />
-      <Route path="/notas" element={<NotesPage />} />
-      <Route path="/notas/:id" element={<NotesPage />} />
-      <Route path="/kanban" element={<KanbanPage />} />
-      <Route path="/exportar" element={<ExportPage />} />
-      <Route path="/config" element={<ConfigPage />} />
-    </Routes>
+    <Suspense fallback={<p className="muted" role="status">Carregando…</p>}>
+      <Routes key={active?.id ?? 0}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/novo" element={<FormPage />} />
+        <Route path="/edit/:id" element={<FormPage />} />
+        <Route path="/soma" element={<SumPage />} />
+        <Route path="/diario" element={<DiarioPage />} />
+        <Route path="/notas" element={<NotesPage />} />
+        <Route path="/notas/:id" element={<NotesPage />} />
+        <Route path="/kanban" element={<KanbanPage />} />
+        <Route path="/exportar" element={<ExportPage />} />
+        <Route path="/config" element={<ConfigPage />} />
+      </Routes>
+    </Suspense>
   );
 }
