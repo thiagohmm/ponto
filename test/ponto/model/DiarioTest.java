@@ -10,6 +10,7 @@ import ponto.infra.Db;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ponto.TestDb;
+import ponto.model.Str;
 
 import java.net.URI;
 import java.nio.file.Path;
@@ -26,14 +27,15 @@ class DiarioTest {
     @Test void snapshotAggregatesAndDigestUpsertsPerCompanyDay() {
         try (Db db = TestDb.open(dir)) {
             Service s = new Service(db);
-            LocalDate dia = LocalDate.of(2026, 11, 13);
+            // Notes/cards are stamped with now(); diary filters by that day.
+            LocalDate dia = LocalDate.now();
             s.create(dia, LocalTime.of(9, 0), LocalTime.of(12, 0), "manhã", false, false, false);
             s.createNote("Ideia", "corpo da nota");
             int col = s.kanbanColumns().getFirst().id();
             s.createKanbanCard("Cartão diário", "fazer", col);
 
             Map<String, Object> snap = s.diario(dia);
-            assertEquals("13/11/2026", snap.get("dia"));
+            assertEquals(Str.d(dia), snap.get("dia"));
             @SuppressWarnings("unchecked")
             List<?> entries = (List<?>) snap.get("entries");
             @SuppressWarnings("unchecked")

@@ -148,7 +148,7 @@ export function DiarioPage() {
 
             <section className="card">
               <h2>Atividade</h2>
-              <Bars height={180} yWidth={28} label="atividade do dia"
+              <Bars height={180} yWidth={28} label="atividade diária"
                 bars={countBars.map((b, i) => ({ value: b.value, label: b.name, color: COUNT_COLORS[i % COUNT_COLORS.length] }))} />
             </section>
           </div>

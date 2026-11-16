@@ -102,7 +102,7 @@ test("diario page shows day picker and can generate a saved summary", async ({ p
   await uiLogin(page);
   await page.getByRole("link", { name: "Diário", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Diário" })).toBeVisible();
-  await expect(page.getByLabel("Dia")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Dia" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Gerar resumo|Regenerar resumo/ })).toBeEnabled();
   await page.getByRole("button", { name: /Gerar resumo|Regenerar resumo/ }).click();
   await expect(page.getByText(/salvo|Resumo salvo/i).first()).toBeVisible({ timeout: 15_000 });
