@@ -1,6 +1,7 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Problema;
+import ponto.model.*;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -8,8 +9,8 @@ import java.sql.Statement;
  * Versioned upgrades on Postgres. Fresh installs create the current schema
  * in one atomic transaction. Existing v5 databases upgrade to v6 in place.
  */
-final class Migrations {
-    static final int VERSION = 6;
+public final class Migrations {
+    public static final int VERSION = 6;
 
     static void apply(Db db) {
         int version = 0;

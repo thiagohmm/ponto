@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useUnsavedChanges } from "../ui/Unsaved";
 import { api } from "../api";
-import { justCategory } from "../justTaxonomy";
+import { justCategory, loadJustCategories } from "../justTaxonomy";
 import { maskTime, nowHm, timeOk } from "../mask";
 import { useAssist } from "../useAssist";
 import type { DayInfo, Entry } from "../types";
@@ -38,6 +38,7 @@ export function FormPage() {
   const [justPhrases, setJustPhrases] = useState<string[]>([]);
   const tinRef = useRef<HTMLInputElement>(null);
   const justReq = useRef(0);
+  useEffect(() => { void loadJustCategories(); }, []);
   const [initial, setInitial] = useState(() => JSON.stringify([todayIso(), "", "", ""]));
   const markClean = useUnsavedChanges(JSON.stringify([dia, tin, tout, just]) !== initial || busy);
 

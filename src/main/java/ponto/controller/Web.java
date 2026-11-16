@@ -7,7 +7,7 @@ import ponto.Ver;
 import ponto.model.Company;
 import ponto.model.Entry;
 import ponto.model.Report;
-import ponto.model.Service;
+import ponto.app.Service;
 import ponto.model.Str;
 import ponto.view.Csv;
 import ponto.view.Json;
@@ -39,25 +39,25 @@ public final class Web {
     private final Service svc;
     private final int port;
     private final Auth auth;
-    private final ponto.model.Assist assist;
+    private final ponto.infra.Assist assist;
 
     public Web(Service svc, int port) { this(svc, port, Auth.fromEnv()); }
 
     public Web(Service svc, int port, Auth auth) {
-        this(svc, port, auth, ponto.model.Assist.env());
+        this(svc, port, auth, ponto.infra.Assist.env());
     }
 
-    public Web(Service svc, int port, Auth auth, ponto.model.Assist assist) {
+    public Web(Service svc, int port, Auth auth, ponto.infra.Assist assist) {
         this.svc = svc;
         this.port = port;
         this.auth = auth;
-        this.assist = assist == null ? ponto.model.Assist.env() : assist;
+        this.assist = assist == null ? ponto.infra.Assist.env() : assist;
     }
 
     public Javalin application() {
         Javalin app = Javalin.create(cfg -> {
             cfg.showJavalinBanner = false;
-            cfg.http.maxRequestSize = ponto.model.Files.maxUpload() + 1024 * 1024;
+            cfg.http.maxRequestSize = Service.maxUpload() + 1024 * 1024;
             cfg.jsonMapper(new Json3());
             cfg.jetty.modifyHttpConfiguration(httpConfig -> httpConfig.setSendServerVersion(false));
             if (Web.class.getResource("/public/index.html") != null) {
@@ -97,7 +97,8 @@ public final class Web {
             if (ctx.path().equals("/api/me") || ctx.path().equals("/api/logout")) return;
             String raw = ctx.queryParam("companyId");
             boolean catalog = ctx.path().equals("/api/companies") && ctx.method() == io.javalin.http.HandlerType.GET;
-            if ((raw == null || raw.isBlank()) && catalog) { ctx.attribute("service", svc); return; }
+            boolean taxonomy = ctx.path().equals("/api/just-categories");
+            if ((raw == null || raw.isBlank()) && (catalog || taxonomy)) { ctx.attribute("service", svc); return; }
             if (raw == null || raw.isBlank()) throw new Bad("Selecione uma empresa e atualize a página (companyId obrigatório).");
             int id;
             try { id = Integer.parseInt(raw); if (id < 1) throw new NumberFormatException(); }
@@ -130,8 +131,8 @@ public final class Web {
         app.get("/api/health", ctx -> {
             boolean db = svc.healthy();
             ctx.status(db ? 200 : 503).json(Map.of("status", db ? "ok" : "error", "database", db,
-                    "storage", !svc.files().configured() ? "disabled" : svc.files().storageUp() ? "ok" : "unavailable",
-                    "pendingObjects", svc.files().pending(), "version", Ver.N,
+                    "storage", !svc.storageConfigured() ? "disabled" : svc.storageUp() ? "ok" : "unavailable",
+                    "pendingObjects", svc.pendingObjects(), "version", Ver.N,
                     "auth", auth != null));
         });
         app.post("/api/login", ctx -> {
@@ -147,7 +148,7 @@ public final class Web {
             if (auth != null) auth.logout(ctx);
             ctx.json(Map.of("ok", true));
         });
-        app.post("/api/storage/retry", ctx -> { service(ctx).files().retry(); ctx.json(Map.of("ok", true)); });
+        app.post("/api/storage/retry", ctx -> { service(ctx).retryStorage(); ctx.json(Map.of("ok", true)); });
 
         app.get("/api/home", ctx -> ctx.json(service(ctx).home()));
         app.get("/api/entries", this::list);
@@ -165,6 +166,7 @@ public final class Web {
         app.get("/api/export/{kind}", this::export);
         app.get("/api/config", ctx -> ctx.json(service(ctx).config()));
         app.put("/api/config", this::config);
+        app.get("/api/just-categories", ctx -> ctx.json(Map.of("categories", ponto.model.JustCategory.catalog())));
         app.get("/api/companies", this::companies);
         app.post("/api/companies", this::companyCreate);
         app.put("/api/companies/active", this::companyActive);
@@ -179,7 +181,7 @@ public final class Web {
     }
 
     public void start() {
-        svc.files().start();
+        svc.startFiles();
         Javalin app = application();
         app.start("0.0.0.0", port);
         System.out.println("ponto web  http://0.0.0.0:" + port + "   db " + svc.dbPath());
@@ -461,17 +463,17 @@ public final class Web {
 
     private void companies(Context ctx) {
         Service svc = service(ctx);
-        Company act = svc.companies().active();
+        Company act = svc.activeCompany();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("activeId", act.id());
-        out.put("companies", svc.companies().list().stream().map(Json::json).toList());
+        out.put("companies", svc.listCompanies().stream().map(Json::json).toList());
         ctx.json(out);
     }
 
     private void companyCreate(Context ctx) {
         Service svc = service(ctx);
         CompanyReq r = ctx.bodyAsClass(CompanyReq.class);
-        Company c = svc.companies().create(nz(r.name()), r.off(), r.daily());
+        Company c = svc.createCompany(nz(r.name()), r.off(), r.daily());
         ctx.status(HttpStatus.CREATED).json(Json.json(c));
     }
 
@@ -479,13 +481,13 @@ public final class Web {
         Service svc = service(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         CompanyReq r = ctx.bodyAsClass(CompanyReq.class);
-        ctx.json(Json.json(svc.companies().update(id, r.name(), r.off(), r.daily())));
+        ctx.json(Json.json(svc.updateCompany(id, r.name(), r.off(), r.daily())));
     }
 
     private void companyDelete(Context ctx) {
         Service svc = service(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        svc.companies().delete(id);
+        svc.deleteCompany(id);
         ctx.json(Map.of("ok", true, "id", id));
     }
 
@@ -493,7 +495,7 @@ public final class Web {
         Service svc = service(ctx);
         CompanyReq r = ctx.bodyAsClass(CompanyReq.class);
         if (r.id() == null) throw new Bad("id obrigatório");
-        Company c = svc.companies().byId(r.id());
+        Company c = svc.companyById(r.id());
         Map<String, Object> out = new LinkedHashMap<>(Json.json(c));
         out.put("activeId", c.id());
         ctx.json(out);
@@ -535,9 +537,9 @@ public final class Web {
         Service svc = service(ctx);
         String q = ctx.queryParam(name);
         if (q != null && !q.isBlank()) return Service.parseDate(q, null);
-        Map<String, Object> home = svc.home();
-        String fallback = String.valueOf(home.get(start ? "min" : "max"));
-        if (fallback == null || fallback.isBlank() || fallback.equals("null"))
+        var home = svc.home();
+        String fallback = start ? home.min() : home.max();
+        if (fallback == null || fallback.isBlank())
             return start ? ponto.model.Time.today().withDayOfMonth(1) : ponto.model.Time.today();
         return Service.parseDate(fallback, start ? ponto.model.Time.today().withDayOfMonth(1) : ponto.model.Time.today());
     }

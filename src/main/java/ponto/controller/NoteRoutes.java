@@ -1,5 +1,7 @@
 package ponto.controller;
 
+import ponto.app.Service;
+
 import ponto.Bad;
 import ponto.Problema;
 import ponto.model.*;
@@ -39,8 +41,8 @@ final class NoteRoutes {
     private void notesList(Context ctx) {
         Service svc = service.apply(ctx);
         String q = ctx.queryParam("q");
-        List<Note> rows = svc.notes().list(q);
-        Map<Integer, List<String>> fileNames = svc.files().namesByNotes(rows.stream().map(Note::id).toList());
+        List<Note> rows = svc.listNotes(q);
+        Map<Integer, List<String>> fileNames = svc.noteFileNames(rows.stream().map(Note::id).toList());
         List<Map<String, Object>> notes = rows.stream().map(n -> {
             Map<String, Object> json = Json.json(n);
             json.put("fileNames", fileNames.getOrDefault(n.id(), List.of()));
@@ -49,20 +51,20 @@ final class NoteRoutes {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("total", rows.size());
         out.put("notes", notes);
-        out.put("folders", svc.notes().folders().stream().map(Json::json).toList());
-        out.put("tags", svc.notes().tags().stream().map(Json::json).toList());
+        out.put("folders", svc.folders().stream().map(Json::json).toList());
+        out.put("tags", svc.tags().stream().map(Json::json).toList());
         ctx.json(out);
     }
 
     private void noteOne(Context ctx) {
         Service svc = service.apply(ctx);
-        ctx.json(Json.json(svc.notes().byId(ctx.pathParamAsClass("id", Integer.class).get())));
+        ctx.json(Json.json(svc.noteById(ctx.pathParamAsClass("id", Integer.class).get())));
     }
 
     private void noteCreate(Context ctx) {
         Service svc = service.apply(ctx);
         NoteReq r = ctx.bodyAsClass(NoteReq.class);
-        Note n = svc.notes().create(nz(r.title()), nz(r.body()), r.folderId(), r.tagIds());
+        Note n = svc.createNote(nz(r.title()), nz(r.body()), r.folderId(), r.tagIds());
         ctx.status(HttpStatus.CREATED).json(Json.json(n));
     }
 
@@ -71,20 +73,20 @@ final class NoteRoutes {
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         NoteReq r = ctx.bodyAsClass(NoteReq.class);
         if (r.revision() == null || r.revision() < 1) throw new Bad("revision obrigatória");
-        ctx.json(Json.json(svc.notes().update(id, nz(r.title()), nz(r.body()), r.revision())));
+        ctx.json(Json.json(svc.updateNote(id, nz(r.title()), nz(r.body()), r.revision())));
     }
 
     private void noteMove(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         NoteReq r = ctx.bodyAsClass(NoteReq.class);
-        ctx.json(Json.json(svc.notes().move(id, r.folderId())));
+        ctx.json(Json.json(svc.moveNote(id, r.folderId())));
     }
 
     private void folderCreate(Context ctx) {
         Service svc = service.apply(ctx);
         FolderReq r = ctx.bodyAsClass(FolderReq.class);
-        ctx.status(HttpStatus.CREATED).json(Json.json(svc.notes().createFolder(nz(r.name()), r.parent())));
+        ctx.status(HttpStatus.CREATED).json(Json.json(svc.createFolder(nz(r.name()), r.parent())));
     }
 
     private void folderUpdate(Context ctx) {
@@ -92,15 +94,15 @@ final class NoteRoutes {
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         FolderReq r = ctx.bodyAsClass(FolderReq.class);
         ctx.json(Json.json(svc.transaction(() -> {
-            if (r.name() != null) svc.notes().renameFolder(id, r.name());
-            return svc.notes().moveFolder(id, r.parent());
+            if (r.name() != null) svc.renameFolder(id, r.name());
+            return svc.moveFolder(id, r.parent());
         })));
     }
 
     private void folderDelete(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        svc.notes().deleteFolder(id);
+        svc.deleteFolder(id);
         ctx.json(Map.of("ok", true, "id", id));
     }
 
@@ -109,28 +111,28 @@ final class NoteRoutes {
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         NoteReq r = ctx.bodyAsClass(NoteReq.class);
         if (r.tagId() != null)
-            ctx.json(Json.json(svc.notes().addTag(id, r.tagId())));
+            ctx.json(Json.json(svc.addNoteTag(id, r.tagId())));
         else
-            ctx.json(Json.json(svc.notes().setTags(id, r.tagIds())));
+            ctx.json(Json.json(svc.setNoteTags(id, r.tagIds())));
     }
 
     private void tagCreate(Context ctx) {
         Service svc = service.apply(ctx);
         TagReq r = ctx.bodyAsClass(TagReq.class);
-        ctx.status(HttpStatus.CREATED).json(Json.json(svc.notes().createTag(nz(r.name()), r.color())));
+        ctx.status(HttpStatus.CREATED).json(Json.json(svc.createTag(nz(r.name()), r.color())));
     }
 
     private void tagUpdate(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         TagReq r = ctx.bodyAsClass(TagReq.class);
-        ctx.json(Json.json(svc.notes().renameTag(id, r.name(), r.color())));
+        ctx.json(Json.json(svc.renameTag(id, r.name(), r.color())));
     }
 
     private void tagDelete(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        svc.notes().deleteTag(id);
+        svc.deleteTag(id);
         ctx.json(Map.of("ok", true, "id", id));
     }
 
@@ -144,22 +146,22 @@ final class NoteRoutes {
     private void filesList(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        svc.notes().byId(id);
-        ctx.json(Map.of("files", svc.files().list(id).stream().map(f -> fileJson(svc, f)).toList()));
+        svc.noteById(id);
+        ctx.json(Map.of("files", svc.listNoteFiles(id).stream().map(f -> fileJson(svc, f)).toList()));
     }
 
     private void fileUpload(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        svc.notes().byId(id);
+        svc.noteById(id);
         var up = ctx.uploadedFile("file");
         if (up == null || up.filename() == null || up.filename().isBlank())
             throw new Bad("arquivo: envie o campo multipart 'file'");
-        if (up.size() > ponto.model.Files.maxUpload()) throw new io.javalin.http.HttpResponseException(413, "Arquivo maior que o limite de upload.");
+        if (up.size() > Service.maxUpload()) throw new io.javalin.http.HttpResponseException(413, "Arquivo maior que o limite de upload.");
         if (up.size() == 0) throw new Bad("arquivo: arquivo vazio");
         NoteFile f;
         try {
-            f = svc.files().add(id, up.filename(), up.contentType(), up.content().readNBytes((int) ponto.model.Files.maxUpload() + 1));
+            f = svc.addNoteFile(id, up.filename(), up.contentType(), up.content().readNBytes((int) Service.maxUpload() + 1));
         } catch (java.io.IOException e) {
             throw new Problema("arquivo: " + e.getMessage());
         }
@@ -170,10 +172,10 @@ final class NoteRoutes {
         Service svc = service.apply(ctx);
         int noteId = ctx.pathParamAsClass("id", Integer.class).get();
         int fid = ctx.pathParamAsClass("fid", Integer.class).get();
-        svc.notes().byId(noteId);
-        NoteFile f = svc.files().must(fid);
+        svc.noteById(noteId);
+        NoteFile f = svc.mustNoteFile(fid);
         if (f.noteId() != noteId) throw new Bad("o arquivo " + fid + " não está na nota " + noteId);
-        byte[] data = svc.files().download(fid);
+        byte[] data = svc.downloadNoteFile(fid);
         String name = f.name().replace("\"", "");
         String enc = java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
         StringBuilder disp = new StringBuilder("attachment");
@@ -193,16 +195,16 @@ final class NoteRoutes {
         Service svc = service.apply(ctx);
         int noteId = ctx.pathParamAsClass("id", Integer.class).get();
         int fid = ctx.pathParamAsClass("fid", Integer.class).get();
-        svc.notes().byId(noteId);
-        NoteFile f = svc.files().must(fid);
+        svc.noteById(noteId);
+        NoteFile f = svc.mustNoteFile(fid);
         if (f.noteId() != noteId) throw new Bad("o arquivo " + fid + " não está na nota " + noteId);
-        svc.files().remove(fid);
+        svc.removeNoteFile(fid);
         ctx.json(Map.of("ok", true, "id", fid));
     }
 
     private static Map<String,Object> fileJson(Service svc, NoteFile f) {
         var json = Json.json(f);
-        json.put("state", svc.files().state(f.id()));
+        json.put("state", svc.noteFileState(f.id()));
         return json;
     }
     private static String nz(String s) { return s == null ? "" : s; }

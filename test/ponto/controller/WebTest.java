@@ -1,9 +1,11 @@
 package ponto.controller;
 
+import ponto.infra.Db;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ponto.TestDb;
 import ponto.model.*;
+import ponto.app.Service;
 import ponto.view.Json3;
 import java.nio.file.Path;
 import java.net.URI;
@@ -29,11 +31,11 @@ class WebTest {
     @Test void contextsErrorsRevisionAndExports()throws Exception {
         try(Db db=TestDb.open(dir)) {
             var service=new Service(db);
-            int a=service.companyId(),b=service.companies().create("B","","8").id();
+            int a=service.companyId(),b=service.createCompany("B","","8").id();
             Service sa=service.forCompany(a),sb=service.forCompany(b);
             var day=LocalDate.of(2026,5,20);
             var entry=sa.create(day,LocalTime.of(8,0),LocalTime.of(16,0),"web-A",false,false,false);
-            var note=sa.notes().create("A","primeiro");
+            var note=sa.createNote("A","primeiro");
             sb.create(day,LocalTime.of(9,0),LocalTime.of(10,0),"web-B",false,false,false);
             var app=new Web(service,0).application().start("127.0.0.1",0);
             base="http://127.0.0.1:"+app.port();
@@ -53,14 +55,14 @@ class WebTest {
                 assertEquals(404,call("GET","/api/entries/"+entry.id()+"?companyId="+b,null).statusCode());
                 assertEquals(404,call("DELETE","/api/notes/"+note.id()+"?companyId="+b,null).statusCode());
                 assertEquals(404,call("GET","/api/notes/"+note.id()+"/files/999/download?companyId="+b,null).statusCode());
-                assertEquals("primeiro",sa.notes().byId(note.id()).body());
+                assertEquals("primeiro",sa.noteById(note.id()).body());
                 var invalid=call("POST","/api/entries?companyId="+a,"{invalid");
                 assertEquals(400,invalid.statusCode());assertNotNull(invalid.headers().firstValue("X-Request-ID").orElse(null));
                 String path="/api/notes/"+note.id()+"?companyId="+a;
                 assertEquals(400,call("PUT",path,"{\"title\":\"A\",\"body\":\"sem revisão\"}").statusCode());
                 assertEquals(200,call("PUT",path,"{\"title\":\"A\",\"body\":\"segundo\",\"revision\":1}").statusCode());
                 assertEquals(409,call("PUT",path,"{\"title\":\"A\",\"body\":\"antigo\",\"revision\":1}").statusCode());
-                assertEquals("segundo",sa.notes().byId(note.id()).body());
+                assertEquals("segundo",sa.noteById(note.id()).body());
                 assertEquals(409,call("POST","/api/entries?companyId="+a,
                     "{\"dia\":\"2026-05-20\",\"tin\":\"09:00\",\"tout\":\"10:00\"}").statusCode());
                 try(var pool=Executors.newVirtualThreadPerTaskExecutor()) {

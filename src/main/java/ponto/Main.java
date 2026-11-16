@@ -2,8 +2,8 @@ package ponto;
 
 import ponto.controller.App;
 import ponto.controller.Web;
-import ponto.model.Db;
-import ponto.model.Service;
+import ponto.infra.Db;
+import ponto.app.Service;
 
 /**
  * Entry point.

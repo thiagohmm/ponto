@@ -5,7 +5,7 @@ import ponto.Problema;
 import ponto.model.KanbanCard;
 import ponto.model.KanbanCardFile;
 import ponto.model.KanbanColumn;
-import ponto.model.Service;
+import ponto.app.Service;
 import ponto.view.Json;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -40,15 +40,15 @@ final class KanbanRoutes {
     private void board(Context ctx) {
         Service svc = service.apply(ctx);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("columns", svc.kanban().columns().stream().map(Json::json).toList());
-        out.put("cards", svc.kanban().cards().stream().map(Json::json).toList());
+        out.put("columns", svc.kanbanColumns().stream().map(Json::json).toList());
+        out.put("cards", svc.kanbanCards().stream().map(Json::json).toList());
         ctx.json(out);
     }
 
     private void columnCreate(Context ctx) {
         Service svc = service.apply(ctx);
         ColumnReq r = ctx.bodyAsClass(ColumnReq.class);
-        KanbanColumn c = svc.kanban().createColumn(nz(r.name()));
+        KanbanColumn c = svc.createKanbanColumn(nz(r.name()));
         ctx.status(HttpStatus.CREATED).json(Json.json(c));
     }
 
@@ -56,7 +56,7 @@ final class KanbanRoutes {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         ColumnReq r = ctx.bodyAsClass(ColumnReq.class);
-        ctx.json(Json.json(svc.kanban().updateColumn(id, r.name(), r.position())));
+        ctx.json(Json.json(svc.updateKanbanColumn(id, r.name(), r.position())));
     }
 
     private void columnDelete(Context ctx) {
@@ -70,7 +70,7 @@ final class KanbanRoutes {
         Service svc = service.apply(ctx);
         CardReq r = ctx.bodyAsClass(CardReq.class);
         if (r.columnId() == null || r.columnId() < 1) throw new Bad("columnId obrigatório");
-        KanbanCard c = svc.kanban().createCard(nz(r.title()), nz(r.body()), r.columnId());
+        KanbanCard c = svc.createKanbanCard(nz(r.title()), nz(r.body()), r.columnId());
         ctx.status(HttpStatus.CREATED).json(Json.json(c));
     }
 
@@ -79,7 +79,7 @@ final class KanbanRoutes {
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         CardReq r = ctx.bodyAsClass(CardReq.class);
         if (r.revision() == null || r.revision() < 1) throw new Bad("revision obrigatória");
-        ctx.json(Json.json(svc.kanban().updateCard(id, nz(r.title()), nz(r.body()), nz(r.done()), r.revision())));
+        ctx.json(Json.json(svc.updateKanbanCard(id, nz(r.title()), nz(r.body()), nz(r.done()), r.revision())));
     }
 
     private void cardMove(Context ctx) {
@@ -88,20 +88,20 @@ final class KanbanRoutes {
         CardReq r = ctx.bodyAsClass(CardReq.class);
         if (r.columnId() == null || r.columnId() < 1) throw new Bad("columnId obrigatório");
         if (r.position() == null || r.position() < 0) throw new Bad("position obrigatória");
-        ctx.json(Json.json(svc.kanban().moveCard(id, r.columnId(), r.position())));
+        ctx.json(Json.json(svc.moveKanbanCard(id, r.columnId(), r.position())));
     }
 
     private void cardBlock(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         BlockReq r = ctx.bodyAsClass(BlockReq.class);
-        ctx.json(Json.json(svc.kanban().blockCard(id, r.kind(), r.reason())));
+        ctx.json(Json.json(svc.blockKanbanCard(id, r.kind(), r.reason())));
     }
 
     private void cardUnblock(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        ctx.json(Json.json(svc.kanban().unblockCard(id)));
+        ctx.json(Json.json(svc.unblockKanbanCard(id)));
     }
 
     private void cardDelete(Context ctx) {
@@ -114,22 +114,22 @@ final class KanbanRoutes {
     private void filesList(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        svc.kanban().byId(id);
-        ctx.json(Map.of("files", svc.files().listForCard(id).stream().map(f -> fileJson(svc, f)).toList()));
+        svc.kanbanCardById(id);
+        ctx.json(Map.of("files", svc.listCardFiles(id).stream().map(f -> fileJson(svc, f)).toList()));
     }
 
     private void fileUpload(Context ctx) {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
-        svc.kanban().byId(id);
+        svc.kanbanCardById(id);
         var up = ctx.uploadedFile("file");
         if (up == null || up.filename() == null || up.filename().isBlank())
             throw new Bad("arquivo: envie o campo multipart 'file'");
-        if (up.size() > ponto.model.Files.maxUpload()) throw new io.javalin.http.HttpResponseException(413, "Arquivo maior que o limite de upload.");
+        if (up.size() > Service.maxUpload()) throw new io.javalin.http.HttpResponseException(413, "Arquivo maior que o limite de upload.");
         if (up.size() == 0) throw new Bad("arquivo: arquivo vazio");
         KanbanCardFile f;
         try {
-            f = svc.files().addForCard(id, up.filename(), up.contentType(), up.content().readNBytes((int) ponto.model.Files.maxUpload() + 1));
+            f = svc.addCardFile(id, up.filename(), up.contentType(), up.content().readNBytes((int) Service.maxUpload() + 1));
         } catch (java.io.IOException e) {
             throw new Problema("arquivo: " + e.getMessage());
         }
@@ -140,10 +140,10 @@ final class KanbanRoutes {
         Service svc = service.apply(ctx);
         int cardId = ctx.pathParamAsClass("id", Integer.class).get();
         int fid = ctx.pathParamAsClass("fid", Integer.class).get();
-        svc.kanban().byId(cardId);
-        KanbanCardFile f = svc.files().mustCardFile(fid);
+        svc.kanbanCardById(cardId);
+        KanbanCardFile f = svc.mustCardFile(fid);
         if (f.cardId() != cardId) throw new Bad("o arquivo " + fid + " não está no cartão " + cardId);
-        byte[] data = svc.files().downloadCardFile(fid);
+        byte[] data = svc.downloadCardFile(fid);
         String name = f.name().replace("\"", "");
         String enc = java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
         StringBuilder disp = new StringBuilder("attachment");
@@ -163,16 +163,16 @@ final class KanbanRoutes {
         Service svc = service.apply(ctx);
         int cardId = ctx.pathParamAsClass("id", Integer.class).get();
         int fid = ctx.pathParamAsClass("fid", Integer.class).get();
-        svc.kanban().byId(cardId);
-        KanbanCardFile f = svc.files().mustCardFile(fid);
+        svc.kanbanCardById(cardId);
+        KanbanCardFile f = svc.mustCardFile(fid);
         if (f.cardId() != cardId) throw new Bad("o arquivo " + fid + " não está no cartão " + cardId);
-        svc.files().removeCardFile(fid);
+        svc.removeCardFile(fid);
         ctx.json(Map.of("ok", true, "id", fid));
     }
 
     private static Map<String, Object> fileJson(Service svc, KanbanCardFile f) {
         var json = Json.json(f);
-        json.put("state", svc.files().cardState(f.id()));
+        json.put("state", svc.cardFileState(f.id()));
         return json;
     }
 

@@ -1,7 +1,8 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Problema;
 
+import ponto.model.*;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -16,7 +17,7 @@ import java.util.Map;
 /**
  * Per-company kanban board. Shares Service's lock: the JDBC connection is not thread-safe.
  */
-public final class Kanban {
+public final class KanbanStore {
 
     private static final String COL_COLS = "id, name, position, crea";
     private static final String CARD_COLS = "id, column_id, title, body, done, position, revision, crea, upd";
@@ -24,7 +25,7 @@ public final class Kanban {
     private final Db db;
     private final Object lock;
 
-    Kanban(Db db, Object lock) { this.db = db; this.lock = lock; }
+    public KanbanStore(Db db, Object lock) { this.db = db; this.lock = lock; }
 
     private int cid() { return db.company(); }
 
@@ -298,7 +299,7 @@ public final class Kanban {
         return normalizeName(name).equals("feito");
     }
 
-    static boolean protectedColumn(String name) {
+    public static boolean protectedColumn(String name) {
         String n = normalizeName(name);
         return n.equals("a fazer") || n.equals("em andamento") || n.equals("feito");
     }

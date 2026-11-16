@@ -1,8 +1,10 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Bad;
 import ponto.Problema;
 
+import ponto.model.*;
+import ponto.app.Service;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -15,14 +17,14 @@ import java.util.List;
  * Workplaces in the same PostgreSQL database. Shares Service's lock: the JDBC
  * connection is not thread-safe.
  */
-public final class Companies {
+public final class CompaniesStore {
 
     private static final String COLS = "id, name, off, daily, crea";
 
     private final Db db;
     private final Object lock;
 
-    Companies(Db db, Object lock) { this.db = db; this.lock = lock; }
+    public CompaniesStore(Db db, Object lock) { this.db = db; this.lock = lock; }
 
     public List<Company> list() {
         synchronized (lock) { return listLocked(); }

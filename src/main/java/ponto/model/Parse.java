@@ -173,7 +173,7 @@ public final class Parse {
     private static int num(String digitsOnly) { return (int) digits(digitsOnly); }
 
     /** Free text: only trimmed, never rejected. */
-    static String text(String raw) { return raw.strip(); }
+    public static String text(String raw) { return raw.strip(); }
 
     // ---- helpers ---------------------------------------------------------
 

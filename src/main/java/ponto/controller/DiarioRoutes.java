@@ -1,8 +1,8 @@
 package ponto.controller;
 
 import ponto.Bad;
-import ponto.model.Assist;
-import ponto.model.Service;
+import ponto.infra.Assist;
+import ponto.app.Service;
 
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -38,8 +38,7 @@ final class DiarioRoutes {
         ResumoReq r = ctx.bodyAsClass(ResumoReq.class);
         LocalDate dia = Service.parseDate(r == null ? null : r.dia(), ponto.model.Time.today());
         if (dia == null) throw new Bad("data obrigatória");
-        Map<String, Object> dig = svc.gerarResumoDiario(dia, assist);
-        ctx.status(HttpStatus.OK).json(dig);
+        ctx.status(HttpStatus.OK).json(svc.gerarResumoDiario(dia, assist));
     }
 
     record ResumoReq(String dia) { }

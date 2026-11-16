@@ -189,6 +189,9 @@ export const api = {
     }
     return r.blob();
   },
+  justCategories: () =>
+    authReq<{ categories: { code: string; label: string; synonyms: string[]; phrases: string[] }[] }>(
+      "/just-categories"),
   assistStatus: () => req<AssistStatus>("/assist/status"),
   assistNoteTags: (body: { title: string; body: string; tags: { id: number; name: string }[] }) =>
     req<AssistNoteTags>("/assist/note-tags", { method: "POST", body: JSON.stringify(body) }),

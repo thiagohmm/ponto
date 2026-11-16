@@ -12,7 +12,7 @@ import ponto.model.KanbanColumn;
 import ponto.model.Note;
 import ponto.model.NoteFile;
 import ponto.model.Report;
-import ponto.model.Service;
+import ponto.app.Service;
 import ponto.model.Str;
 import ponto.model.Tag;
 

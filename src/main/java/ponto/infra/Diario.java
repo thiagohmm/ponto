@@ -1,7 +1,8 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Problema;
 
+import ponto.model.*;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -15,22 +16,22 @@ import java.util.Map;
  * Day digest: aggregates ponto + notes + kanban activity for one day and
  * persists the AI (or fallback) summary in {@code day_digest}.
  */
-final class Diario {
+public final class Diario {
     private final Db db;
     private final Object lock;
     private final Repo repo;
     private final Holidays calendar;
 
-    Diario(Db db, Object lock, Repo repo, Holidays calendar) {
+    public Diario(Db db, Object lock, Repo repo, Holidays calendar) {
         this.db = db;
         this.lock = lock;
         this.repo = repo;
         this.calendar = calendar;
     }
 
-    record Digest(String diaIso, String summary, String facts, String model, String crea, String upd) { }
+    public record Digest(String diaIso, String summary, String facts, String model, String crea, String upd) { }
 
-    Map<String, Object> snapshot(LocalDate dia, int dailyMins, boolean falta, boolean normal) {
+    public Map<String, Object> snapshot(LocalDate dia, int dailyMins, boolean falta, boolean normal) {
         synchronized (lock) {
             String iso = Str.iso(dia);
             List<Entry> entries = repo.on(dia);
@@ -86,7 +87,7 @@ final class Diario {
     }
 
     /** Build Portuguese facts text used as AI input (and stored with the digest). */
-    String factsText(Map<String, Object> snap, List<Entry> entries) {
+    public String factsText(Map<String, Object> snap, List<Entry> entries) {
         StringBuilder sb = new StringBuilder();
         sb.append("Dia ").append(snap.get("dia")).append(" (").append(snap.get("d3")).append(")");
         Object holiday = snap.get("holiday");
@@ -160,7 +161,7 @@ final class Diario {
         return sb.toString().trim();
     }
 
-    Digest upsert(LocalDate dia, String summary, String facts, String model) {
+    public Digest upsert(LocalDate dia, String summary, String facts, String model) {
         synchronized (lock) {
             String iso = Str.iso(dia);
             String sum = summary == null ? "" : summary.trim();
@@ -206,7 +207,7 @@ final class Diario {
         }
     }
 
-    static Map<String, Object> digestMap(Digest d) {
+    public static Map<String, Object> digestMap(Digest d) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("diaIso", d.diaIso());
         m.put("summary", d.summary());
@@ -237,7 +238,7 @@ final class Diario {
     }
 
     /** Entries of a day for facts (caller already holds the lock). */
-    List<Entry> entriesOf(LocalDate dia) { return repo.on(dia); }
+    public List<Entry> entriesOf(LocalDate dia) { return repo.on(dia); }
 
     private List<Map<String, Object>> notesOn(String iso) {
         List<Map<String, Object>> out = new ArrayList<>();

@@ -9,10 +9,10 @@ import java.util.List;
 /** Small text/number formatting helpers (pt-BR, ASCII-safe widths). */
 public final class Str {
 
-    static final String[] D3 = {"dom", "seg", "ter", "qua", "qui", "sex", "sáb"};
-    static final String[] M3 = {"jan", "fev", "mar", "abr", "mai", "jun",
+    public static final String[] D3 = {"dom", "seg", "ter", "qua", "qui", "sex", "sáb"};
+    public static final String[] M3 = {"jan", "fev", "mar", "abr", "mai", "jun",
                                 "jul", "ago", "set", "out", "nov", "dez"};
-    static final String PAD = "                                                  ";
+    public static final String PAD = "                                                  ";
 
     /** A time or an empty string when null. */
     public static String t(LocalTime v) { return v == null ? "" : p2(v.getHour()) + ":" + p2(v.getMinute()); }
@@ -23,7 +23,7 @@ public final class Str {
     }
 
     /** A date as dd mmm (e.g. "05 out"). */
-    static String dm(LocalDate v) {
+    public static String dm(LocalDate v) {
         return v == null ? "" : p2(v.getDayOfMonth()) + " " + M3[v.getMonthValue() - 1];
     }
 
@@ -33,19 +33,19 @@ public final class Str {
     }
 
     /** Month label "oct/2026". */
-    static String mo(LocalDate v) {
+    public static String mo(LocalDate v) {
         return v == null ? "" : M3[v.getMonthValue() - 1] + "/" + v.getYear();
     }
 
     /** Weekday from the ISO date string stored in the db. */
-    static String d3(String iso) {
+    public static String d3(String iso) {
         try { return D3[LocalDate.parse(iso).getDayOfWeek().getValue() % 7]; }
         catch (RuntimeException ignored) { return ""; }
     }
 
     public static String d3(LocalDate v) { return v == null ? "" : D3[v.getDayOfWeek().getValue() % 7]; }
 
-    static Month month(int oneBased) { return Month.of(oneBased); }
+    public static Month month(int oneBased) { return Month.of(oneBased); }
 
     /** Any number without locale surprises (ids, counts). */
     public static String s(long v) { return "" + v; }
@@ -54,7 +54,7 @@ public final class Str {
     public static String n(double v) { return String.format(java.util.Locale.ROOT, "%.2f", v); }
 
     /** Minutes since midnight. */
-    static int tod(LocalTime v) { return v.getHour() * 60 + v.getMinute(); }
+    public static int tod(LocalTime v) { return v.getHour() * 60 + v.getMinute(); }
 
     private static String p2(int v) { return v < 10 ? "0" + v : "" + v; }
     private static String p4(int v) { return v < 10 ? "000" + v : v < 100 ? "00" + v : v < 1000 ? "0" + v : "" + v; }
@@ -63,7 +63,7 @@ public final class Str {
     public static String fix(String s, int w) { return s.length() >= w ? s : s + PAD.substring(0, w - s.length()); }
 
     /** Left-padded cell. */
-    static String rfix(String s, int w) { return s.length() >= w ? s : PAD.substring(0, w - s.length()) + s; }
+    public static String rfix(String s, int w) { return s.length() >= w ? s : PAD.substring(0, w - s.length()) + s; }
 
     /** Cut to width, marking overflow with an ellipsis. */
     public static String cut(String s, int w) { return s.length() <= w ? s : s.substring(0, Math.max(0, w - 1)) + "…"; }
@@ -92,5 +92,5 @@ public final class Str {
     }
 
     /** Capitalise the first letter. */
-    static String up(String s) { return s.isEmpty() ? s : s.substring(0, 1).toUpperCase() + s.substring(1); }
+    public static String up(String s) { return s.isEmpty() ? s : s.substring(0, 1).toUpperCase() + s.substring(1); }
 }

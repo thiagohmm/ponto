@@ -1,5 +1,6 @@
 package ponto.model;
 
+import ponto.infra.Assist;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 

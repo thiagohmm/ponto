@@ -1,14 +1,14 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bars } from "../ui/Bars";
-import { api, type EntrySave } from "../api";
-import { useCompany } from "../Company";
-import { JUST_CATEGORIES, matchesJustCategory, type JustCategoryCode } from "../justTaxonomy";
-import { nowHm } from "../mask";
+import { api } from "../api";
+import { JUST_CATEGORIES, loadJustCategories, matchesJustCategory, type JustCategoryCode } from "../justTaxonomy";
 import { useConfirm } from "../ui/Confirm";
 import { isEscuro, toggleTema } from "../theme";
-import type { Bank, BankDay, DayInfo, Entry, Home } from "../types";
+import type { BankDay, Entry } from "../types";
 import { ApiError } from "../types";
+import { useHomeData } from "./useHomeData";
+import { useQuickPunch } from "./useQuickPunch";
 
 /** "YYYY-MM-DD" do relógio local — dia da batida rápida. */
 function todayIso(): string {
@@ -19,11 +19,6 @@ function todayIso(): string {
     String(d.getDate()).padStart(2, "0"),
   ].join("-");
 }
-
-type PunchMode =
-  | { kind: "in" }
-  | { kind: "out"; open: Entry }
-  | { kind: "ambiguous"; opens: Entry[]; note: string };
 
 function minsOf(e: Entry): number {
   if (!e.closed || !e.hours) return 0;
@@ -65,20 +60,6 @@ function otCap(mins: number): string {
 }
 
 /** "2026-09" para o seletor, a partir de mês ou dia (ISO ou BR). */
-function mesFromDia(d: string): string {
-  const t = d.trim();
-  let y = "", m = "";
-  const a = t.match(/^(\d{1,2})\/(\d{4})$/);                 // mm/yyyy
-  const b = t.match(/^(\d{4})-(\d{1,2})$/);                   // yyyy-mm
-  const c = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);       // dd/mm/yyyy
-  const e = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);         // yyyy-mm-dd
-  if (a) { m = a[1]; y = a[2]; }
-  else if (b) { y = b[1]; m = b[2]; }
-  else if (c) { m = c[2]; y = c[3]; }
-  else if (e) { y = e[1]; m = e[2]; }
-  else return "";
-  return y + "-" + m.padStart(2, "0");
-}
 
 const CHART_Y_WIDTH = 40;
 
@@ -89,10 +70,6 @@ function mesPickerAtual(): string {
 }
 
 /** Último dia do mês "YYYY-MM" em ISO. */
-function lastDiaIso(ym: string): string {
-  const [y, m] = ym.split("-").map(Number);
-  return ym + "-" + String(new Date(y, m, 0).getDate()).padStart(2, "0");
-}
 
 type DayGroup = {
   key: string;
@@ -136,79 +113,24 @@ function kindLabel(d: BankDay): string {
 
 export function HomePage() {
   const confirm = useConfirm();
-  const { active } = useCompany();
-  const request = useRef(0);
-  const [loading, setLoading] = useState(true);
-  const [home, setHome] = useState<Home | null>(null);
-  const [rows, setRows] = useState<Entry[]>([]);
-  const [total, setTotal] = useState(0);
-  const [filterDur, setFilterDur] = useState("0:00");
-  const [filterHours, setFilterHours] = useState("0.00");
-  const [filterOpen, setFilterOpen] = useState(0);
-  const [filterOt, setFilterOt] = useState(0);
-  const [faltas, setFaltas] = useState<Set<string>>(new Set());
-  const [normais, setNormais] = useState<Set<string>>(new Set());
-  const [bank, setBank] = useState<Bank | null>(null);
-  const [todayDay, setTodayDay] = useState<DayInfo | null>(null);
-  const [clock, setClock] = useState(nowHm);
-  const [msg, setMsg] = useState("");
-  const [punchMsg, setPunchMsg] = useState("");
+  const data = useHomeData();
+  const {
+    loading, home, rows, total, filterDur, filterHours, filterOpen, filterOt,
+    faltas, normais, bank, todayDay,
+    clock, setClock, q, setQ, dia, setDia, de, setDe, ate, setAte, err, setErr, load,
+  } = data;
+  const { punchMode, punch, busy: punchBusy, punchMsg, msg, setMsg } = useQuickPunch({
+    home, todayDay, rows, setClock, setErr, reload: () => load(),
+  });
+  const [actionBusy, setBusy] = useState(false);
+  const busy = punchBusy || actionBusy;
   const [sel, setSel] = useState("");
-  const [q, setQ] = useState("");
   const [justCat, setJustCat] = useState<JustCategoryCode | "">("");
-  const [dia, setDia] = useState("");            // texto (dia/mês/ano): sobrepõe a faixa
-  const [de, setDe] = useState(mesPickerAtual);  // faixa "do mês" até
-  const [ate, setAte] = useState(mesPickerAtual);
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
   const [escuro, setEscuro] = useState(() => isEscuro());
-
-  async function load(nextQ = q, nextDia = dia, nextDe = de, nextAte = ate) {
-    const current = ++request.current;
-    setLoading(true);
-    setErr("");
-    // faixa ativa quando não há filtro de texto; pickers travam de <= até no estado
-    const useRange = !nextDia && nextDe && nextAte;
-    const deV = useRange && nextAte < nextDe ? nextAte : nextDe;
-    const ateV = useRange && nextAte < nextDe ? nextDe : nextAte;
-    const hoje = todayIso();
-    try {
-      const [h, list, bk, day] = await Promise.all([
-        api.home(),
-        useRange
-          ? api.entriesRange(deV + "-01", lastDiaIso(ateV), 500, nextQ)
-          : api.entries({ q: nextQ, dia: nextDia, n: 500 }),
-        api.bank(useRange ? ateV : (mesFromDia(nextDia) || undefined)),
-        api.day(hoje),
-      ]);
-      if (current !== request.current) return;
-      setHome(h);
-      setRows(list.entries);
-      setTotal(list.total);
-      setFilterDur(list.dur);
-      setFilterHours(list.hours);
-      setFilterOpen(list.open);
-      setFilterOt(list.overtime);
-      setFaltas(new Set(list.faltas));
-      setNormais(new Set(list.normais));
-      setBank(bk);
-      setTodayDay(day);
-      setClock(nowHm());
-    } catch (e) {
-      if (current === request.current) setErr(e instanceof Error ? e.message : "Não foi possível carregar os registros.");
-    } finally { if (current === request.current) setLoading(false); }
-  }
-
-  useEffect(() => { void load(); }, [active?.id]);
+  const [justCats, setJustCats] = useState(JUST_CATEGORIES);
 
   useEffect(() => {
-    const tick = window.setInterval(() => setClock(nowHm()), 30_000);
-    const onFocus = () => setClock(nowHm());
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(tick);
-      window.removeEventListener("focus", onFocus);
-    };
+    void loadJustCategories().then((cats) => setJustCats([...cats]));
   }, []);
 
   const visible = useMemo(() => {
@@ -218,82 +140,6 @@ export function HomePage() {
   const groups = useMemo(() => groupByDay(visible), [visible]);
   const pageMins = useMemo(() => visible.reduce((s, e) => s + minsOf(e), 0), [visible]);
   const selDay = bank?.days.find((d) => d.diaIso === sel) ?? null;
-
-  const punchMode: PunchMode = useMemo(() => {
-    const todayOpens = todayDay?.open ?? [];
-    const openCount = home?.open ?? 0;
-    if (todayOpens.length === 1) return { kind: "out", open: todayOpens[0] };
-    if (todayOpens.length > 1) {
-      return {
-        kind: "ambiguous",
-        opens: todayOpens,
-        note: todayOpens.length + " abertos hoje — feche no formulário",
-      };
-    }
-    if (openCount > 0) {
-      const fromList = rows.filter((e) => e.open);
-      return {
-        kind: "ambiguous",
-        opens: fromList,
-        note: openCount === 1
-          ? "Há 1 aberto de outro dia — edite no formulário"
-          : "Há " + openCount + " abertos de outro dia — edite no formulário",
-      };
-    }
-    return { kind: "in" };
-  }, [todayDay, home, rows]);
-
-  async function createPunch(body: EntrySave, confirmMidnight = false, confirmOverlap = false): Promise<Entry> {
-    try {
-      return await api.create({ ...body, confirmMidnight, confirmOverlap });
-    } catch (e) {
-      if (e instanceof ApiError && e.need === "midnight") {
-        if (!(await confirm({
-          title: "Virada de meia-noite",
-          message: e.message + " — confirmar mesmo assim?",
-          ok: "Confirmar",
-          tone: "accent",
-        }))) throw e;
-        return createPunch(body, true, confirmOverlap);
-      }
-      if (e instanceof ApiError && e.need === "overlap") {
-        if (!(await confirm({
-          title: "Sobreposição",
-          message: e.message + " — confirmar mesmo assim?",
-          ok: "Confirmar",
-          tone: "accent",
-        }))) throw e;
-        return createPunch(body, confirmMidnight, true);
-      }
-      throw e;
-    }
-  }
-
-  async function punch() {
-    if (busy || punchMode.kind === "ambiguous") return;
-    const hoje = todayIso();
-    const hm = nowHm();
-    setBusy(true);
-    setErr("");
-    setPunchMsg("");
-    setMsg("");
-    try {
-      if (punchMode.kind === "in") {
-        const e = await createPunch({ dia: hoje, tin: hm, tout: "", just: "", closeOpen: false });
-        setPunchMsg("Entrada " + e.tin + " registrada (#" + e.id + ")");
-      } else {
-        const e = await createPunch({ dia: hoje, tin: "", tout: hm, just: "", closeOpen: true });
-        setPunchMsg("Saída " + e.tout + " — fechou #" + e.id);
-      }
-      setClock(nowHm());
-      await load();
-    } catch (e) {
-      if (e instanceof ApiError && e.need) return; // cancelou a confirmação
-      setErr(e instanceof Error ? e.message : "não bateu");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   /** Clique numa barra do gráfico diário: filtra a lista por esse dia. */
   function onChartDayClick(d: BankDay) {
@@ -419,7 +265,7 @@ export function HomePage() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void load(); }} /></label>
         <div className="just-cats" role="group" aria-label="Categorias de justificativa">
-          {JUST_CATEGORIES.filter((c) => c.code !== "outro").map((c) => (
+          {justCats.filter((c) => c.code !== "outro").map((c) => (
             <button
               key={c.code}
               type="button"
@@ -500,7 +346,7 @@ export function HomePage() {
         <p className="muted">
           {visible.length} na página{visible.length !== total ? " de " + total : ""}
           {" · "}{hm(pageMins)} ({dec(pageMins)} h)
-          {justCat ? " · categoria " + (JUST_CATEGORIES.find((c) => c.code === justCat)?.label ?? justCat) : ""}
+          {justCat ? " · categoria " + (justCats.find((c) => c.code === justCat)?.label ?? justCat) : ""}
         </p>
         <div className="table-scroll"><table>
           <thead>

@@ -1,7 +1,8 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Problema;
 
+import ponto.model.*;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -119,7 +120,7 @@ public final class Repo {
     public List<Entry> on(LocalDate d) { return between(d, d); }
 
     /** Ids in range, most recent first (used by the list/summary tables). */
-    List<Entry> all() {
+    public List<Entry> all() {
         return rows("SELECT " + COLS + " FROM ponto WHERE company_id = ?" + ORDER, cid());
     }
 

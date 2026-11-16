@@ -1,6 +1,6 @@
 package ponto.controller;
 
-import ponto.model.Assist;
+import ponto.infra.Assist;
 import ponto.model.JustCategory;
 
 import io.javalin.Javalin;

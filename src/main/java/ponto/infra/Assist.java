@@ -1,5 +1,6 @@
-package ponto.model;
+package ponto.infra;
 
+import ponto.model.*;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -160,7 +161,7 @@ public final class Assist {
     }
 
     /** Package-visible for unit tests. */
-    static DaySummary parseDaySummary(String raw) {
+    public static DaySummary parseDaySummary(String raw) {
         if (raw == null || raw.isBlank()) return null;
         String json = extractJson(raw);
         try {
@@ -181,7 +182,7 @@ public final class Assist {
         }
     }
 
-    static DaySummary fallbackDaySummary(String facts) {
+    public static DaySummary fallbackDaySummary(String facts) {
         String[] lines = facts.split("\n");
         List<String> bullets = new ArrayList<>();
         for (String line : lines) {
@@ -216,7 +217,7 @@ public final class Assist {
     }
 
     /** Package-visible for unit tests without HTTP. */
-    static List<Integer> parseTagIds(String raw, Set<Integer> allowed) {
+    public static List<Integer> parseTagIds(String raw, Set<Integer> allowed) {
         if (raw == null || raw.isBlank() || allowed == null || allowed.isEmpty()) return List.of();
         String json = extractJson(raw);
         List<Integer> out = new ArrayList<>();
@@ -242,7 +243,7 @@ public final class Assist {
         return List.copyOf(out);
     }
 
-    static JustSuggestion parseJust(String raw, String original) {
+    public static JustSuggestion parseJust(String raw, String original) {
         JustCategory fallback = guessCategory(original);
         if (raw == null || raw.isBlank())
             return new JustSuggestion(fallback.code(), fallback.phrases());
@@ -266,7 +267,7 @@ public final class Assist {
         }
     }
 
-    static JustCategory guessCategory(String text) {
+    public static JustCategory guessCategory(String text) {
         String n = text == null ? "" : text.toLowerCase(Locale.ROOT);
         for (JustCategory c : JustCategory.values()) {
             if (c == JustCategory.OUTRO) continue;

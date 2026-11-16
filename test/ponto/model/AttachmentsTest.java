@@ -1,8 +1,12 @@
 package ponto.model;
 
+import ponto.app.Service;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ponto.Problema;
+import ponto.infra.Db;
+import ponto.infra.Files;
 import ponto.StorageFailure;
 import ponto.TestDb;
 import java.nio.file.Path;
@@ -32,7 +36,7 @@ class AttachmentsTest {
         String url=TestDb.freshUrl();Store store=new Store();store.fail=true;
         int note;
         try(Db db=Db.open(dir,url);Files files=new Files(db,db.lock,store)){
-            note=new Service(db).notes().create("nota","").id();
+            note=new Service(db).createNote("nota","").id();
             assertThrows(StorageFailure.class,()->files.add(note,"teste.txt","text/plain","abc".getBytes()));
             assertEquals(1,files.pending());
             assertEquals("failed",files.state(files.list(note).getFirst().id()));
@@ -56,11 +60,11 @@ class AttachmentsTest {
         Store store=new Store();store.entered=new CountDownLatch(1);store.release=new CountDownLatch(1);
         try(Db db=TestDb.open(dir);Files files=new Files(db,db.lock,store);
             var pool=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            var service=new Service(db);var note=service.notes().create("nota","");
+            var service=new Service(db);var note=service.createNote("nota","");
             var upload=pool.submit(()->files.add(note.id(),"teste","text/plain",new byte[]{1}));
             assertTrue(store.entered.await(3,TimeUnit.SECONDS));
             assertEquals(0,pool.submit(() -> { return service.count(); }).get(1,TimeUnit.SECONDS));
-            db.transaction(()->{files.scheduleNoteDeletion(note.id());service.notes().delete(note.id());return null;});
+            db.transaction(()->{files.scheduleNoteDeletion(note.id());service.deleteNote(note.id());return null;});
             store.release.countDown();
             assertThrows(java.util.concurrent.ExecutionException.class,upload::get);
             files.reconcile();
@@ -70,12 +74,12 @@ class AttachmentsTest {
     @Test void noteAndCleanupIntentCommitTogether() {
         Store store=new Store();
         try(Db db=TestDb.open(dir);Files files=new Files(db,db.lock,store)) {
-            var service=new Service(db);var note=service.notes().create("nota","");
+            var service=new Service(db);var note=service.createNote("nota","");
             var f=files.add(note.id(),"ok","text/plain",new byte[]{2});
             assertThrows(Problema.class,()->db.transaction(()->{
-                files.scheduleNoteDeletion(note.id());service.notes().delete(note.id());throw new Problema("rollback");
+                files.scheduleNoteDeletion(note.id());service.deleteNote(note.id());throw new Problema("rollback");
             }));
-            assertEquals(note.id(),service.notes().byId(note.id()).id());
+            assertEquals(note.id(),service.noteById(note.id()).id());
             assertEquals(f.id(),files.list(note.id()).getFirst().id());assertEquals(0,files.pending());
         }
     }
@@ -84,7 +88,7 @@ class AttachmentsTest {
         Store store = new Store();
         try (Db db = TestDb.open(dir); Files files = new Files(db, db.lock, store)) {
             Service s = new Service(db);
-            int cardId = s.kanban().createCard("T", "", s.kanban().columns().getFirst().id()).id();
+            int cardId = s.createKanbanCard("T", "", s.kanbanColumns().getFirst().id()).id();
             var f = files.addForCard(cardId, "prova.txt", "text/plain", "ok".getBytes());
             assertEquals("ready", files.cardState(f.id()));
             assertEquals(1, files.listForCard(cardId).size());

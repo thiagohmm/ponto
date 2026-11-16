@@ -1,10 +1,11 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Bad;
 import ponto.NotFound;
 import ponto.Problema;
 import ponto.StorageFailure;
 
+import ponto.model.*;
 import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -33,7 +34,7 @@ public final class Files implements AutoCloseable {
     private volatile boolean storageReady;
     private volatile long lastHealth;
 
-    Files(Db db, Object lock, ObjectStore s3) { this.db = db; this.lock = lock; this.s3 = s3; }
+    public Files(Db db, Object lock, ObjectStore s3) { this.db = db; this.lock = lock; this.s3 = s3; }
 
     public static long maxUpload() {
         String raw = System.getenv().getOrDefault("PONTO_UPLOAD_MIB", "20");
@@ -225,12 +226,12 @@ public final class Files implements AutoCloseable {
     }
 
     /** Called inside the note-deletion transaction; the independent queue survives cascade. */
-    void scheduleNoteDeletion(int noteId) {
+    public void scheduleNoteDeletion(int noteId) {
         for (NoteFile f : list(noteId)) queueDelete(f.key());
     }
 
     /** Called inside the card-deletion transaction; the independent queue survives cascade. */
-    void scheduleCardDeletion(int cardId) {
+    public void scheduleCardDeletion(int cardId) {
         for (KanbanCardFile f : listForCard(cardId)) queueDelete(f.key());
     }
 

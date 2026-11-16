@@ -1,8 +1,9 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Bad;
 import ponto.Problema;
 
+import ponto.model.*;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -17,7 +18,7 @@ import java.util.Map;
  * Markdown notes in the same PostgreSQL database, different table.
  * Shares Service's lock: the JDBC connection is not thread-safe.
  */
-public final class Notes {
+public final class NotesStore {
 
     private static final String COLS = "id, title, body, crea, upd, folder_id, revision";
     private static final String ORDER = " ORDER BY upd DESC, id DESC";
@@ -31,81 +32,56 @@ public final class Notes {
     private final Db db;
     private final Object lock;
 
-    Notes(Db db, Object lock) { this.db = db; this.lock = lock; }
+    public NotesStore(Db db, Object lock) { this.db = db; this.lock = lock; }
 
     private int cid() { return db.company(); }
 
+    /**
+     * List notes of the active company. Empty {@code q} returns all.
+     * Non-empty {@code q}: every whitespace-separated word must appear in the
+     * note haystack (title, body, tag names, attachment names), case/accent
+     * insensitive — same rule as the web client matcher. Filtering runs in SQL.
+     */
     public List<Note> list(String q) {
         synchronized (lock) {
             int c = cid();
-            List<Note> all = attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?" + ORDER, c));
             String needle = q == null ? "" : q.trim();
-            if (needle.isEmpty()) return all;
-            // Same rule as the client matcher: every word must appear in the note's
-            // haystack (title, body, tag names, attachment names), case/accent insensitive.
-            Map<Integer, String> tagNames = tagNamesById(all);
-            Map<Integer, List<String>> fileNames = fileNamesByNote(all);
-            String[] words = needle.split("\\s+");
-            List<Note> out = new ArrayList<>();
-            for (Note n : all)
-                if (matchesWords(n, tagNames, fileNames, words)) out.add(n);
-            return out;
-        }
-    }
+            if (needle.isEmpty())
+                return attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?" + ORDER, c));
 
-    private static boolean matchesWords(Note n, Map<Integer, String> tagNames,
-                                        Map<Integer, List<String>> fileNames, String[] words) {
-        StringBuilder hay = new StringBuilder(n.title()).append(' ').append(n.body());
-        for (int tagId : n.tagIds()) {
-            String name = tagNames.get(tagId);
-            if (name != null) hay.append(' ').append(name);
+            // Folded haystack: title + body + tag names + attachment names.
+            String hay = """
+                    translate(lower(
+                      coalesce(n.title,'') || ' ' || coalesce(n.body,'') || ' ' ||
+                      coalesce((SELECT string_agg(t.name, ' ') FROM note_tag nt
+                                JOIN tag t ON t.id = nt.tag_id WHERE nt.note_id = n.id), '') || ' ' ||
+                      coalesce((SELECT string_agg(f.name, ' ') FROM note_file f
+                                WHERE f.note_id = n.id), '')
+                    ), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')""";
+
+            StringBuilder sql = new StringBuilder(
+                    "SELECT n.id, n.title, n.body, n.crea, n.upd, n.folder_id, n.revision "
+                            + "FROM note n WHERE n.company_id = ?");
+            List<Object> args = new ArrayList<>();
+            args.add(c);
+            for (String w : needle.split("\\s+")) {
+                String term = fold(w);
+                if (term.isEmpty()) continue;
+                sql.append(" AND ").append(hay).append(" LIKE ?");
+                args.add("%" + term + "%");
+            }
+            sql.append(" ORDER BY n.upd DESC, n.id DESC");
+            return attachTags(rows(sql.toString(), args.toArray()));
         }
-        List<String> files = fileNames.get(n.id());
-        if (files != null) for (String f : files) hay.append(' ').append(f);
-        String norm = fold(hay.toString());
-        for (String w : words) {
-            String term = fold(w);
-            if (!term.isEmpty() && !norm.contains(term)) return false;
-        }
-        return true;
     }
 
     /** Lowercase and strip diacritics so "ação" matches "acao". */
-    private static String fold(String s) {
+    static String fold(String s) {
         return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
             .replaceAll("[\\u0300-\\u036f]", "").toLowerCase();
     }
 
-    private Map<Integer, String> tagNamesById(List<Note> notes) {
-        var ids = new java.util.LinkedHashSet<Integer>();
-        for (Note n : notes) ids.addAll(n.tagIds());
-        if (ids.isEmpty()) return Map.of();
-        String in = String.join(",", ids.stream().map(i -> "?").toList());
-        Map<Integer, String> out = new LinkedHashMap<>();
-        try (var q = prep("SELECT id, name FROM tag WHERE id IN (" + in + ")")) {
-            int i = 1;
-            for (Integer id : ids) q.setInt(i++, id);
-            try (var rs = q.executeQuery()) {
-                while (rs.next()) out.put(rs.getInt("id"), nz(rs.getString("name")));
-            }
-        } catch (SQLException e) { throw new Problema(clean(e)); }
-        return out;
-    }
 
-    private Map<Integer, List<String>> fileNamesByNote(List<Note> notes) {
-        if (notes.isEmpty()) return Map.of();
-        String in = String.join(",", notes.stream().map(n -> "?").toList());
-        Map<Integer, List<String>> out = new LinkedHashMap<>();
-        try (var q = prep("SELECT note_id, name FROM note_file WHERE note_id IN (" + in + ") ORDER BY id")) {
-            int i = 1;
-            for (Note n : notes) q.setInt(i++, n.id());
-            try (var rs = q.executeQuery()) {
-                while (rs.next())
-                    out.computeIfAbsent(rs.getInt("note_id"), k -> new ArrayList<>()).add(nz(rs.getString("name")));
-            }
-        } catch (SQLException e) { throw new Problema(clean(e)); }
-        return out;
-    }
 
     public Note byId(int id) {
         synchronized (lock) {

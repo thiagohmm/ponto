@@ -1,7 +1,8 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Problema;
 
+import ponto.model.*;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;

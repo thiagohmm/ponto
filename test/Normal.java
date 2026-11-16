@@ -1,7 +1,7 @@
 package ponto;
 
-import ponto.model.Db;
-import ponto.model.Service;
+import ponto.infra.Db;
+import ponto.app.Service;
 
 import java.time.LocalDate;
 import java.time.LocalTime;

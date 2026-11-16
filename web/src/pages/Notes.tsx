@@ -4,15 +4,15 @@ import { noteHaystack, noteMatches } from "./noteSearch";
 import { NoteAttachments } from "./NoteAttachments";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useUnsavedChanges } from "../ui/Unsaved";
 import { api } from "../api";
 import { NoteBody, type Look, type NoteBodyHandle } from "../NoteBody";
 import { NOTE_COLORS, NOTE_FONTS, NotePreview, toggleTodoLine } from "../md";
 import { useConfirm } from "../ui/Confirm";
 import { useAssist } from "../useAssist";
-import type { Folder, Note, NoteFile, Tag } from "../types";
-
-const TODO_PREFIX = "- [ ] ";
+import type { Folder, Tag } from "../types";
+import { useNotesWorkspace } from "./useNotesWorkspace";
+import { useNoteFiles } from "./useNoteFiles";
+import { TODO_PREFIX } from "../noteBodyDom";
 
 export function NotesPage() {
   const { id } = useParams();
@@ -21,52 +21,33 @@ export function NotesPage() {
   const { available: assistOn } = useAssist();
   const currentId = id ? Number(id) : 0;
 
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
+  const ws = useNotesWorkspace(currentId);
+  const {
+    notes, setNotes, folders, setFolders, tags, setTags,
+    title, setTitle, body, setBody, err, setErr, msg, busy, conflict,
+    boundId, saved, draft, notesRef, foldersRef,
+    dirty, markClean, persist, apply,
+  } = ws;
+
+  const filesApi = useNoteFiles({ currentId, boundId, setErr });
+  const {
+    files, uploading, dropFiles, setDropFiles, fileRef, fileDrag,
+    loadFiles, upload, removeFile, clearFiles,
+  } = filesApi;
+
   const [q, setQ] = useState("");
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [savedTitle, setSavedTitle] = useState("");
-  const [savedBody, setSavedBody] = useState("");
   const [preview, setPreview] = useState(false);
-  const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
   const [here, setHere] = useState<number | null>(null);
   const [tagHere, setTagHere] = useState<number | null>(null);
   const [open, setOpen] = useState<Record<number, boolean>>({});
-  const [files, setFiles] = useState<NoteFile[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [dropFiles, setDropFiles] = useState(false);
   const [dropOn, setDropOn] = useState<number | string | null>(null);
   const [pickTag, setPickTag] = useState(false);
   const [suggestIds, setSuggestIds] = useState<number[]>([]);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<NoteBodyHandle | null>(null);
   const lookNode = useRef<HTMLDivElement | null>(null);
   const [look, setLook] = useState<Look>({});
-  const boundId = useRef(0);
-  const fileDrag = useRef(0);
-  const saved = useRef({ title: "", body: "" });
-  const draft = useRef({ title: "", body: "" });
-  const notesRef = useRef<Note[]>([]);
-  const foldersRef = useRef<Folder[]>([]);
-  const revision = useRef(1);
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const saving = useRef<Promise<boolean> | null>(null);
-  const [conflict, setConflict] = useState(false);
-
-  draft.current = { title, body };
-  notesRef.current = notes;
-  foldersRef.current = folders;
-
-  const dirty = currentId > 0 && currentId === boundId.current
-    && (title !== savedTitle || body !== savedBody);
-  const markClean = useUnsavedChanges(dirty || busy || uploading);
 
   const visible = useMemo(() => {
     const byTag = new Map(tags.map((t) => [t.id, t]));
@@ -78,31 +59,16 @@ export function NotesPage() {
   }, [notes, q, tagHere, tags]);
   const editingTags = tagIds(notes.find((n) => n.id === currentId));
 
-  function apply(n: Note) {
-    boundId.current = n.id;
-    revision.current = n.revision;
-    setConflict(false);
-    saved.current = { title: n.title, body: n.body };
-    setTitle(n.title);
-    setBody(n.body);
-    setSavedTitle(n.title);
-    setSavedBody(n.body);
-  }
-
-  async function refresh() {
-    setErr("");
-    try {
-      const r = await api.notes();
-      setNotes(r.notes.map((n) => ({ ...n, tagIds: n.tagIds ?? [] })));
-      setFolders(r.folders ?? []);
-      setTags(r.tags ?? []);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "erro");
-    }
-  }
-
-  useEffect(() => { void refresh(); }, []);
   useEffect(() => { setPickTag(false); setLook({}); setSuggestIds([]); }, [currentId]);
+
+  useEffect(() => {
+    if (!currentId) {
+      clearFiles();
+      setPreview(false);
+      return;
+    }
+    void loadFiles(currentId);
+  }, [currentId]);
 
   const bindLook = useCallback((node: HTMLDivElement | null) => {
     const prev = lookNode.current;
@@ -115,84 +81,6 @@ export function NotesPage() {
     e.preventDefault();
     bodyRef.current?.holdSelection();
   }
-
-  const persist = useCallback(async (): Promise<boolean> => {
-    if (saving.current) {
-      if (!(await saving.current)) return false;
-    }
-    const noteId = boundId.current;
-    if (!noteId) return true;
-    const { title: titleNow, body: bodyNow } = draft.current;
-    if (titleNow === saved.current.title && bodyNow === saved.current.body) return true;
-    const operation = (async () => {
-      setBusy(true); setErr("");
-      try {
-        const n = await api.updateNote(noteId, { title: titleNow, body: bodyNow, revision: revision.current });
-        setNotes(list => [n, ...list.filter(x => x.id !== n.id)]);
-        if (boundId.current === noteId) {
-          revision.current = n.revision;
-          saved.current = { title: n.title, body: n.body };
-          setSavedTitle(n.title); setSavedBody(n.body); setMsg("salvo");
-          if (draft.current.title === n.title && draft.current.body === n.body) markClean();
-        }
-        return true;
-      } catch (e) {
-        setErr(e instanceof Error ? e.message : "não salvou");
-        if (e instanceof Error && "status" in e && e.status === 409) setConflict(true);
-        return false;
-      } finally { setBusy(false); }
-    })();
-    saving.current = operation;
-    try { return await operation; } finally { saving.current = null; }
-  }, [markClean]);
-
-  useEffect(() => {
-    if (!currentId) {
-      boundId.current = 0;
-      setTitle("");
-      setBody("");
-      setSavedTitle("");
-      setSavedBody("");
-      setFiles([]);
-      setPreview(false);
-      return;
-    }
-    let cancelled = false;
-    const load = api.note(currentId);
-    load.then((n) => {
-      if (cancelled) return;
-      apply(n);
-      void loadFiles(n.id);
-    }).catch((e: unknown) => {
-      if (cancelled) return;
-      setErr(e instanceof Error ? e.message : "não achou");
-      nav("/notas");
-    });
-    return () => { cancelled = true; };
-  }, [currentId, persist, nav]);
-
-  useEffect(() => {
-    if (!dirty || !currentId || conflict) return;
-    const t = window.setTimeout(() => { void persist(); }, 900);
-    return () => window.clearTimeout(t);
-  }, [title, body, dirty, currentId, persist, conflict]);
-
-  useEffect(() => {
-    if (!msg) return;
-    const t = window.setTimeout(() => setMsg(""), 1600);
-    return () => window.clearTimeout(t);
-  }, [msg]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void persist();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [persist]);
 
   async function openNote(next: number) {
     if (boundId.current && (draft.current.title !== saved.current.title
@@ -223,49 +111,6 @@ export function NotesPage() {
       }, 0);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não criou");
-    }
-  }
-
-  async function loadFiles(noteId: number) {
-    try {
-      const r = await api.files(noteId);
-      if (boundId.current === noteId) setFiles(r.files ?? []);
-    } catch (e) {
-      if (boundId.current === noteId) setErr(e instanceof Error ? e.message : "não listou arquivos");
-    }
-  }
-
-  async function upload(list: FileList | File[]) {
-    if (!currentId) return;
-    setUploading(true);
-    setErr("");
-    try {
-      for (const f of Array.from(list)) {
-        if (!mounted.current) break;
-        const nf = await api.uploadFile(currentId, f);
-        if (nf.noteId === currentId) setFiles((x) => [...x, nf]);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "não anexou");
-    } finally {
-      setUploading(false);
-      if (mounted.current) await loadFiles(currentId);
-    }
-  }
-
-  async function removeFile(f: NoteFile) {
-    if (!currentId || !(await confirm({
-      title: "Apagar arquivo",
-      message: "O arquivo “" + f.name + "” sai da nota e do armazenamento. Sem volta.",
-      ok: "Apagar",
-      tone: "stamp",
-    }))) return;
-    setErr("");
-    try {
-      await api.removeFile(currentId, f.id);
-      setFiles((x) => x.filter((y) => y.id !== f.id));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "não apagou");
     }
   }
 

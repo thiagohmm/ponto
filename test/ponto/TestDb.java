@@ -1,6 +1,6 @@
 package ponto;
 
-import ponto.model.Db;
+import ponto.infra.Db;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

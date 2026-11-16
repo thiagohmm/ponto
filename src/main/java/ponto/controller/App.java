@@ -9,7 +9,7 @@ import ponto.model.Entry;
 import ponto.model.Parse;
 import ponto.model.Period;
 import ponto.model.Report;
-import ponto.model.Service;
+import ponto.app.Service;
 import ponto.model.Str;
 import ponto.view.Cols;
 import ponto.view.Csv;
@@ -82,22 +82,17 @@ public final class App {
     }
 
     private void home() {
-        Map<String, Object> h = svc.home();
-        long mins = (Long) h.get("monthMins");
-        int records = (Integer) h.get("records");
-        int open = (Integer) h.get("open");
-        String since = (String) h.get("openSince");
-        String openNote = open == 0 ? "abertos 0"
-                : "abertos " + open + (since.isEmpty() ? "" : "   desde " + since);
-        long saldoMins = (Long) h.get("saldoMins");
-        String plan = (String) h.get("planLabel");
-        String saldoNote = (saldoMins < 0 ? "! banco negativo " : "saldo do mês ") + h.get("saldo")
+        var h = svc.home();
+        String openNote = h.open() == 0 ? "abertos 0"
+                : "abertos " + h.open() + (h.openSince().isEmpty() ? "" : "   desde " + h.openSince());
+        String plan = h.planLabel();
+        String saldoNote = (h.saldoMins() < 0 ? "! banco negativo " : "saldo do mês ") + h.saldo()
                 + (plan.isEmpty() ? "" : "   ·   plano " + plan);
-        String who = (String) h.get("who");
-        String company = (String) h.get("company");
+        String who = h.who();
+        String company = h.company();
         String label = company == null || company.isEmpty() ? who
                 : who.isEmpty() ? company : who + "  ·  " + company;
-        out.home(label, records, mins, (String) h.get("db"), openNote, saldoNote);
+        out.home(label, h.records(), h.monthMins(), h.db(), openNote, saldoNote);
     }
 
     private void setup() {
@@ -531,21 +526,21 @@ public final class App {
 
     private void config() {
         out.title("CONFIG");
-        Map<String, Object> c = svc.config();
-        out.note("banco   " + c.get("db"));
-        String who = (String) c.get("who");
+        var c = svc.config();
+        out.note("banco   " + c.db());
+        String who = c.who();
         out.note("usuário " + (who.isEmpty() ? "-" : who));
-        var act = svc.companies().active();
-        for (var co : svc.companies().list())
+        var act = svc.activeCompany();
+        for (var co : svc.listCompanies())
             out.note((co.id() == act.id() ? "* " : "  ") + co.id() + "  " + co.name());
-        out.note("registros " + c.get("records") + "   " + range(c));
+        out.note("registros " + c.records() + "   " + range(c));
         out.note("csv     sep '" + Csv.SEP + "'  (PONTO_CSV_SEP)");
-        out.note("java    " + c.get("java") + "   postgres " + c.get("postgres"));
-        String off = (String) c.get("off");
+        out.note("java    " + c.java() + "   postgres " + c.postgres());
+        String off = c.off();
         out.note("folgas  " + (off.isEmpty() ? "-" : off));
-        String daily = (String) c.get("daily");
+        String daily = c.daily();
         out.note("jornada " + (daily.isEmpty() ? "8" : daily) + " h/dia");
-        for (Object s : (List<?>) c.get("nextOff")) out.note("folga   " + s);
+        for (String s : c.nextOff()) out.note("folga   " + s);
         String pick = in.text("empresa", String.valueOf(act.id()));
         if (!pick.isEmpty() && !pick.equals("-") && !pick.equals(String.valueOf(act.id()))) {
             if (pick.chars().allMatch(Character::isDigit)) {
@@ -553,15 +548,15 @@ public final class App {
                 out.ok("empresa #" + pick);
             } else {
                 String name = pick.startsWith("+") ? pick.substring(1) : pick;
-                var made = svc.companies().create(name, "", "");
+                var made = svc.createCompany(name, "", "");
                 svc.activate(made.id());
                 out.ok("empresa #" + made.id() + "  " + made.name());
             }
         }
         c = svc.config();
-        who = (String) c.get("who");
-        off = (String) c.get("off");
-        daily = (String) c.get("daily");
+        who = c.who();
+        off = c.off();
+        daily = c.daily();
         String w = in.text("usuário", who.isEmpty() ? "-" : who);
         svc.setConfig(w, null, false);
         out.ok("usuário " + (w.equals("-") ? "-" : w));
@@ -576,8 +571,8 @@ public final class App {
         if (in.yes("otimizar o banco?", false)) { svc.setConfig(null, null, true); out.ok("banco otimizado"); }
     }
 
-    private String range(Map<String, Object> c) {
-        String a = (String) c.get("from"), b = (String) c.get("to");
+    private String range(ponto.app.ConfigView c) {
+        String a = c.from(), b = c.to();
         return a.isEmpty() ? "-" : a + " .. " + b;
     }
 

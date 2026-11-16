@@ -12,7 +12,7 @@ public record KanbanCard(int id, int columnId, String title, String body, String
 
     public boolean blocked() { return blocks.stream().anyMatch(KanbanBlock::open); }
 
-    KanbanCard withBlocks(List<KanbanBlock> next) {
+    public KanbanCard withBlocks(List<KanbanBlock> next) {
         return new KanbanCard(id, columnId, title, body, done, position, revision, crea, upd, next);
     }
 }

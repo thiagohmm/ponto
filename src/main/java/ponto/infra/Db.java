@@ -1,4 +1,4 @@
-package ponto.model;
+package ponto.infra;
 
 import ponto.Problema;
 
@@ -16,11 +16,11 @@ import java.sql.Statement;
 public final class Db implements AutoCloseable {
 
     private final Connection c;
-    final Object lock;
+    public final Object lock;
     private final Integer scopedCompany;
     public final String url;
     public final Path dataDir;
-    boolean fresh;
+    public boolean fresh;
 
     private Db(Path dir, String jdbcUrl) throws SQLException {
         dataDir = dir;
@@ -85,8 +85,8 @@ public final class Db implements AutoCloseable {
         scopedCompany = companyId;
     }
 
-    Db forCompany(int id) { return new Db(this, id); }
-    boolean scoped() { return scopedCompany != null; }
+    public Db forCompany(int id) { return new Db(this, id); }
+    public boolean scoped() { return scopedCompany != null; }
 
     /** The id stored in cfg `company`. Always set after {@link Migrations#apply}. */
     public int company() {
@@ -198,7 +198,7 @@ public final class Db implements AutoCloseable {
     /** One-off maintenance pass on the database. */
     public void vacuum() { exec("ANALYZE"); }
 
-    Connection conn() { return c; }
+    public Connection conn() { return c; }
 
     public String cfg(String k) { return cfg(k, ""); }
 
@@ -217,7 +217,7 @@ public final class Db implements AutoCloseable {
         } catch (SQLException e) { throw new Problema("configuração: " + clean(e.getMessage())); }
     }
 
-    void exec(String sql) {
+    public void exec(String sql) {
         try (Statement st = c.createStatement()) { st.execute(sql); }
         catch (SQLException e) { throw new Problema(clean(e.getMessage())); }
     }
@@ -229,7 +229,7 @@ public final class Db implements AutoCloseable {
         } catch (SQLException e) { return "?"; }
     }
 
-    boolean hasTable(String table) {
+    public boolean hasTable(String table) {
         try (var q = c.prepareStatement("SELECT 1 FROM information_schema.tables "
                 + "WHERE table_schema = current_schema() AND table_name = ?")) {
             q.setString(1, table);
@@ -246,7 +246,7 @@ public final class Db implements AutoCloseable {
         } catch (SQLException e) { throw new Problema(clean(e.getMessage())); }
     }
 
-    int migrationVersion() {
+    public int migrationVersion() {
         try (var q = c.createStatement(); var rs = q.executeQuery("SELECT version FROM schema_migrations LIMIT 1")) {
             return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException e) { throw new Problema(clean(e.getMessage())); }

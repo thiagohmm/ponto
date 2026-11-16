@@ -1,4 +1,4 @@
-/** Soft justification taxonomy — mirror of ponto.model.JustCategory (UX only). */
+/** Soft justification taxonomy — sourced from GET /api/just-categories (JustCategory.java). */
 
 export type JustCategoryCode =
   | "atestado"
@@ -7,7 +7,8 @@ export type JustCategoryCode =
   | "reuniao"
   | "pessoal"
   | "deslocamento"
-  | "outro";
+  | "outro"
+  | (string & {});
 
 export type JustCategory = {
   code: JustCategoryCode;
@@ -16,50 +17,31 @@ export type JustCategory = {
   phrases: string[];
 };
 
-export const JUST_CATEGORIES: JustCategory[] = [
-  {
-    code: "atestado",
-    label: "Atestado",
-    synonyms: ["atestado", "medico", "médico", "consulta", "cid", "doente", "saude", "saúde"],
-    phrases: ["Atestado médico", "Consulta médica", "Afastamento por saúde"],
-  },
-  {
-    code: "home_office",
-    label: "Home office",
-    synonyms: ["home office", "homeoffice", "remoto", "teletrabalho", "trabalho remoto"],
-    phrases: ["Home office", "Trabalho remoto"],
-  },
-  {
-    code: "cliente",
-    label: "Cliente",
-    synonyms: ["cliente", "visita", "externo", "reunião com cliente", "reuniao com cliente"],
-    phrases: ["Visita a cliente", "Atendimento a cliente"],
-  },
-  {
-    code: "reuniao",
-    label: "Reunião",
-    synonyms: ["reuniao", "reunião", "meeting", "call", "alinhamento"],
-    phrases: ["Reunião interna", "Reunião de alinhamento"],
-  },
-  {
-    code: "pessoal",
-    label: "Pessoal",
-    synonyms: ["pessoal", "particular", "assunto pessoal", "banco de horas"],
-    phrases: ["Assunto pessoal", "Saída particular"],
-  },
-  {
-    code: "deslocamento",
-    label: "Deslocamento",
-    synonyms: ["deslocamento", "trajeto", "transito", "trânsito", "viagem", "transporte"],
-    phrases: ["Deslocamento", "Viagem a trabalho"],
-  },
-  {
-    code: "outro",
-    label: "Outro",
-    synonyms: ["outro", "diversos"],
-    phrases: ["Outro motivo"],
-  },
-];
+/** Filled by {@link loadJustCategories}; same array reference for all consumers. */
+export const JUST_CATEGORIES: JustCategory[] = [];
+
+let loadPromise: Promise<JustCategory[]> | null = null;
+
+export function justCategories(): JustCategory[] {
+  return JUST_CATEGORIES;
+}
+
+export async function loadJustCategories(): Promise<JustCategory[]> {
+  if (JUST_CATEGORIES.length > 0) return JUST_CATEGORIES;
+  if (!loadPromise) {
+    loadPromise = fetch("/api/just-categories", { credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) return JUST_CATEGORIES;
+        const body = (await r.json()) as { categories?: JustCategory[] };
+        JUST_CATEGORIES.length = 0;
+        for (const c of body.categories ?? []) JUST_CATEGORIES.push(c);
+        return JUST_CATEGORIES;
+      })
+      .catch(() => JUST_CATEGORIES)
+      .finally(() => { loadPromise = null; });
+  }
+  return loadPromise;
+}
 
 export function justCategory(code: string | null | undefined): JustCategory | undefined {
   return JUST_CATEGORIES.find((c) => c.code === code);

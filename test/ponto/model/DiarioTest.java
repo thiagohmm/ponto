@@ -1,5 +1,12 @@
 package ponto.model;
 
+import ponto.app.Service;
+
+import ponto.infra.Migrations;
+
+import ponto.infra.Assist;
+
+import ponto.infra.Db;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ponto.TestDb;
@@ -21,9 +28,9 @@ class DiarioTest {
             Service s = new Service(db);
             LocalDate dia = LocalDate.of(2026, 11, 13);
             s.create(dia, LocalTime.of(9, 0), LocalTime.of(12, 0), "manhã", false, false, false);
-            s.notes().create("Ideia", "corpo da nota");
-            int col = s.kanban().columns().getFirst().id();
-            s.kanban().createCard("Cartão diário", "fazer", col);
+            s.createNote("Ideia", "corpo da nota");
+            int col = s.kanbanColumns().getFirst().id();
+            s.createKanbanCard("Cartão diário", "fazer", col);
 
             Map<String, Object> snap = s.diario(dia);
             assertEquals("13/11/2026", snap.get("dia"));
@@ -42,19 +49,19 @@ class DiarioTest {
             assertNull(snap.get("digest"));
 
             Assist off = new Assist(URI.create("http://127.0.0.1:9"), "qwen2.5:0.5b", false);
-            Map<String, Object> dig = s.gerarResumoDiario(dia, off);
-            assertEquals("fallback", dig.get("model"));
-            assertFalse(dig.get("summary").toString().isBlank());
+            var dig = s.gerarResumoDiario(dia, off);
+            assertEquals("fallback", dig.model());
+            assertFalse(dig.summary().isBlank());
 
             Map<String, Object> again = s.diario(dia);
             assertNotNull(again.get("digest"));
             @SuppressWarnings("unchecked")
             Map<String, Object> saved = (Map<String, Object>) again.get("digest");
-            assertEquals(dig.get("summary"), saved.get("summary"));
+            assertEquals(dig.summary(), saved.get("summary"));
 
             // regenerate overwrites
-            Map<String, Object> second = s.gerarResumoDiario(dia, off);
-            assertEquals("fallback", second.get("model"));
+            var second = s.gerarResumoDiario(dia, off);
+            assertEquals("fallback", second.model());
         }
     }
 
@@ -73,9 +80,9 @@ class DiarioTest {
             assertEquals(6, db.migrationVersion());
             assertTrue(db.hasTable("day_digest"));
             Service s = new Service(db);
-            Map<String, Object> dig = s.gerarResumoDiario(LocalDate.of(2026, 1, 2),
+            var dig = s.gerarResumoDiario(LocalDate.of(2026, 1, 2),
                     new Assist(URI.create("http://127.0.0.1:9"), "x", false));
-            assertNotNull(dig.get("summary"));
+            assertNotNull(dig.summary());
         }
     }
 }

@@ -1,5 +1,10 @@
 package ponto.model;
 
+import ponto.app.Service;
+
+import ponto.infra.Files;
+
+import ponto.infra.Db;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ponto.TestDb;
@@ -22,32 +27,32 @@ class NoteSearchTest {
     @Test void listFindsEveryWordAcrossTitleBodyTagAndAttachment() {
         try (Db db = open("search.db"); Files files = new Files(db, db.lock, new Mem())) {
             var s = new Service(db);
-            var tag = s.notes().createTag("urgente", null);
+            var tag = s.createTag("urgente", null);
             // "Ponto" in the title, "folha" in the body, "urgente" as a tag
-            s.notes().create("Ponto", "folha de pagamento", null, List.of(tag.id()));
+            s.createNote("Ponto", "folha de pagamento", null, List.of(tag.id()));
             // "reunião" in the title, "contrato" only in the attachment name
-            var n2 = s.notes().create("reunião", "agenda", null, null);
+            var n2 = s.createNote("reunião", "agenda", null, null);
             files.add(n2.id(), "contrato.pdf", "application/pdf", new byte[] { 1 });
             // control note with none of the searched words
-            s.notes().create("outro", "nada aqui", null, null);
+            s.createNote("outro", "nada aqui", null, null);
 
             // every word must appear somewhere; order does not matter
-            assertEquals(1, s.notes().list("ponto folha").size());
-            assertEquals(1, s.notes().list("folha ponto").size());
+            assertEquals(1, s.listNotes("ponto folha").size());
+            assertEquals(1, s.listNotes("folha ponto").size());
             // case-insensitive: "PONTO" matches "Ponto"
-            assertEquals(1, s.notes().list("PONTO").size());
+            assertEquals(1, s.listNotes("PONTO").size());
             // accent-insensitive: "reuniao" matches "reunião"
-            assertEquals(1, s.notes().list("reuniao").size());
+            assertEquals(1, s.listNotes("reuniao").size());
             // a word that lives only in an attachment name
-            assertEquals(1, s.notes().list("contrato").size());
+            assertEquals(1, s.listNotes("contrato").size());
             // a word that lives only in a tag
-            assertEquals(1, s.notes().list("urgente").size());
+            assertEquals(1, s.listNotes("urgente").size());
             // two words in different fields of the same note (title + attachment)
-            assertEquals(1, s.notes().list("reuniao contrato").size());
+            assertEquals(1, s.listNotes("reuniao contrato").size());
             // a missing word excludes everything
-            assertEquals(0, s.notes().list("ponto inexistente").size());
+            assertEquals(0, s.listNotes("ponto inexistente").size());
             // blank query returns all notes
-            assertEquals(3, s.notes().list("").size());
+            assertEquals(3, s.listNotes("").size());
         }
     }
 }

@@ -69,7 +69,7 @@ public final class Holidays {
         return o.text() + (weekend(d) ? "   ·   fim de semana" : "");
     }
 
-    static boolean weekend(LocalDate d) {
+    public static boolean weekend(LocalDate d) {
         DayOfWeek w = d.getDayOfWeek();
         return w == DayOfWeek.SATURDAY || w == DayOfWeek.SUNDAY;
     }
@@ -141,7 +141,7 @@ public final class Holidays {
      * Easter Sunday in the Gregorian calendar (Anonymous computus). Easter is
      * the anchor of every mobile day off in Brazil.
      */
-    static LocalDate easter(int year) {
+    public static LocalDate easter(int year) {
         int a = year % 19;
         int b = year / 100;
         int c = year % 100;

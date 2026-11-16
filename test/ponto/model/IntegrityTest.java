@@ -1,5 +1,10 @@
 package ponto.model;
 
+import ponto.app.Service;
+
+import ponto.infra.Migrations;
+
+import ponto.infra.Db;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import ponto.Conflict;
@@ -78,13 +83,13 @@ class IntegrityTest {
     @Test void independentContextsAndCalendarsSurviveConcurrentAccess() throws Exception {
         try (Db db = open("scope")) {
             Service root = new Service(db);
-            int a = root.companyId(), b = root.companies().create("B", "", "8").id();
+            int a = root.companyId(), b = root.createCompany("B", "", "8").id();
             Service sa = root.forCompany(a), sb = root.forCompany(b);
             sa.setConfig(null, "20/05/2026", "6", false, x -> {});
             var day = LocalDate.of(2026, 5, 20);
-            var note = sa.notes().create("A", "A");
-            assertThrows(NotFound.class, () -> sb.notes().delete(note.id()));
-            assertEquals(1, sa.notes().list(null).size());
+            var note = sa.createNote("A", "A");
+            assertThrows(NotFound.class, () -> sb.deleteNote(note.id()));
+            assertEquals(1, sa.listNotes(null).size());
             try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
                 var tasks = new java.util.ArrayList<java.util.concurrent.Future<?>>();
                 for (int i = 0; i < 40; i++) {
@@ -107,29 +112,29 @@ class IntegrityTest {
     @Test void noteCreationTagsAndFolderUpdatesAreAtomic() {
         try (Db db = open("atomic")) {
             var s = new Service(db);
-            var tag = s.notes().createTag("tag", null);
-            var n = s.notes().create("nota", "texto", null, List.of(tag.id()));
-            assertThrows(NotFound.class, () -> s.notes().setTags(n.id(), List.of(999)));
-            assertEquals(List.of(tag.id()), s.notes().byId(n.id()).tagIds());
-            assertThrows(NotFound.class, () -> s.notes().create("incompleta", "", null, List.of(999)));
-            assertEquals(1, s.notes().list(null).size());
-            var f = s.notes().createFolder("original", null);
+            var tag = s.createTag("tag", null);
+            var n = s.createNote("nota", "texto", null, List.of(tag.id()));
+            assertThrows(NotFound.class, () -> s.setNoteTags(n.id(), List.of(999)));
+            assertEquals(List.of(tag.id()), s.noteById(n.id()).tagIds());
+            assertThrows(NotFound.class, () -> s.createNote("incompleta", "", null, List.of(999)));
+            assertEquals(1, s.listNotes(null).size());
+            var f = s.createFolder("original", null);
             assertThrows(Problema.class, () -> s.transaction(() -> {
-                s.notes().renameFolder(f.id(), "alterado");
-                return s.notes().moveFolder(f.id(), 999);
+                s.renameFolder(f.id(), "alterado");
+                return s.moveFolder(f.id(), 999);
             }));
-            assertEquals("original", s.notes().folders().getFirst().name());
+            assertEquals("original", s.folders().getFirst().name());
         }
     }
 
     @Test void revisionConflictPreservesNewerText() {
         try (Db db = open("revision")) {
-            var notes = new Service(db).notes();
-            var n = notes.create("titulo", "primeiro");
-            var next = notes.update(n.id(), "titulo", "segundo", n.revision());
+            var svcNotes = new Service(db);
+            var n = svcNotes.createNote("titulo", "primeiro");
+            var next = svcNotes.updateNote(n.id(), "titulo", "segundo", n.revision());
             assertEquals(n.revision() + 1, next.revision());
-            assertThrows(Conflict.class, () -> notes.update(n.id(), "titulo", "antigo", n.revision()));
-            assertEquals("segundo", notes.byId(n.id()).body());
+            assertThrows(Conflict.class, () -> svcNotes.updateNote(n.id(), "titulo", "antigo", n.revision()));
+            assertEquals("segundo", svcNotes.noteById(n.id()).body());
         }
     }
 
@@ -138,9 +143,9 @@ class IntegrityTest {
         String sourceUrl = TestDb.freshUrl();
         String sourceSchema = TestDb.schemaOf(sourceUrl);
         try (Db db = Db.open(dir, sourceUrl)) {
-            new Service(db).notes().create("PG", "confirmado");
+            new Service(db).createNote("PG", "confirmado");
             backupWithFallback(db, dump);
-            new Service(db).notes().create("depois", "fora do backup");
+            new Service(db).createNote("depois", "fora do backup");
         }
         // Drop and recreate the source schema, restore the dump into it, and verify only committed pre-snapshot rows exist.
         try (var c = DriverManager.getConnection(TestDb.baseUrl()); var q = c.createStatement()) {
@@ -148,7 +153,7 @@ class IntegrityTest {
         }
         restoreDump(TestDb.baseUrl(), dump);
         try (Db db = Db.open(dir, sourceUrl)) {
-            var notes = new Service(db).notes().list(null);
+            var notes = new Service(db).listNotes(null);
             assertEquals(1, notes.size());
             assertEquals("confirmado", notes.getFirst().body());
         }
