@@ -20,6 +20,41 @@ justification — with dates as `dd/mm/yyyy` and decimal hours as `0.75`.
 >
 ```
 
+## Entendendo o projeto (para quem está chegando)
+
+O **Ponto** é um cartão de ponto eletrônico brasileiro: você registra **dia, entrada, saída e
+justificativa** (`dd/mm/yyyy`, horas `NN:NN`, decimais `0.75`) e ele calcula totais, saldo do mês
+e banco de horas, avisa sobre pares sobrepostos e já conhece os feriados (Brasil + SP) sem internet.
+
+Dois jeitos de usar **o mesmo programa e o mesmo banco**:
+
+* **Terminal** — `ponto` abre um menu interativo (novo, editar, listar, somar, PDF/XLS/CSV).
+* **Navegador** — `ponto --serve` sobe uma API HTTP (Javalin) e uma SPA React (PWA) na porta 8090.
+
+Como está organizado (uma olhada de 30 segundos):
+
+| Camada | Onde | Papel |
+|---|---|---|
+| Apresentação | `controller/` (menu CLI, rotas HTTP, login) | Formatar perguntas/respostas — **sem regra de negócio** |
+| Negócio | `app/Service` + apps (`TimesheetApp`, `NotesApp`, `KanbanApp`…) | Fachada única usada pelo CLI **e** pela web |
+| Dados | `infra/` (JDBC, migrações, stores, MinIO) | Único lugar com SQL |
+| Regras puras | `model/` (`Entry`, `BankRules`, `Holidays`…) | Testável sem banco |
+| SPA | `web/` (React 19 + Vite + TS) | 1 aba = 1 arquivo, todo HTTP em `api.ts` |
+
+## Documentação
+
+A referência completa (para desenvolvedores, com diagramas PlantUML) está em [`docs/`](docs/README.md):
+
+* [Visão geral da arquitetura](docs/arquitetura.md) — comece por aqui
+* [Backend (Java)](docs/backend.md) · [Frontend (React)](docs/frontend.md)
+* [Diagramas](docs/README.md#diagramas-plantuml) — contexto, contêineres, camadas, sequências, ER, deploy
+
+> ⚠️ **REGRA DE MANUTENÇÃO DA DOCUMENTAÇÃO**
+> Ao **mudar qualquer funcionalidade**, atualize também a documentação e os diagramas
+> correspondentes **no mesmo PR/commit** — rota nova → `docs/backend.md` + `web/src/api.ts`/`types.ts`;
+> página nova → `docs/frontend.md`; schema novo → `docs/backend.md` + diagrama ER.
+> **Documentação desatualizada é bug.**
+
 ## Requirements
 
 * **Java 25** — the sources are compiled with `--release 25`.

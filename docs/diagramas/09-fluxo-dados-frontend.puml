@@ -1,0 +1,50 @@
+@startuml fluxo-dados-frontend
+title Ponto — Fluxo de dados no frontend (api.ts + providers)
+
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #FDFDFD
+  BorderColor #333333
+}
+skinparam sequenceMessageAlign center
+
+participant "Página / hook\n(useHomeData, useNotesWorkspace…)" as page
+participant "api.ts\ncompanyUrl()" as api
+participant "fetch /api/*" as http
+participant "Web.before" as before
+participant "Service" as svc
+database "PostgreSQL" as db
+
+== Seleção de empresa ==
+participant "CompanyProvider" as comp
+
+page -> api : api.home()
+api -> api : companyUrl("/home")\nacrescenta companyId
+api -> http : GET /api/home?companyId=N
+http -> before
+before -> before : auth.require()
+before -> svc : Service.forCompany(N)
+svc -> db : consulta no escopo da empresa
+db --> page : JSON (Home, EntryList, Bank…)
+
+== Erros ==
+alt 401 (sessão expirou)
+  api -> api : fail() → goLogin()
+  api -> page : redirect /login?next=…
+end
+alt 409 com need (midnight / overlap)
+  api -> page : ApiError(status, need)
+  page -> page : ConfirmProvider pede confirmação\ne reenvia com flag de confirmação
+end
+
+note over api
+  types.ts espelha à mão os DTOs do Java —
+  ao mudar um endpoint, atualize também
+  os tipos TypeScript.
+end note
+
+note over comp
+  A empresa ativa fica em sessionStorage por aba;
+  as Routes são remontadas com key=companyId.
+end note
+@enduml

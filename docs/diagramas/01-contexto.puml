@@ -1,0 +1,49 @@
+@startuml contexto
+title Ponto — Diagrama de contexto (C4 nível 1)
+
+skinparam shadowing false
+skinparam actorStyle awesome
+skinparam rectangle {
+  BackgroundColor #FDFDFD
+  BorderColor #333333
+}
+skinparam database {
+  BackgroundColor #FDF6E3
+  BorderColor #333333
+}
+skinparam cloud {
+  BackgroundColor #F0F8FF
+  BorderColor #333333
+}
+
+actor "Usuário\n(terminal)" as cli
+actor "Usuário\n(navegador)" as web
+
+rectangle "Ponto\n==Gestão de jornada==\nMonólito Java 25 em um único JAR\n(CLI interativa + API HTTP Javalin)" as sys
+
+database "PostgreSQL\n(um banco, várias empresas)" as db
+cloud "MinIO / S3\n(anexos de notas e kanban)" as s3
+cloud "Ollama\n(IA local, opcional)" as ollama
+
+cli --> sys : menu interativo\n(novo, editar, listar, somar, PDF/XLS/CSV)
+web --> sys : HTTP/HTTPS · SPA React (PWA)\ncookie ponto_session
+
+sys --> db : JDBC — uma conexão, migrações versionadas
+sys --> s3 : upload/download de anexos\n(fila object_job, retries)
+sys --> ollama : http 127.0.0.1:11434\n(sugerir tags e categorias de justificativa)
+
+note bottom of sys
+  O Ponto não acessa a internet: o calendário
+  de feriados brasileiros é código (model/Holidays.java).
+end note
+
+note bottom of s3
+  Opcional: sem MinIO configurado,
+  o restante do app funciona igual.
+end note
+
+note bottom of ollama
+  Opcional: sem Ollama, os botões de
+  sugestão simplesmente não aparecem.
+end note
+@enduml

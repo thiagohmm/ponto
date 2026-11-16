@@ -1,0 +1,162 @@
+@startuml er-modelo-dados
+title Ponto — Modelo de dados (PostgreSQL, migrações v6 — infra/Migrations.java)
+
+skinparam shadowing false
+skinparam linetype ortho
+hide circle
+
+entity "company" as company {
+  * id BIGSERIAL <<PK>>
+  --
+  name TEXT
+  off TEXT (dias de folga)
+  daily TEXT (jornada)
+  crea TEXT
+}
+
+entity "ponto" as ponto {
+  * id BIGSERIAL <<PK>>
+  --
+  dia TEXT (dd/mm/yyyy)
+  tin TEXT
+  tout TEXT
+  just TEXT
+  crea TEXT
+  # company_id <<FK>>
+}
+
+entity "dia_flag" as diaflag {
+  # company_id <<PK>>
+  * dia <<PK>>
+  --
+  flag 'falta' | 'normal'
+}
+
+entity "cfg" as cfg {
+  * k TEXT <<PK>>
+  --
+  v TEXT (who, company, asked…)
+}
+
+entity "folder" as folder {
+  * id BIGSERIAL <<PK>>
+  --
+  parent INTEGER (auto-FK)
+  name TEXT
+  crea TEXT
+  # company_id
+}
+
+entity "note" as note {
+  * id BIGSERIAL <<PK>>
+  --
+  title, body
+  crea, upd
+  folder_id INTEGER
+  revision (otimista)
+  # company_id
+}
+
+entity "tag" as tag {
+  * id BIGSERIAL <<PK>>
+  --
+  name, color
+  # company_id
+}
+
+entity "note_tag" as notetag {
+  * note_id <<PK,FK>>
+  * tag_id <<PK,FK>>
+}
+
+entity "note_file" as notefile {
+  * id BIGSERIAL <<PK>>
+  --
+  note_id <<FK>>
+  name, key <<UNIQUE>>
+  size, ctype
+  state 'uploading'|'ready'|'failed'
+}
+
+entity "kanban_column" as kcol {
+  * id BIGSERIAL <<PK>>
+  --
+  name, position
+  # company_id
+}
+
+entity "kanban_card" as kcard {
+  * id BIGSERIAL <<PK>>
+  --
+  column_id (FK composta)
+  title, body, done
+  position, revision
+  # company_id
+}
+
+entity "kanban_block" as kblock {
+  * id BIGSERIAL <<PK>>
+  --
+  card_id (FK composta)
+  kind, reason
+  cleared (bloqueio aberto: UNIQUE parcial)
+}
+
+entity "kanban_card_file" as kfile {
+  * id BIGSERIAL <<PK>>
+  --
+  card_id <<FK>>
+  name, key <<UNIQUE>>
+  size, ctype, state
+}
+
+entity "object_job" as ojob {
+  * key TEXT <<PK>>
+  --
+  operation 'PUT'|'DELETE'
+  path, ctype, attempts, last_error
+}
+
+entity "day_digest" as digest {
+  # company_id <<PK>>
+  * dia <<PK>>
+  --
+  summary, facts, model
+}
+
+entity "schema_migrations" as migr {
+  * version INTEGER <<PK>>
+}
+
+company ||--o{ ponto
+company ||--o{ diaflag
+company ||--o{ folder
+folder ||--o{ note
+note ||--o{ notefile
+note ||--o{ notetag
+tag ||--o{ notetag
+company ||--o{ tag
+company ||--o{ kcol
+kcol ||--o{ kcard
+kcard ||--o{ kblock
+kcard ||--o{ kfile
+company ||--o{ digest
+
+note bottom of ojob
+  Fila de trabalho do FilesApp:
+  todo PUT/DELETE no MinIO passa por aqui
+  (retries com last_error).
+end note
+
+note bottom of cfg
+  Chave-valor global do usuário:
+  quem (who), empresa ativa (company),
+  pergunta já feita (asked).
+end note
+
+note bottom of migr
+  Migrações versionadas: instalação nova
+  cria tudo em uma transação; v5 → v6
+  apenas acrescenta day_digest.
+end note
+@enduml

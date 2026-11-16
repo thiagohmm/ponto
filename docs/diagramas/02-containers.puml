@@ -1,0 +1,61 @@
+@startuml containers
+title Ponto — Diagrama de contêineres (C4 nível 2)
+
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #FDFDFD
+  BorderColor #333333
+}
+skinparam database {
+  BackgroundColor #FDF6E3
+  BorderColor #333333
+}
+
+actor "Usuário" as user
+
+rectangle "JAR ponto.jar" {
+  rectangle "CLI interativa\nponto.controller.App" as cli #E8F5E9
+
+  rectangle "SPA React 19 (PWA)\nweb/dist dentro do JAR" as spa #E3F2FD
+
+  rectangle "API HTTP — Javalin\nponto.controller.Web\n+ NoteRoutes / KanbanRoutes\n+ DiarioRoutes / AssistRoutes" as api #E3F2FD
+  rectangle "Auth\nsessão em memória,\ncookie ponto_session" as auth #FFF3E0
+
+  rectangle "Fachada Service\nponto.app.Service\n(um escopo por empresa)" as svc #F3E5F5
+
+  rectangle "Apps por capacidade\nTimesheetApp · NotesApp\nKanbanApp · FilesApp\nCompanyApp · DiarioApp" as apps #F3E5F5
+
+  rectangle "infra\nDb (1 conexão JDBC) · Migrations\nRepo · NotesStore · KanbanStore\nCompaniesStore · Diario · Files (worker de objetos)" as infra #ECEFF1
+
+  rectangle "view\nJson · Csv · Xls · Pdf\n(saída CLI e HTTP)" as view #ECEFF1
+}
+
+rectangle "Docker Compose (host LAN)" {
+  database "PostgreSQL\n(container existente\nmarketing-postgres)" as db
+  database "MinIO\nobjeto /data" as s3
+  rectangle "Caddy (edge)\nTLS local para PiTunnel" as caddy #E8F5E9
+}
+
+cloud "Ollama\n127.0.0.1" as ollama
+
+user --> cli : stdin/stdout
+user --> spa : HTTP :8090
+user --> api : /api/* (JSON)
+caddy --> api : 127.0.0.1:8443 (TLS)
+spa --> api : fetch /api/* + companyId
+api --> auth : before → require()
+api --> svc : Service.forCompany(id)
+cli --> svc : new Service(db)
+svc --> apps
+apps --> infra
+apps --> view
+infra --> db : JDBC
+infra --> s3 : PUT/GET/DELETE (fila)
+api --> ollama : sugestões (opcional)
+
+note bottom of svc
+  A mesma fachada atende o terminal e a web.
+  Db.forCompany fixa o company_id no escopo,
+  sem estado global compartilhado entre abas.
+end note
+@enduml

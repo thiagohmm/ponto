@@ -1,0 +1,48 @@
+@startuml sequencia-login
+title Ponto — Sequência: login e sessão (Auth)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Usuário" as u
+participant "SPA React\n(Auth.tsx)" as spa
+participant "Web.java\n(app.before)" as before
+participant "Auth\n(controller)" as auth
+database "PONTO_WEB_USER /\nPONTO_WEB_PASSWORD (env)" as env
+
+== Primeiro acesso ==
+u -> spa : abre qualquer página
+spa -> before : GET /api/me (sem cookie)
+before -> auth : require() → não há sessão
+before -> spa : 401
+spa -> u : redireciona para /login
+
+== Login ==
+u -> spa : usuário + senha
+spa -> before : POST /api/login (rota liberada)
+before -> auth : login(user, password)
+auth -> auth : rate limit: máx. 5 tentativas\npor IP em 60 s
+auth -> env : comparação em tempo constante\n(slowEquals, byte a byte)
+auth -> auth : gera token de 32 bytes\n(sessions em memória, TTL 7 dias)
+auth -> spa : Set-Cookie: ponto_session\nHttpOnly; SameSite=Lax; Secure em HTTPS
+spa -> u : volta para a página pedida (?next=)
+
+== Requisições seguintes ==
+spa -> before : GET /api/home?companyId=N
+before -> auth : open() renova o TTL
+before -> before : resolve Service.forCompany
+before -> spa : 200 { ... }
+
+== Sessão expira ou usuário sai ==
+spa -> before : requisição após 7 dias
+before -> spa : 401 → redireciona /login
+u -> spa : POST /api/logout
+before -> auth : remove token, apaga cookie
+
+note over auth
+  Sessões são em memória: reiniciar o processo
+  encerra todos os logins (não há tabela de sessão).
+  Sem PONTO_WEB_USER/PONTO_WEB_PASSWORD definidos,
+  Auth é null e a web roda aberta (uso local).
+end note
+@enduml

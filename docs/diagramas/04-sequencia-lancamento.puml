@@ -1,0 +1,45 @@
+@startuml sequencia-lancamento
+title Ponto — Sequência: lançar um registro de ponto (POST /api/entries)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Usuário" as u
+participant "SPA React\n(pages/Form.tsx)" as spa
+participant "Web.java\n(app.before)" as before
+participant "Web.create" as create
+participant "Service" as svc
+participant "TimesheetApp" as ts
+participant "Repo\n(infra)" as repo
+database "PostgreSQL" as db
+
+u -> spa : preenche dia, entrada, saída, justificativa
+spa -> before : POST /api/entries?companyId=N
+before -> before : cookie ponto_session válido?
+before -> before : companyId presente e válido?
+before -> svc : Service.forCompany(companyId)
+before -> create : ctx.attribute("service")
+
+create -> svc : parseDate/parseTime\n(dia 08/10/2026, tin 08:30, tout 17:30)
+svc -> ts : create(dia, tin, tout, just,\ncloseOpen, confirmMidnight, confirmOverlap)
+ts -> repo : inserir/update no dia
+repo -> db : INSERT INTO ponto(...)
+
+alt há par sobreposto no mesmo dia
+  ts -> ts : inspect() detecta sobreposição
+  create -> spa : 409 { need: "overlap" }
+  spa -> u : "sobrepõe a #12 — confirma?" (ConfirmProvider)
+  u -> spa : confirma
+  spa -> before : POST de novo com confirmOverlap=true
+end
+
+alt saída após meia-noite
+  create -> spa : 409 { need: "midnight" }
+  spa -> u : pede confirmação
+  u -> spa : confirma
+  spa -> before : POST de novo com confirmMidnight=true
+end
+
+create -> spa : 201 { entry json }
+spa -> u : registro aparece na Home do dia
+@enduml

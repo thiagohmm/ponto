@@ -16,6 +16,9 @@ ponto-*.csv
 *.db-journal
 *.sqlite
 
+# PlantUML renderer downloaded on demand (see docs/README.md)
+tools/plantuml.jar
+
 .DS_Store
 
 # Local credentials, WAL sidecars and browser test artifacts

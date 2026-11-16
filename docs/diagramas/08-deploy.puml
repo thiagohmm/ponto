@@ -1,0 +1,49 @@
+@startuml deploy
+title Ponto — Fluxo de build e deploy (deploy/deploy.sh)
+
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #FDFDFD
+  BorderColor #333333
+}
+
+rectangle "Máquina de desenvolvimento" as dev {
+  rectangle "npm --prefix web ci\nnpm --prefix web run build\n→ web/dist" as fe #E3F2FD
+  rectangle "mvn -o package\nJAR gordo → target/ponto.jar\n(React build embutido)" as jar #E3F2FD
+  rectangle "testes antes do envio\nvitest · JUnit · smoke CLI\nPlaywright (Chromium)\nteste de restauração" as tests #E8F5E9
+}
+
+rectangle "SSH thiagohmm@192.168.0.8" as ssh
+
+rectangle "Host LAN — /home/thiagohmm/ponto-web" as host {
+  rectangle "docker compose build\nimagem candidata" as cand #FFF3E0
+  rectangle "snapshot consistente\nbanco + objetos + config\n(release.json: SHA-256, imagem anterior)" as snap #FFF3E0
+  rectangle "migração da cópia do snapshot\ncom a imagem candidata (sem rede)\nconferindo quantidade de registros" as mig #FFF3E0
+  rectangle "compose up\nponto (8090) · minio · edge (Caddy)" as up #E8F5E9
+  rectangle "smoke (deploy/smoke.py)\nhealth, empresas, notas,\nupload/download, CSV/XLS/PDF" as smoke #E8F5E9
+  rectangle "backup diário (crontab)\ndeploy/backup.py" as bkp #ECEFF1
+}
+
+rectangle "Usuários" as users
+database "PostgreSQL\n(marketing-postgres)" as db
+cloud "PiTunnel HTTPS\nponto-thiagohmm1.us1.pitunnel.net" as tunnel
+
+fe --> jar : dist vai dentro do JAR
+jar --> tests
+tests --> ssh : envia **somente** o JAR\ne os arquivos de compose (nunca dump)
+ssh --> cand
+cand --> snap : para o app atual\n(rollback guardado)
+snap --> mig
+mig --> up : se a migração confere
+up --> smoke : se algo falha → restaura\nbanco, objetos e imagem anteriores
+up --> db
+smoke --> bkp
+users --> up : http://192.168.0.8:8090 (LAN)
+users --> tunnel : https (via Caddy :8443)
+tunnel --> up
+
+note bottom of bkp
+  backup.py roda no crontab do servidor;
+  test/test_backup.py valida a restauração.
+end note
+@enduml

@@ -1,0 +1,43 @@
+@startuml backend-camadas
+title Ponto — Camadas do backend (pontos/)
+
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #FDFDFD
+  BorderColor #333333
+}
+skinparam arrowColor #444444
+
+rectangle "controller\nApp (menu CLI) · Web · Auth\nNoteRoutes · KanbanRoutes\nDiarioRoutes · AssistRoutes" as ctrl #E3F2FD
+
+rectangle "app\nService (fachada)\nTimesheetApp · CompanyApp\nNotesApp · KanbanApp\nFilesApp · DiarioApp" as app #F3E5F5
+
+rectangle "model\nEntry · Company · Note\nKanban* · Report · BankRules\nHolidays · Parse · Str · Dur · Time" as model #FFF8E1
+
+rectangle "infra\nDb · Migrations\nRepo · NotesStore · KanbanStore\nCompaniesStore · Diario\nFiles · Minio · Assist" as infra #ECEFF1
+
+rectangle "view\nIn · Out (CLI)\nJson · Csv · Xls · Pdf" as view #E8F5E9
+
+rectangle "raiz ponto/\nMain · Ver · HealthCheck\nBad · NotFound · Conflict\nNeedConfirm · StorageFailure\nProblema · Eof" as root #FBE9E7
+
+database "PostgreSQL" as db
+cloud "MinIO / S3" as s3
+
+ctrl --> app : só fala com Service
+app --> model
+app --> infra
+model ..> infra : Holidays usa CompanyApp (dias da empresa)
+infra --> db : SQL + migrações v6
+infra --> s3 : anexos
+ctrl --> view : Json/Csv/Xls/Pdf
+app ..> root : lança Bad/NeedConfirm/Conflict
+
+note as N1
+  Regras de negócio puras ficam em model
+  (BankRules, Holidays, Dur, Parse).
+  Stores em infra montam o SQL.
+  Controllers (e o menu CLI) nunca falam
+  direto com os stores — sempre via Service.
+end note
+infra .. N1
+@enduml
