@@ -16,14 +16,13 @@ self.addEventListener("activate", event => {
     await self.clients.claim();
   })());
 });
+// API traffic is never intercepted: a failed fetch here used to become JSON 503 and
+// broke attachment list/download over flaky tunnels. The Connection UI already covers offline.
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(fetch(event.request).catch(() => new Response('{"error":"Sem conexão. Tente novamente quando a rede voltar."}', {
-      status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-    })));
-  } else if (url.pathname.startsWith("/assets/")) {
+  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.startsWith("/assets/")) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       const hit = await cache.match(event.request);

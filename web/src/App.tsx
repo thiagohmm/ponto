@@ -17,6 +17,7 @@ const NotesPage = lazy(() => import("./pages/Notes").then((m) => ({ default: m.N
 const KanbanPage = lazy(() => import("./pages/Kanban").then((m) => ({ default: m.KanbanPage })));
 const ExportPage = lazy(() => import("./pages/Export").then((m) => ({ default: m.ExportPage })));
 const ConfigPage = lazy(() => import("./pages/Config").then((m) => ({ default: m.ConfigPage })));
+const CofrePage = lazy(() => import("./pages/Cofre").then((m) => ({ default: m.CofrePage })));
 
 function Ico({ path }: { path: string }) {
   return (
@@ -35,6 +36,7 @@ const TABS = [
   { to: "/kanban", label: "Kanban", path: "M4 5h4v14H4zM10 5h4v8h-4zM16 5h4v11h-4z" },
   { to: "/exportar", label: "Exportar", path: "M12 4v12M8 12l4 4 4-4M5 20h14" },
   { to: "/config", label: "Configurações", path: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 3v2M12 19v2M4.2 6.2l1.4 1.4M18.4 16.4l1.4 1.4M3 12h2M19 12h2M4.2 17.8l1.4-1.4M18.4 7.6l1.4-1.4" },
+  { to: "/cofre", label: "Cofre", path: "M6 10h12v11H6zM9 10V7a3 3 0 0 1 6 0v3" },
 ] as const;
 
 export function App() {
@@ -62,7 +64,9 @@ function Shell() {
       ? "Arraste cartões entre colunas da empresa ativa."
       : diario
         ? "Tudo o que aconteceu no dia — ponto, notas, kanban e um resumo com IA."
-        : "Organize sua rotina e acompanhe cada hora.";
+        : loc.pathname === "/cofre"
+          ? "Passwords guardados encrypted. One master password, no recovery."
+          : "Organize sua rotina e acompanhe cada hora.";
   return (
     <ConfirmProvider><UnsavedProvider><Connection /><CompanyProvider>
       <div className={vault ? "workspace notes-workspace" : kanban ? "workspace kanban-workspace" : "workspace"}>
@@ -123,6 +127,7 @@ function Pages() {
         <Route path="/kanban" element={<KanbanPage />} />
         <Route path="/exportar" element={<ExportPage />} />
         <Route path="/config" element={<ConfigPage />} />
+        <Route path="/cofre" element={<CofrePage />} />
       </Routes>
     </Suspense>
   );

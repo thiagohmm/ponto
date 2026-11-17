@@ -87,8 +87,52 @@ if ! PONTO_DATA_DIR="$out" "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNA
     exit 1
 fi
 
+# ---- cofre: the vault in the terminal must never print what it stores -------
+# The feed creates a cofre, adds two credentials, lists them, generates one,
+# backs everything up, changes the master password, imports the old file back,
+# deletes one and locks. `test/feed-cofre.txt` is that session, fed to the real
+# `ponto.Main`. What is checked is the promise, not the menu:
+#   · the list is masked;
+#   · the typed secret never reaches the screen (the page shows it only on `v s`);
+#   · the backup exists, is `ponto-cofre/1` and holds no plaintext;
+#   · the re-key happened, and the abandoned master password no longer opens it.
+DB3="$(fresh_db)"
+PONTO_DATA_DIR="$out" PONTO_DB="$DB3" PONTO_USER=Ana "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp "$CP" ponto.Main < "$here/feed-cofre.txt" > "$out/cofre.txt" 2>&1
+cofre_ok=yes
+for s in "cofre created" \
+         "cofre re-selado" \
+         "importado 2" \
+         "record(s)   ·   sealed" \
+         "•••••"; do
+    grep -qF -- "$s" "$out/cofre.txt" || { cofre_ok=no; print -u2 "x   cofre missing: $s"; }
+done
+# the typed password must not appear anywhere in the session: the terminal only
+# ever prints a mask, and `v s <id>` was deliberately not fed here.
+if grep -qF -- "alpha-s3cr3t-one" "$out/cofre.txt"; then
+    cofre_ok=no
+    print -u2 "x   the session printed a password that was typed"
+fi
+# the backup: sealed, and no plaintext of either secret inside
+bk="$out/cofre-backup.json"
+if [ ! -s "$bk" ]; then
+    cofre_ok=no
+    print -u2 "x   the cofre wrote no backup at $bk"
+else
+    for secret in "alpha-s3cr3t-one" "café-master-123" "novo-master-456"; do
+        if grep -qF -- "$secret" "$bk"; then
+            cofre_ok=no
+            print -u2 "x   the backup holds $secret in the clear"
+        fi
+    done
+    grep -qF -- "ponto-cofre/1" "$bk" || { cofre_ok=no; print -u2 "x   the backup is not ponto-cofre/1"; }
+fi
+if [ "$cofre_ok" = no ]; then
+    print "FAIL  cofre   (session in $out/cofre.txt)"
+    exit 1
+fi
+
 if diff -u "$here/expected.txt" "$out/digest.txt" > "$out/diff.txt" 2>&1; then
-    print "PASS  smoke   days off + digest + normal, session and files in $out"
+    print "PASS  smoke   days off + digest + normal + cofre, session and files in $out"
 else
     print "FAIL  smoke   diff in $out/diff.txt"
     cat "$out/diff.txt"

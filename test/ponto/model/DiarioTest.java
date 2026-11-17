@@ -69,18 +69,25 @@ class DiarioTest {
 
     @Test void schemaUpgradeFromV5CreatesDayDigest() throws Exception {
         String url = TestDb.freshUrl();
-        // Build a v5-looking DB: full current schema then roll version back and drop day_digest.
+        // Build a genuinely v5-shaped DB: full current schema, then remove what v6 and v7
+        // add and roll the recorded version back. Leaving the v7 tables behind would make
+        // the upgrade "pass" by skipping them.
         try (Db db = Db.open(dir, url)) {
             assertEquals(Migrations.VERSION, db.migrationVersion());
             assertTrue(db.hasTable("day_digest"));
             db.exec("DROP TABLE day_digest");
+            db.exec("DROP TABLE vault_item");
+            db.exec("DROP TABLE vault_meta");
             db.exec("UPDATE schema_migrations SET version = 5");
             assertEquals(5, db.migrationVersion());
             assertFalse(db.hasTable("day_digest"));
         }
         try (Db db = Db.open(dir, url)) {
-            assertEquals(6, db.migrationVersion());
+            // Two steps run, each in its own transaction: v6 brings day_digest, v7 the vault.
+            assertEquals(Migrations.VERSION, db.migrationVersion());
             assertTrue(db.hasTable("day_digest"));
+            assertTrue(db.hasTable("vault_meta"));
+            assertTrue(db.hasTable("vault_item"));
             Service s = new Service(db);
             var dig = s.gerarResumoDiario(LocalDate.of(2026, 1, 2),
                     new Assist(URI.create("http://127.0.0.1:9"), "x", false));

@@ -24,38 +24,54 @@ def run(args, project, **kwargs):
     return subprocess.run(args, cwd=project, check=True, **kwargs)
 
 
+# LAN host served by the edge; browsers need this IP in the cert SAN for https://192.168.0.8:8443.
+EDGE_SAN = 'DNS:localhost,IP:127.0.0.1,IP:192.168.0.8'
+
+
 def ensure_edge_certs(edge_dir: Path):
-    """Local CA + server cert so PiTunnel --https can verify 127.0.0.1:8443."""
+    """Local CA + server cert for PiTunnel (127.0.0.1) and LAN HTTPS (192.168.0.8)."""
     certs = edge_dir / 'certs'
     certs.mkdir(parents=True, exist_ok=True)
     ca_crt, ca_key = certs / 'ca.crt', certs / 'ca.key'
     cert, key = certs / 'cert.pem', certs / 'key.pem'
-    if cert.exists() and key.exists() and ca_crt.exists():
-        return
     ext = certs / 'server.ext'
     ext.write_text('authorityKeyIdentifier=keyid,issuer\n'
                    'basicConstraints=CA:FALSE\n'
                    'keyUsage = digitalSignature, keyEncipherment\n'
                    'extendedKeyUsage = serverAuth\n'
-                   'subjectAltName = DNS:localhost,IP:127.0.0.1\n')
-    for command in (
-        ['openssl', 'genrsa', '-out', str(ca_key), '2048'],
-        ['openssl', 'req', '-x509', '-new', '-nodes', '-key', str(ca_key), '-sha256', '-days', '3650',
-         '-out', str(ca_crt), '-subj', '/CN=ponto-local-ca'],
-        ['openssl', 'genrsa', '-out', str(key), '2048'],
-        ['openssl', 'req', '-new', '-key', str(key), '-out', str(certs / 'server.csr'), '-subj', '/CN=localhost'],
-        ['openssl', 'x509', '-req', '-in', str(certs / 'server.csr'), '-CA', str(ca_crt), '-CAkey', str(ca_key),
-         '-CAcreateserial', '-out', str(cert), '-days', '825', '-sha256', '-extfile', str(ext)],
-    ):
-        subprocess.run(command, check=True)
-    os.chmod(ca_key, 0o600)
-    os.chmod(key, 0o600)
-    system = Path('/usr/local/share/ca-certificates/ponto-local-ca.crt')
-    try:
-        subprocess.run(['sudo', '-n', 'cp', str(ca_crt), str(system)], check=True)
-        subprocess.run(['sudo', '-n', 'update-ca-certificates'], check=True)
-    except Exception as error:
-        print('Warning: could not install local CA into the system trust store:', error, flush=True)
+                   f'subjectAltName = {EDGE_SAN}\n')
+    need_ca = not (ca_crt.exists() and ca_key.exists())
+    need_server = need_ca or not (cert.exists() and key.exists())
+    if cert.exists() and not need_server:
+        sans = subprocess.run(
+            ['openssl', 'x509', '-in', str(cert), '-noout', '-ext', 'subjectAltName'],
+            capture_output=True, text=True, check=False).stdout
+        if '192.168.0.8' not in sans:
+            need_server = True
+    if need_ca:
+        for command in (
+            ['openssl', 'genrsa', '-out', str(ca_key), '2048'],
+            ['openssl', 'req', '-x509', '-new', '-nodes', '-key', str(ca_key), '-sha256', '-days', '3650',
+             '-out', str(ca_crt), '-subj', '/CN=ponto-local-ca'],
+        ):
+            subprocess.run(command, check=True)
+        os.chmod(ca_key, 0o600)
+    if need_server:
+        for command in (
+            ['openssl', 'genrsa', '-out', str(key), '2048'],
+            ['openssl', 'req', '-new', '-key', str(key), '-out', str(certs / 'server.csr'), '-subj', '/CN=localhost'],
+            ['openssl', 'x509', '-req', '-in', str(certs / 'server.csr'), '-CA', str(ca_crt), '-CAkey', str(ca_key),
+             '-CAcreateserial', '-out', str(cert), '-days', '825', '-sha256', '-extfile', str(ext)],
+        ):
+            subprocess.run(command, check=True)
+        os.chmod(key, 0o600)
+    if need_ca or need_server:
+        system = Path('/usr/local/share/ca-certificates/ponto-local-ca.crt')
+        try:
+            subprocess.run(['sudo', '-n', 'cp', str(ca_crt), str(system)], check=True)
+            subprocess.run(['sudo', '-n', 'update-ca-certificates'], check=True)
+        except Exception as error:
+            print('Warning: could not install local CA into the system trust store:', error, flush=True)
 
 
 def module(path, name):
@@ -180,7 +196,7 @@ def main():
         cron_command = shlex.join(['python3', str(project / 'deploy/backup.py'), 'backup', '--project', str(project)])
         lines.append('15 3 * * * ' + cron_command + ' >> ' + shlex.quote(str(Path(env['PONTO_BACKUP_DIR']) / 'backup.log')) + ' 2>&1 # ponto-backup')
         run(['crontab', '-'], project, input='\n'.join(lines) + '\n', text=True)
-        release = {'image': candidate, 'snapshot': str(snapshot), 'url': 'http://192.168.0.8:' + env['PONTO_PORT'],
+        release = {'image': candidate, 'snapshot': str(snapshot), 'url': 'https://192.168.0.8:8443',
                    'sha256': backup.digest(project / 'target/ponto.jar'), 'counts': after}
         (project / 'release.json').write_text(json.dumps(release, indent=2) + '\n')
         print(json.dumps(release, indent=2))

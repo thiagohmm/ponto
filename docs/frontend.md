@@ -28,7 +28,10 @@ web/src/
 ├── mask.ts / md.tsx     # máscara de hora NN:NN e markdown
 ├── justTaxonomy.ts      # categorias de justificativa
 ├── useAssist.ts         # sugestões IA (opcional, Ollama)
-├── pages/               # 1 aba = 1 chunk lazy
+├── vault/              # Cofre: crypto.ts (WebCrypto), model, generator, strength,
+│                     #   duplicates, clipboard, session (auto-lock), settings,
+│                     #   file.ts (ponto-cofre/1 backup), Vault.tsx (workspace hook)
+├── pages/              # 1 aba = 1 chunk lazy
 └── ui/                  # Confirm, Unsaved, Connection, Bars, BrandMark
 ```
 
@@ -38,6 +41,9 @@ web/src/
 2. **Todo HTTP passa por `api.ts`**: páginas nunca chamam `fetch` direto.
 3. **Toda URL de API leva `companyId`**: `companyUrl()` acrescenta o parâmetro; sem empresa selecionada, ele lança erro amigável.
 4. **Providers na ordem certa** (`App.tsx` → `Shell`): `ConfirmProvider > UnsavedProvider > Connection > CompanyProvider > páginas`.
+5. **The cofre keeps its key in memory only**: `vault/Vault.tsx` holds the derived `CryptoKey` while the page is open
+   and drops it on lock, on navigation and on unmount. The master password and the key never touch `localStorage` or
+   `sessionStorage`; only the idle-lock *minutes* are stored (`ponto-cofre-settings`).
 
 ## Rotas
 
@@ -52,6 +58,7 @@ web/src/
 | `/kanban` | `pages/Kanban.tsx` | Colunas e cartões arrastáveis, bloqueios, anexos |
 | `/exportar` | `pages/Export.tsx` | PDF/XLS/CSV por período (`exportUrl`) |
 | `/config` | `pages/Config.tsx` | Nome, dias de folga, jornada, empresas, storage |
+| `/cofre` | `pages/Cofre.tsx` | Password vault: unlock with the master password, one company filter over all companies, generator, copy, auto-lock, sealed backup export/import, rekey |
 
 As `Routes` são remontadas com `key={companyId}` — trocar a empresa remonta as páginas (sem estado velho de outra empresa).
 
@@ -75,9 +82,11 @@ As `Routes` são remontadas com `key={companyId}` — trocar a empresa remonta a
 
 ## PWA e offline
 
-- `web/public/sw.js` (registrado **só em produção**, stampado com a versão do build por `tools/stamp-sw.mjs`) cacheia a casca para instalar como app.
+- `web/public/sw.js` (registrado **só em produção**, stampado com a versão do build por `tools/stamp-sw.mjs`) cacheia a casca e `/assets/` para instalar como app.
+- O SW **não** intercepta `GET /api/*`: um fallback JSON 503 quebrava listagem/download de anexos no HTTPS (PiTunnel); a UI de conexão já cobre offline.
 - `manifest.webmanifest` + ícones (`icon-192/512`, apple-touch).
 - Service worker exige contexto seguro: HTTPS ou `localhost`; HTTP simples de LAN serve a interface sem instalar.
+- **Cofre** também exige contexto seguro: em HTTP da LAN o browser não expõe `crypto.subtle` e a tela avisa para abrir via HTTPS (túnel) ou localhost — a mensagem antiga que culpava o browser era falsa.
 - Sem rede a casca abre, mas os dados pedem conexão — o `ui/Connection` avisa.
 
 ## UX que vale saber
@@ -89,7 +98,10 @@ As `Routes` são remontadas com `key={companyId}` — trocar a empresa remonta a
 
 ## Testes
 
-- **Vitest + Testing Library** (`web/test/`): hooks e componentes puros (máscara, árvore de notas, busca).
+- **Vitest + Testing Library** (`web/test/`): hooks e componentes puros (máscara, árvore de notas, busca) and the
+  whole `vault/` layer. jsdom's `crypto` is replaced by Node's `webcrypto` in `vitest.config.ts`, because the vault
+  needs real AES-GCM — a mock would prove nothing. `test/vault-node.mjs` (the repo's third implementation) is read
+  straight from `process.cwd()/..` so the browser code is checked against the same bytes the Java tests check.
 - **Playwright** (`web/e2e/`, `playwright.config.ts`): fluxo ponta a ponta no Chromium; requer `npx playwright install chromium`.
 - Rodam no CI junto com o backend (`.github/workflows/`).
 - **Mudou um fluxo visível?** Atualize o teste E2E correspondente no mesmo PR.

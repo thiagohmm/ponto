@@ -6,7 +6,7 @@ import ponto.app.Service;
 import java.nio.file.Path;
 
 /**
- * Test fixture for test/test_backup.py: creates the v5 schema (via Migrations,
+ * Test fixture for test/test_backup.py: creates the current schema (via Migrations,
  * through the app itself, exactly as production does) plus a real note in the
  * database/schema pointed to by the given JDBC URL.
  *

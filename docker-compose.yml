@@ -20,8 +20,7 @@ services:
     restart: unless-stopped
     depends_on:
       - minio
-    ports:
-      - "${PONTO_BIND:-0.0.0.0}:${PONTO_PORT:-8090}:8080"
+    # No host port: LAN uses edge :8090 (redirect) / :8443 (TLS); smoke hits 127.0.0.1:8090 via Caddy.
     environment:
       PONTO_DB: ${PONTO_DB_URL:?Configure PONTO_DB_URL in .env}
       PONTO_TZ: ${PONTO_TZ:-America/Sao_Paulo}
@@ -47,7 +46,7 @@ services:
       retries: 3
     stop_grace_period: 45s
 
-  # Local TLS for PiTunnel --https (public cert is issued by PiTunnel).
+  # Local TLS: LAN HTTPS for the cofre + PiTunnel --https (public cert is PiTunnel's).
   edge:
     image: caddy:2.10.2-alpine
     container_name: ponto-edge
@@ -55,7 +54,8 @@ services:
     depends_on:
       - ponto
     ports:
-      - "127.0.0.1:8443:8443"
+      - "${PONTO_EDGE_BIND:-0.0.0.0}:8090:8090"
+      - "${PONTO_EDGE_BIND:-0.0.0.0}:8443:8443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${PONTO_EDGE_DIR:-/home/thiagohmm/.local/share/ponto-edge}/certs:/certs:ro

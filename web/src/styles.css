@@ -2074,6 +2074,68 @@ td { padding: 14px 12px; }
 }
 .kanban-dialog .dialog-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .kanban-dialog .push { margin-left: auto; }
+
+/* ---------- cofre ----------------------------------------------------------
+ * The vault is the one screen that holds secrets on purpose, so the rules here are about
+ * not leaking by accident: the password field is read-only and aria-hidden (the copy button
+ * is the accessible way to take it), revealed values hide themselves again, and nothing on
+ * the page shows a plaintext length that would hint at a weak password. */
+.cofre { display: grid; gap: 14px; align-content: start; margin-top: 18px; }
+.cofre-gate { max-width: 460px; margin: 0 auto; text-align: left; }
+.cofre-gate-field { display: block; width: 100%; margin: 6px 0 12px; }
+.cofre-gate input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .5px; }
+
+.cofre-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 14px; }
+.cofre-bar strong { color: var(--ink); }
+.cofre-search { flex: 1 1 220px; min-width: 160px; }
+
+.cofre-warn { padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--sub); display: grid; gap: 4px; }
+.cofre-warn strong { font-size: 13px; }
+
+.cofre-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--card); }
+.cofre-row + .cofre-row { margin-top: 10px; }
+.cofre-row-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cofre-company { font-size: 11px; color: var(--muted); }
+.cofre-company.ghost { border-style: dashed; }
+
+.cofre-secret { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+/* The value is real text, so a screen reader would read it character by character: hidden
+   from the tree, reachable with the button. `selectable` stays on so a click-drag copy still
+   works when someone prefers that over the button. */
+.cofre-secret input { flex: 1 1 140px; min-width: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--paper); user-select: all; }
+.cofre-desc { margin: 8px 0 0; color: var(--muted); white-space: pre-wrap; }
+
+.cofre-strength { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cofre-bars { display: flex; gap: 3px; width: 68px; height: 6px; border-radius: 3px; }
+.cofre-bars i { height: 6px; flex: 1; border-radius: 2px; background: var(--line); }
+.cofre-bars i.on { background: var(--err); }
+.cofre-bars i.on:nth-child(2) { background: var(--stamp); }
+.cofre-bars i.on:nth-child(3) { background: var(--ok); }
+.cofre-bars i.on:nth-child(4) { background: var(--accent); }
+.cofre-score { font-size: 12px; color: var(--muted); }
+
+.cofre-form { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--card); }
+.cofre-editing { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+.cofre-hint { font-size: 12px; }
+
+.cofre-gen { border-top: 1px dashed var(--line); padding: 10px 0 0; display: grid; gap: 8px; }
+.cofre-gen input[type="range"] { width: 100%; accent-color: var(--accent); }
+.cofre-gen-sets { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; }
+.cofre-check { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+
+.cofre-tools { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.cofre-tool { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--card); }
+.cofre-tool h3 { margin: 0 0 4px; font-size: 14px; }
+.cofre-tool p { margin: 0 0 10px; }
+.cofre-import { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; }
+.cofre-import input[type="file"] { max-width: 180px; }
+
+@media (max-width: 800px) {
+ .cofre-secret { align-items: stretch; }
+ .cofre-secret input { width: 100%; }
+ .cofre-gate { padding: 14px; }
+}
+
 @media (max-width: 1100px) {
  .sidebar { width: 210px; padding-inline: 12px; }
  .workspace-body { margin-left: 210px; }

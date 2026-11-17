@@ -7,6 +7,7 @@ import ponto.infra.Db;
 import ponto.infra.Files;
 import ponto.infra.KanbanStore;
 import ponto.infra.NotesStore;
+import ponto.infra.VaultStore;
 import ponto.model.*;
 
 import java.time.LocalDate;
@@ -55,6 +56,7 @@ public final class Service {
     private final FilesApp files;
     private final TimesheetApp timesheet;
     private final DiarioApp diario;
+    private final VaultApp vault;
 
     public Service(Db db) {
         this.db = db;
@@ -67,6 +69,7 @@ public final class Service {
         this.timesheet = new TimesheetApp(db, lock, calendar, companies::active, this::who);
         this.diario = new DiarioApp(db, lock, timesheet.repo(), calendar,
                 timesheet::dailyMinutes, timesheet::falta, timesheet::normal);
+        this.vault = new VaultApp(new VaultStore(db, lock));
     }
 
     /** Scoped view for one company; reuses Files worker/storage. */
@@ -213,6 +216,26 @@ public final class Service {
     }
     public KanbanCard unblockKanbanCard(int id) { return kanban.unblockCard(id); }
     public KanbanCard kanbanCardById(int id) { return kanban.byId(id); }
+
+    // ---- vault ---------------------------------------------------------------
+    // The vault is one: a single master password opens every company's records.
+    // The server only ever hands over sealed blobs — the key never exists here.
+    public VaultMeta vaultMeta() { return vault.meta(); }
+    public VaultMeta vaultCreate(String kdf, String salt, int iterations, String check) {
+        return vault.create(kdf, salt, iterations, check);
+    }
+    public List<VaultItem> vaultItems(Integer companyFilter) { return vault.items(companyFilter); }
+    public VaultItem vaultItemById(int id) { return vault.byId(id); }
+    public VaultItem createVaultItem(int companyId, String blob) { return vault.create(companyId, blob); }
+    public VaultItem updateVaultItem(int id, String blob, int revision) { return vault.update(id, blob, revision); }
+    public void deleteVaultItem(int id) { vault.delete(id); }
+    public VaultMeta vaultRekey(String kdf, String salt, int iterations, String check, List<VaultRewrap> items) {
+        return vault.rekey(kdf, salt, iterations, check, items);
+    }
+    public List<VaultItem> createVaultItems(List<VaultDraft> drafts) { return vault.createAll(drafts); }
+    public int vaultCount() { return vault.count(); }
+    public int vaultCount(int companyId) { return vault.countCompany(companyId); }
+    public int deleteVaultCompany(int companyId) { return vault.deleteCompany(companyId); }
 
     // ---- companies -------------------------------------------------------------
     public Company activeCompany() { return companies.active(); }

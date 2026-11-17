@@ -116,6 +116,10 @@ public final class Web {
         app.exception(ponto.Conflict.class, (e, ctx) -> error(ctx, 409, e.getMessage()));
         app.exception(ponto.NotFound.class, (e, ctx) -> error(ctx, 404, e.getMessage()));
         app.exception(ponto.StorageFailure.class, (e, ctx) -> error(ctx, 503, e.getMessage()));
+        // 423 Locked with `need`: the vault has no verifier yet. The SPA reads `need`
+        // for midnight and overlap already, so this is the same conversation.
+        app.exception(ponto.VaultSealed.class, (e, ctx) -> ctx.status(423).json(Map.of(
+                "need", e.need, "error", e.getMessage(), "requestId", requestId(ctx))));
         app.exception(Bad.class, (e, ctx) -> error(ctx, 400, e.getMessage()));
         app.exception(io.javalin.validation.ValidationException.class, (e, ctx) -> error(ctx, 400, "Requisição inválida."));
         app.exception(io.javalin.http.HttpResponseException.class, (e, ctx) -> error(ctx, e.getStatus(), e.getMessage()));
@@ -176,6 +180,7 @@ public final class Web {
         new KanbanRoutes(this::service).register(app);
         new AssistRoutes(assist).register(app);
         new DiarioRoutes(this::service, assist).register(app);
+        new VaultRoutes(this::service).register(app);
         app.events(events -> events.serverStopped(svc::closeResources));
         return app;
     }

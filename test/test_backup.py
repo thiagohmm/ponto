@@ -58,7 +58,7 @@ def classpath():
 
 
 def fixture(url):
-    """Create the v5 schema + one note via the app itself (BackupFixture)."""
+    """Create the current schema + one note via the app itself (BackupFixture)."""
     out = subprocess.run(['java', '-cp', classpath(), 'ponto.BackupFixture', url],
                          capture_output=True, text=True)
     self_msg = out.stdout + out.stderr
@@ -98,7 +98,7 @@ class BackupTest(unittest.TestCase):
             if not shutil.which('docker'):
                 self.skipTest('docker not available')
             ensure_pg()
-            # Drop & recreate the test database; the fixture rebuilds the v5 schema.
+            # Drop & recreate the test database; the fixture rebuilds the schema.
             sh(['docker', 'exec', CONTAINER, 'psql', '-U', 'ponto', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1',
                 '-c', f'DROP DATABASE IF EXISTS {DB} WITH (FORCE);',
                 '-c', f'CREATE DATABASE {DB} OWNER ponto;'])
@@ -159,7 +159,7 @@ class BackupTest(unittest.TestCase):
             body = query('SELECT body FROM note')
             self.assertEqual(NOTE_BODY, body)
             version = query('SELECT version FROM schema_migrations')
-            self.assertEqual('6', version)
+            self.assertEqual('7', version)
 
             # 5) corruption detection: a broken archive aborts the restore
             (snapshot / 'minio.tar.gz').write_bytes(b'corrupted')

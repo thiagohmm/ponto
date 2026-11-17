@@ -27,11 +27,11 @@ it("waits for user consent to activate an update and preserves other apps' cache
   await completion;
   expect(w.caches.delete).toHaveBeenCalledExactlyOnceWith("ponto-old");
 });
-it("returns a network error for API reads without caching personal data", async () => {
+it("lets the browser handle API reads so attachment downloads are not turned into JSON 503", () => {
   const w = worker();
-  let response!: Promise<Response>;
-  w.handlers.fetch({ request: { method: "GET", url: "https://ponto.test/api/notes?companyId=1" },
-    respondWith: (value: Promise<Response>) => { response = value; } });
-  expect((await response).status).toBe(503);
+  const respondWith = vi.fn();
+  w.handlers.fetch({ request: { method: "GET", url: "https://ponto.test/api/notes/1/files?companyId=1" },
+    respondWith });
+  expect(respondWith).not.toHaveBeenCalled();
   expect(w.caches.open).not.toHaveBeenCalled();
 });

@@ -1,0 +1,33 @@
+v c
+café-master-123
+café-master-123
+v n
+Gmail
+ana
+personal e2e
+
+pass=alpha-s3cr3t-one
+v n
+VPN
+ana
+work
+
+
+v l
+v g 24
+n
+v b /tmp/ponto-smoke/cofre-backup.json
+v k
+café-master-123
+novo-master-456
+novo-master-456
+120000
+y
+v i /tmp/ponto-smoke/cofre-backup.json
+café-master-123
+y
+v l
+v x 1
+y
+v q
+0

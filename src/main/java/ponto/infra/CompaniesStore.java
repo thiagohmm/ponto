@@ -74,7 +74,8 @@ public final class CompaniesStore {
             List<Company> all = listLocked();
             if (all.size() <= 1) throw new Bad("última empresa");
             must(id);
-            if (countTable("ponto", id) > 0 || countTable("note", id) > 0 || countTable("kanban_card", id) > 0)
+            if (countTable("ponto", id) > 0 || countTable("note", id) > 0 || countTable("kanban_card", id) > 0
+                    || countTable("vault_item", id) > 0)
                 throw new Bad("empresa com dados");
             write("DELETE FROM kanban_column WHERE company_id=?", id);
             write("DELETE FROM folder WHERE company_id=?", id);

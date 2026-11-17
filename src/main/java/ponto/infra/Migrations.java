@@ -7,10 +7,13 @@ import java.sql.Statement;
 
 /**
  * Versioned upgrades on Postgres. Fresh installs create the current schema
- * in one atomic transaction. Existing v5 databases upgrade to v6 in place.
+ * in one atomic transaction. Existing databases walk the chain: each step runs
+ * in its own transaction and records the version it just produced, so a
+ * v5 database gains day_digest and then the vault instead of being stamped
+ * with the final version half-way through.
  */
 public final class Migrations {
-    public static final int VERSION = 6;
+    public static final int VERSION = 7;
 
     static void apply(Db db) {
         int version = 0;
@@ -30,6 +33,15 @@ public final class Migrations {
         if (version == 5) {
             db.transaction(() -> {
                 createDayDigest(db);
+                // Record 6, not 7: the next step still has to run.
+                db.exec("UPDATE schema_migrations SET version = 6");
+                return null;
+            });
+            version = 6;
+        }
+        if (version == 6) {
+            db.transaction(() -> {
+                createVault(db);
                 db.exec("UPDATE schema_migrations SET version = " + VERSION);
                 return null;
             });
@@ -130,6 +142,7 @@ public final class Migrations {
                 + "path TEXT NOT NULL DEFAULT '', ctype TEXT NOT NULL DEFAULT '', "
                 + "attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '')");
 
+        createVault(db);
         createDayDigest(db);
 
         db.exec("CREATE INDEX ix_note_upd ON note(upd)");
@@ -164,6 +177,50 @@ public final class Migrations {
                 + "model TEXT NOT NULL DEFAULT '', " + created + ", "
                 + "upd TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI'), "
                 + "PRIMARY KEY (company_id, dia))");
+    }
+
+    /**
+     * The vault: one public-parameters row and one row per credential.
+     *
+     * Both tables hold ciphertext and counters only — {@code blob} and
+     * {@code check_blob} are base64 of {@code iv ‖ ciphertext ‖ tag}. There is
+     * deliberately no column for a password hint, a "last used" or an audit trail:
+     * every extra column is a column a stolen dump would explain.
+     *
+     * {@code company_id} is the tag: plaintext on purpose, so the database can
+     * count, filter and refuse orphans without ever reading a secret. The company
+     * id is repeated inside the ciphertext and bound as AAD, so relabelling a row
+     * is not enough to pass it off as another company's credential.
+     */
+    static void createVault(Db db) {
+        String created = "crea TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI')";
+        db.exec("CREATE TABLE vault_meta ("
+                + "id INTEGER PRIMARY KEY CHECK (id = 1), "
+                + "kdf TEXT NOT NULL DEFAULT 'PBKDF2-SHA256' CHECK (kdf = 'PBKDF2-SHA256'), "
+                + "salt TEXT NOT NULL, "
+                + "iterations INTEGER NOT NULL CHECK (iterations BETWEEN 100000 AND 5000000), "
+                + "check_blob TEXT NOT NULL, " + created + ", "
+                + "upd TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI'))");
+
+        db.exec("CREATE TABLE vault_item ("
+                + "id BIGSERIAL PRIMARY KEY, "
+                + "company_id INTEGER NOT NULL REFERENCES company(id), "
+                + "blob TEXT NOT NULL, "
+                + "revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0), "
+                + created + ", "
+                + "upd TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI'))");
+        db.exec("CREATE INDEX ix_vault_item_company ON vault_item(company_id, upd)");
+        db.exec("CREATE INDEX ix_vault_item_upd ON vault_item(upd)");
+
+        // A credential belongs to the company that sealed it: moving a row would
+        // break the AAD binding, so the database refuses the move outright.
+        db.exec("CREATE OR REPLACE FUNCTION check_vault_item_company() RETURNS trigger AS $$ "
+                + "BEGIN "
+                + "IF NEW.company_id != OLD.company_id "
+                + "THEN RAISE EXCEPTION 'credential não pode move entre companies'; END IF; "
+                + "RETURN NEW; END $$ LANGUAGE plpgsql");
+        db.exec("CREATE TRIGGER trg_vault_item_company BEFORE UPDATE ON vault_item "
+                + "FOR EACH ROW EXECUTE FUNCTION check_vault_item_company()");
     }
 
     static void seedKanbanColumns(Db db, int companyId) {

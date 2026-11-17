@@ -313,6 +313,31 @@ export type Diario = {
   digest: DayDigest | null;
 };
 
+/**
+ * The cofre. Both types are opaque by design: `blob` is sealed text the app never parses,
+ * and `check` is the verifier the browser opens locally to know a master password is right.
+ * Nothing here carries a plaintext field — there is no `pass` on the wire, because the
+ * server has no idea what a password is.
+ */
+export type VaultMeta = {
+  sealed: boolean;
+  kdf: string;
+  salt: string;
+  iterations: number;
+  check: string;
+  items: number;
+  updatedAt: string;
+};
+
+export type VaultRecord = {
+  id: number;
+  companyId: number;
+  blob: string;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class ApiError extends Error {
   status: number;
   need?: string;

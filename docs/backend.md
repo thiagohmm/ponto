@@ -70,8 +70,10 @@ Requisitos: Java 25, PostgreSQL rodando. Maven só serve para compilar.
 ![Modelo de dados](diagramas/img/er-modelo-dados.svg)
 
 - **Uma conexão JDBC** aberta por `Db.open`; todas as empresas compartilham conexão e `lock`.
-- Migrações versionadas em `infra/Migrations.java` (`VERSION = 6`): instalação nova cria o schema completo em uma transação; v5 → v6 apenas acrescenta `day_digest`. Banco de versão mais recente é rejeitado com mensagem clara.
-- Tabelas: `company`, `ponto`, `dia_flag`, `cfg`, `folder`, `note`, `tag`, `note_tag`, `note_file`, `kanban_column`, `kanban_card`, `kanban_block`, `kanban_card_file`, `object_job`, `day_digest`, `schema_migrations`.
+- Migrações versionadas in `infra/Migrations.java` (`VERSION = 7`): a new installation creates the full schema in one transaction; **each step advances exactly one version** (`Migrations.java` stamps only v7, `test/ponto/TestDb.java` and `web/test/fixture` assert the history is 1…7 and that a database from the future is refused). v6 → v7 adds `vault_meta` + `vault_item`.
+- Tables: `company`, `ponto`, `dia_flag`, `cfg`, `folder`, `note`, `tag`, `note_tag`, `note_file`, `kanban_column`, `kanban_card`, `kanban_block`, `kanban_card_file`, `object_job`, `day_digest`, `vault_meta`, `vault_item`, `schema_migrations`.
+- The vault is **not** partitioned by company: one master password opens every company's records, and `vault_item.company_id` is a tag the server may filter and orphan-check — never a secret. A trigger stops a credential from moving between companies, and deleting a company that still holds credentials is refused (409) until its rows are wiped.
+- No column of `vault_meta`/`vault_item` ever holds plaintext: `salt`, `iterations` and `kdf` are public KDF parameters, `check_blob` and `blob` are AES-GCM envelopes (`iv ‖ ciphertext ‖ tag`) produced by the client. Nothing in the backend can open them — there is no key and no password here.
 - Partição por empresa via `company_id` + FKs compostas (ex.: `UNIQUE(id, company_id)`), com trigger garantindo que nota e tag sejam da mesma empresa.
 - **Mudou o schema?** Incremente `VERSION`, escreva a migração in-place, e lembre que o deploy usa snapshot e migração de cópia (ver `deploy/README.md`).
 
@@ -98,6 +100,59 @@ Requisitos: Java 25, PostgreSQL rodando. Maven só serve para compilar.
 - `DiarioRoutes` + `app/DiarioApp` geram o resumo do dia (`day_digest`) a partir do ponto, notas e kanban.
 - `infra/Assist` fala com Ollama em `127.0.0.1` para sugerir **tags de nota** e **categorias de justificativa**. Sem Ollama: botões não aparecem, nada quebra.
 
+## Cofre de senha (zero-knowledge)
+
+![Camadas do backend](diagramas/img/backend-camadas.svg)
+
+The vault is the one part of the app where **the server is deliberately dumb**. The browser derives a key
+from the master password (PBKDF2-HMAC-SHA256 → AES-256-GCM) and only ever sends sealed blobs. The backend
+stores, counts, filters and deletes those blobs without ever being able to read them.
+
+| Piece | File | Job |
+|---|---|---|
+| Parameters | `model/VaultCrypto.java` | KDF, salt/iv/tag sizes, iteration bounds, the AAD strings, `looksSealed()`, `encode()`/`decode()` |
+| Envelope | `iv (12) ‖ ciphertext ‖ authTag (16)`, base64 | The same bytes WebCrypto writes — `test/vault-fixtures.json` and `test/vault-node.mjs` are the contract |
+| Records | `model/VaultPayload.java` | The plaintext JSON (`app`, `user`, `pass`, `desc`, `company`) the **client** seals. The backend only checks its shape, never its contents |
+| Policy | `app/VaultApp.java` | A vault must be sealed before records; rekey moves all of it or none of it |
+| Storage | `infra/VaultStore.java` | Opaque blobs, revisions, counters, orphan guards. No cipher, no plaintext model in the imports |
+| HTTP | `controller/VaultRoutes.java` | Meta, seal, items (single/bulk), rekey, wipe. 423 + `need: "create"` when the cofre does not exist yet |
+| Backup file | `view/VaultFile.java` | `ponto-cofre/1`: public header (`format`, `kdf`, `salt`, `iterations`, `count`) + one sealed blob holding the whole list |
+| Terminal | `controller/App.java` (`v`) | Unlock, list masked, show one, new/edit/delete, generator (`SecureRandom`), backup, import, rekey, wipe |
+
+**What the server can and cannot do**
+
+| Question | Answer |
+|---|---|
+| "Which company owns this credential?" | It can — `company_id` is a plaintext tag, used for counting, filtering and orphan checks |
+| "Is this a real sealed envelope?" | It can — base64 shape, minimum length, the `looksSealed()` rule |
+| "Does this blob decrypt? Is the password right?" | It cannot. There is no key and no password in the process, and there never will be |
+| "Did the user seal with a *different* key?" | It cannot tell. Their own client will refuse it (GCM tag mismatch), which is why the unlock test exists |
+| "Can I reset the master password?" | No. There is no server-side recovery — losing the password loses the cofre. That is the design, not a gap |
+
+**Invariants**
+
+1. **PBKDF2 is written by hand.** `PBEKeySpec` feeds the JCE a `char[]` and the provider hashes the low 8
+   bits of each UTF-16 unit — so `café` would produce a *different* key in Java than in the browser, and every
+   real password with accents would break. `VaultCrypto.deriveKey()` hashes UTF-8 bytes, exactly as WebCrypto does.
+2. **AAD is *authenticated*, not encrypted.** `updateAAD()`, never `update()` on the context; the AAD binds a
+   blob to `ponto:vault:item:<companyId>`, the verifier to `ponto:vault:check`, a backup to its record count.
+   Java appends the auth tag to `doFinal()` output, so the envelope is `iv ‖ sealed` — the same bytes the browser
+   and the Node mirror produce.
+3. **`423 + need: "create"` before a seal exists.** Writing records against a vault with no verifier would leave
+   blobs nobody can ever unlock. `VaultSealed` carries `need` and `Web.java` turns it into 423.
+4. **Rekey is atomic.** The client decrypts everything, re-seals everything, and submits the full set; one
+   transaction replaces every blob plus the verifier. A half-done rekey would open for nobody.
+5. **The terminal holds the key only in memory** (`App.cofreKey`), drops it on `lock`, and prints secrets only on
+   explicit request (`v s <id>`). Lists show `•••••`.
+6. **A backup file is self-verifying.** The outer seal covers the whole list and `count` is the AAD, so a deleted,
+   swapped or forged record breaks the tag. A plaintext list is refused *before* any key is derived.
+
+**Terminal keys** (`v`, in the menu): `v` state · `v c` create/open · `v l [text]` list (masked) · `v n` new ·
+`v e [id]` edit · `v s [id]` show one secret · `v x [id…]` delete · `v g [n]` generate · `v b [file]` backup ·
+`v i [file]` import · `v w` forget this company · `v k` new master password · `v q` lock.
+Only `v c` and `v n` may seal an unsealed vault, and both ask for the password twice — so a master password is
+never chosen by accident. Everything else refuses an unsealed vault with `v c creates it` instead.
+
 ## Variáveis de ambiente
 
 | Variável | Padrão | Efeito |
@@ -114,7 +169,13 @@ Requisitos: Java 25, PostgreSQL rodando. Maven só serve para compilar.
 
 ## Testes
 
-- `test/` — JUnit (configurado no POM, apesar de fora de `src/test/java`), smoke do terminal (`test/smoke.sh`, `feed.txt`), e `test/Verify.java`/`Normal.java` como fixtures.
+- `test/` — JUnit (configurado no POM, apesar de fora de `src/test/java`), smoke do terminal (`test/smoke.sh`, `feed.txt`, `feed-cofre.txt`), e `test/Verify.java`/`Normal.java` como fixtures.
+- `test/feed-cofre.txt` drives the whole cofre through the real `ponto.Main` (create, two credentials, list, generate,
+  backup, re-key, import, delete, lock). `test/smoke.sh` replays it and then greps: the session must show `•••••` and
+  never the typed password, and the backup must be `ponto-cofre/1` holding no plaintext.
+- The vault is checked against a **third implementation on purpose**: `test/vault-node.mjs` is WebCrypto in Node, the
+  stand-in "browser" that both `test/ponto/view/VaultFileTest.java` and the frontend suite must agree with, byte for byte.
+  `test/CofreCli.java` runs the real app end to end and asserts the database holds no plaintext for any secret it planted.
 - Backend roda no CI (`.github/workflows/`) com PostgreSQL provisionado.
 - **Mudou uma regra?** Adicione/ajuste o teste junto — e atualize a doc.
 

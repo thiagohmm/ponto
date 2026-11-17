@@ -140,6 +140,28 @@ public final class In {
         catch (Bad e) { o.bad(e.getMessage()); return time(label, s); }
     }
 
+    /**
+     * A secret (master password, a new password). On a terminal there is no echo, and the
+     * `char[]` that `Console.readPassword` hands back is zeroed before it is returned —
+     * a String cannot be scrubbed once it exists, so this is the last moment anything
+     * plaintext about the key could be kept aside.
+     *
+     * When stdin is a pipe there is no `Console`: the line is read like any other, and
+     * the caller must not print it. Scripts feeding the menu should pass the secret in
+     * an environment variable, not in the terminal history.
+     */
+    public String secret(String label) {
+        o.ask(label);
+        if (!Out.TTY) return read();
+        var con = System.console();
+        if (con == null) throw new Problema("no echo: terminal without Console");
+        char[] p = con.readPassword();
+        if (p == null) throw new Eof();
+        String s = String.valueOf(p);
+        for (int i = 0; i < p.length; i++) p[i] = '\0';
+        return s;
+    }
+
     /** Yes/No, default encoded in the bracket. */
     public boolean yes(String label, boolean def) {
         o.ask(label, def ? "S/n" : "s/N");

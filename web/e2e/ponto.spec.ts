@@ -120,3 +120,50 @@ test("login is required before opening the workspace", async ({ page, request })
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.getByRole("heading", { name: "Registros" })).toBeVisible();
 });
+
+test("the cofre opens with a master password and never puts a secret in the page text", async ({ page, request }) => {
+  await apiLogin(request);
+  const catalog = await (await request.get("/api/companies")).json();
+  const suffix = "?companyId=" + catalog.activeId;
+  const master = "e2e master café-π 12345";
+  const secret = "e2e-s3cr3t-Alpha";
+
+  await uiLogin(page);
+  await page.goto("/cofre");
+  await expect(page.getByRole("heading", { name: "Create the cofre" })).toBeVisible();
+
+  await page.locator(".cofre-gate").getByPlaceholder("••••••••").fill(master);
+  await page.locator(".cofre-gate").getByRole("button", { name: "Create and open" }).click();
+  await expect(page.getByText(/nothing yet/)).toBeVisible({ timeout: 20_000 });
+
+  // scoped to the form: elsewhere on the page a row waits to be copied and the
+  // backup panel has its own "Save sealed file" button
+  const form = page.locator(".cofre-form");
+  await form.getByLabel("Application").fill("Router e2e");
+  await form.getByLabel("User").fill("admin");
+  await form.getByLabel("Password").fill(secret);
+  await form.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(/saved/i).first()).toBeVisible();
+
+  // the row shows the target, not the secret
+  await expect(page.getByText("Router e2e")).toBeVisible();
+  const raw = await (await request.get("/api/vault/items" + suffix)).json();
+  expect(raw.items).toHaveLength(1);
+  expect(raw.items[0].blob).not.toContain(secret);
+  expect(raw.items[0].blob).not.toContain("Router");
+
+  // the page never carries the secret as visible text; the input holds it to be copied
+  expect(await page.evaluate((want) => document.body.innerText.includes(want), secret)).toBe(false);
+  const input = page.locator(".cofre-secret input");
+  expect(await input.getAttribute("aria-hidden")).toBe("true");
+  expect(await input.getAttribute("type")).toBe("password");
+
+  await page.locator(".cofre-row").getByRole("button", { name: "Copy" }).click();
+  await expect(page.getByText(/replaced|keep the value/i).first()).toBeVisible();
+  await page.locator(".cofre-bar").getByRole("button", { name: "Lock" }).click();
+  await expect(page.getByRole("heading", { name: "Unlock the cofre" })).toBeVisible();
+
+  await page.locator(".cofre-gate").getByPlaceholder("••••••••").fill("wrong master");
+  await page.locator(".cofre-gate").getByRole("button", { name: "Open" }).click();
+  await expect(page.getByText(/wrong master password/i)).toBeVisible();
+});

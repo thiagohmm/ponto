@@ -1,4 +1,4 @@
-import type { AssistJust, AssistNoteTags, AssistStatus, Bank, Company, CompanyList, Config, DayDigest, DayInfo, Diario, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanCardFile, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag } from "./types";
+import type { AssistJust, AssistNoteTags, AssistStatus, Bank, Company, CompanyList, Config, DayDigest, DayInfo, Diario, Entry, EntryList, Folder, Home, KanbanBoard, KanbanCard, KanbanCardFile, KanbanColumn, Note, NoteFile, NoteList, Sum, Tag, VaultMeta, VaultRecord } from "./types";
 import { ApiError } from "./types";
 
 export type EntrySave = { dia: string; tin: string; tout: string; just: string; closeOpen?: boolean; confirmMidnight?: boolean; confirmOverlap?: boolean };
@@ -200,4 +200,26 @@ export const api = {
   diario: (dia: string) => req<Diario>("/diario?dia=" + encodeURIComponent(dia)),
   gerarResumoDiario: (dia: string) =>
     req<DayDigest>("/diario/resumo", { method: "POST", body: JSON.stringify({ dia }) }),
+
+  // ---- cofre --------------------------------------------------------------
+  // Every one of these moves sealed text. The API never sees a password because there is
+  // nothing here to see: `blob` and `check` are opaque strings to the server, and the master
+  // password is not a parameter of any call — it becomes a key in this tab's memory first.
+  vault: () => req<VaultMeta>("/vault"),
+  sealVault: (body: { kdf: string; salt: string; iterations: number; check: string }) =>
+    req<VaultMeta>("/vault", { method: "POST", body: JSON.stringify(body) }),
+  vaultItems: (company?: number) =>
+    req<{ items: VaultRecord[] }>("/vault/items" + (company ? "?company=" + company : "")),
+  createVaultItem: (body: { companyId: number; blob: string }) =>
+    req<VaultRecord>("/vault/items", { method: "POST", body: JSON.stringify(body) }),
+  importVaultItems: (items: { companyId: number; blob: string }[]) =>
+    req<{ imported: number; items: VaultRecord[] }>("/vault/items/bulk", { method: "POST", body: JSON.stringify({ items }) }),
+  updateVaultItem: (id: number, body: { blob: string; revision: number }) =>
+    req<VaultRecord>("/vault/items/" + id, { method: "PUT", body: JSON.stringify(body) }),
+  removeVaultItem: (id: number) => req<{ ok: boolean }>("/vault/items/" + id, { method: "DELETE" }),
+  /** Forgets the active company's credentials. Every other company keeps its rows. */
+  wipeVaultCompany: () => req<{ ok: boolean; deleted: number; company: number }>("/vault/company", { method: "DELETE" }),
+  /** A new master password: the whole vault comes back re-sealed, in one request. */
+  vaultRekey: (body: { kdf: string; salt: string; iterations: number; check: string; items: { id: number; blob: string; revision: number }[] }) =>
+    req<VaultMeta>("/vault/rekey", { method: "POST", body: JSON.stringify(body) }),
 };

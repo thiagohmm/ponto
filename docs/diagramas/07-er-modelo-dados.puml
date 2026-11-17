@@ -1,5 +1,5 @@
 @startuml er-modelo-dados
-title Ponto — Modelo de dados (PostgreSQL, migrações v6 — infra/Migrations.java)
+title Ponto — Modelo de dados (PostgreSQL, migrações v7 — infra/Migrations.java)
 
 skinparam shadowing false
 skinparam linetype ortho
@@ -124,6 +124,23 @@ entity "day_digest" as digest {
   summary, facts, model
 }
 
+entity "vault_meta" as vmeta {
+  * id = 1 <<PK>>
+  --
+  kdf 'PBKDF2-SHA256'
+  salt (public KDF parameter)
+  iterations (100k…5M)
+  check_blob (verifier, AES-GCM)
+}
+
+entity "vault_item" as vitem {
+  * id BIGSERIAL <<PK>>
+  --
+  blob (iv || ciphertext || tag)
+  revision
+  # company_id <<FK>> (tag, not a secret)
+}
+
 entity "schema_migrations" as migr {
   * version INTEGER <<PK>>
 }
@@ -141,6 +158,8 @@ kcol ||--o{ kcard
 kcard ||--o{ kblock
 kcard ||--o{ kfile
 company ||--o{ digest
+company ||--o{ vitem
+vmeta ||--|| vitem   : "one master password opens every company's blob" 
 
 note bottom of ojob
   Fila de trabalho do FilesApp:

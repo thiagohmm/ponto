@@ -94,7 +94,7 @@ mvn package
 On the LAN host `192.168.0.8` the database is the `ponto` role and database inside the existing `marketing-postgres` container (`PONTO_DB_URL` in the server `.env`). The deploy script copies **only** the jar and compose files — never a database dump from this machine.
 
 ```sh
-./deploy/deploy.sh    # http://192.168.0.8:8090
+./deploy/deploy.sh    # https://192.168.0.8:8443  (http://192.168.0.8:8090 → redirect)
 ```
 
 ### Assistência local (Ollama, opcional)
@@ -144,7 +144,45 @@ The launcher finds a Java 25+ runtime by itself (`$PONTO_JAVA`, then
 `/usr/libexec/java_home -v 25`, then the asdf install, then `java` on the PATH)
 and adds `--enable-native-access=ALL-UNNAMED` so the JVM stays quiet on Java 25.
 
+### Password vault ("cofre")
+
+The app also keeps passwords, and it keeps them **without ever being able to read them**:
+the browser derives a key from a master password (PBKDF2-HMAC-SHA256, 310 000 iterations) and encrypts each
+credential with AES-256-GCM before it leaves the page. PostgreSQL stores sealed blobs, a salt, an iteration count
+and a verifier — no plaintext, no hints, no "last used", nothing to hand over.
+
+```
+--------------------------------------------------------
+  C O F R E
+  4 records   ·   this company 2   ·   idle lock 5 min
+  search: ____   company: [ all        ]
+  3  ACME        ana.santae          ••••••••        copy
+  2  Router     admin               ••••••••        [show] copy
+--------------------------------------------------------
+```
+
+* **One master password, every company.** Unlocking once shows all companies' records; the company column is a tag
+  you can filter by, not a separate vault. Deleting a company is refused until its credentials are wiped
+  (`409`), and *forget this company* removes only that tag's rows.
+* **No recovery, on purpose.** The server cannot reset a master password because it never had one. Lose the
+  password and the cofre is empty forever — keep a sealed backup (`ponto-cofre/1`) somewhere you trust.
+* **Sealed backups.** The file carries a public header (format, salt, iterations, record count) and one blob
+  sealing the whole list, so a file with a record deleted, swapped or forged fails the seal instead of importing
+  half the vault. A file that stores passwords in the clear is refused before any key is derived.
+* **In the browser:** generator (CSPRNG, rejection sampling — no `Math.random`), honest entropy meter, reused
+  password detector, click-to-copy with the clipboard scrubbed after 15 s, rows hidden again after 30 s, auto-lock
+  after idle time (a hidden tab does *not* pause the clock), and a key that is non-extractable and never persisted.
+* **In the terminal:** `v` shows the state, `v c` opens (or creates) the cofre — list masked, `v s <id>` shows one
+  secret, `v n` adds, `v g` generates, `v b` / `v i` back up and import, `v k` changes the master password, `v q`
+  locks. Only `v c` and `v n` can seal a vault, and both ask for the password twice: nothing creates a master
+  password by accident. The key lives in memory and is dropped on lock; nothing is written to disk except the backup
+  you ask for.
+
+The Java and the browser implementations are pinned to the same bytes by `test/vault-fixtures.json`, and
+`test/vault-node.mjs` (WebCrypto in Node) is the third implementation both test suites must agree with.
+
 ## Data
+
 
 * Database: `$PONTO_DB`, a JDBC URL (default `jdbc:postgresql://127.0.0.1:5432/ponto`, or `--db=`).
 * Upload staging: `$PONTO_DATA_DIR`, default `~/.local/share/ponto`.
@@ -316,10 +354,14 @@ with POI) and diffs a digest against `test/expected.txt`. The generation clock,
 the test directory and the OS user name are masked, so the golden file holds on
 any machine.
 
-Then it replays `test/feed-off.txt` and checks the days off on the real output:
+Then it replays `test/feed-off.txt` and checks the days off on the real output,
+and `test/feed-cofre.txt` through the same `ponto.Main` to check the vault: the
+list must come back masked, the typed master password and its secrets must appear
+nowhere in the session, and the backup must be `ponto-cofre/1` with no plaintext
+inside (re-keyed, imported back, deleted and locked along the way).
 
 ```sh
-./test/smoke.sh     # PASS  smoke   days off + digest, session and files in /tmp/ponto-smoke
+./test/smoke.sh     # PASS  smoke   days off + digest + normal + cofre, session and files in /tmp/ponto-smoke
 ```
 
 | asserted | why |
@@ -330,35 +372,49 @@ Then it replays `test/feed-off.txt` and checks the days off on the real output:
 | `ok #1 12/10/2026 08:00-12:00 4:00` | the punch on the holiday **is** saved: a warning, not a wall |
 | `day off 12/10/2026 …` | `c config` reads the same calendar |
 | *nothing* on `13/10/2026` | a working tuesday stays silent |
+| `cofre re-selado` + `importado 2` | changing the master password re-seals every record, and a backup taken before it still opens |
+| `•••••` in the list, and *no* `alpha-s3cr3t-one` in the session | the terminal masks secrets; only `v s <id>` prints one, on request |
+| `ponto-cofre/1` in the backup, and *no* plaintext of any password inside | the file is sealed, and the CLI never writes a secret in the clear |
+
+The vault has its own tests, run by `mvn test` and `npm test`:
+
+| Test | What it must not get wrong |
+|---|---|
+| `ponto.model.VaultCryptoTest` | the fixed vectors in `test/vault-fixtures.json` — the same key and the same bytes the browser produces |
+| `ponto.view.VaultFileTest` | a backup written by Java opens in the browser's reader and the other way round, via `test/vault-node.mjs` |
+| `ponto.infra.VaultStoreTest` | revisions, atomic rekey, wipe, and that upgrading a v6 database keeps the timesheet |
+| `ponto.controller.VaultApiTest` | 423 + `need` before a seal, 409 on a stale revision, and no plaintext in any body |
+| `ponto.CofreCli` (`test/CofreCli.java`) | the real app: seal, two companies, backup both ways, rekey, wipe — then it greps every text column of every `vault*` table for the secrets it planted |
+| `web/test/vault*.test.ts` + `web/test/Cofre.test.tsx` | WebCrypto interop, sealing before the request, copy never revealing a hidden row, the page text holding no secret |
+| Playwright (`web/e2e/`) | the whole flow in Chromium: create, save, copy, lock, and the wrong master password refusing |
 
 ## Layout
 
 ```
 src/main/java/ponto/
   Main        composition root: one Db, one Service, one UI per mode
-  Problema, Bad, NeedConfirm, Eof   the shared failure types
+  Problema, Bad, NotFound, Conflict, Eof   the shared failure types
+  VaultSealed   "the cofre does not exist yet" -> HTTP 423 with need: "create"
   Ver         NAME and VERSION
-  model/      domain: rules and PostgreSQL, no printing
-    Entry       one line: day, in, out, justification (open / note / closed)
-    Report      totals per day and grand total, shared by the three exporters
-    Db          connection, schema, the `cfg` table
-    Repo        CRUD over the `ponto` table
+  app/        Service (the fachada) + one app per capacity
     Service     the whole vocabulary both UIs may call (one lock)
-    Holidays    weekends and the days off in Brazil, seen from São Paulo
-    Parse       date and time text -> values
-    Str, Dur    string and duration helpers
-    Period      a closed date range
+    VaultApp    the vault's policy: seal before records, rekey all or none
+  model/      domain: rules and values, no printing
+    Entry, Report, Holidays, Parse, Period, BankRules, JustTaxonomy…
+    VaultCrypto      PBKDF2 + AES-GCM, the AADs, the envelope both sides write
+    VaultPayload   the plaintext JSON the client seals (never read by the server)
+    VaultGen       the terminal password generator (SecureRandom, rejection sampling)
+    Minio          the SigV4 client for the attachments' object store
+  infra/      the only place with SQL
+    Db, Migrations (VERSION = 7), the stores…, VaultStore
   view/       how things are rendered
-    Out         printing: rules, columns, colours only on a TTY
-    In          typed input: dates, times, ids, yes/no, free text
-    Csv, Pdf, Xls   the writers
-    Cols        the duration / decimal-hours table cells of one entry
-    Json        the JSON views of the web API (keys of web/src/types.ts)
-    Json3       Javalin's JSON mapper
+    Out, In (text, secret), Csv, Pdf, Xls, Cols, Json, Json3
+    VaultFile   the sealed backup file, ponto-cofre/1
   controller/ the two UIs; they talk to Service and render views, nothing else
-    App         the menu loop, one method per key
-    Web         the Javalin API
-test/         feed.txt, feed-off.txt, Verify.java, expected.txt, smoke.sh
+    App         the menu loop, one method per key (v = the cofre)
+    Web, Auth, VaultRoutes, NoteRoutes, KanbanRoutes, DiarioRoutes, AssistRoutes
+test/         JUnit, feed.txt + feed-cofre.txt, Verify.java, expected.txt, smoke.sh,
+              vault-node.mjs (the browser mirror), vault-fixtures.json
 ```
 
 Dependency rule: `controller -> model`, `view -> model`, and `controller ->`

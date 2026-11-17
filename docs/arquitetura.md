@@ -31,18 +31,24 @@ navegador (React SPA) ─┘
 | **Empresas como partições** | Empresa é uma partição dos dados do mesmo usuário, **não** um tenant com autorização independente. O schema garante isso com `company_id` + FKs compostas. |
 | **PWA + offline shell** | `web/public/sw.js` cacheia a casca para instalar como app; dados continuam vindo da API quando há rede. |
 | **Anexos fora do banco** | Notas e cartões kanban têm arquivos; os metadados ficam em `note_file`/`kanban_card_file` e os bytes vão para MinIO/S3 através de uma fila (`object_job`) com retries. |
+| **Cofre zero-knowledge** | Las passwords são seladas **en el browser** (PBKDF2-SHA256 + AES-256-GCM): o server guardan base64 opaqueos, un salt, un iteration count e un verifier, **jamai** plaintext, hint ou "usado recently". Por isso no existe "forgot master password" — e por isso `VaultStore` não importane cipher ni plaintext model. |
+| **Empresas como tags dentro del cofre** | One master password opens **every** company's credential; `vault_item.company_id` is a filter the server can use, not a cryptographic boundary. Una cofre per company would trap the boss with a password per laptop — the dangerous thing here is the forgotten password, not the curious admin. |
 
 ## O mapa dos pacotes (backend)
 
 ```
 src/main/java/ponto/
 ├── Main.java          # ponto de entrada: --serve, --db, menu, --help
-├── controller/        # apresentação: menu CLI, rotas HTTP, Auth
-├── app/               # FACHADA Service + apps por capacidade
+├── controller/        # presentation: menu CLI (v = cofre), rotas HTTP, Auth, VaultRoutes
+├── app/               # FACHADA Service + apps por capacity (VaultApp, TimesheetApp…)
 ├── model/             # records + regras puras (Entry, BankRules, Holidays…)
-├── infra/             # JDBC, migrações, stores com SQL, MinIO, Ollama
-└── view/              # saída: Json (HTTP), Csv/Xls/Pdf, In/Out (terminal)
+│                      #   + VaultCrypto (PBKDF2/AES-GCM), VaultPayload, VaultGen
+├── infra/            # JDBC, migrações (v7), stores com SQL (VaultStore), MinIO, Ollama
+└── view/              # saída: Json (HTTP), Csv/Xls/Pdf, In (text, secret)/Out (terminal)
+                       #   + VaultFile (backup ponto-cofre/1)
 ```
+
+`VaultApp` and `VaultRoutes` exist because the cofre has its own rules (seal before any record, rekey all or nothing) and its own endpoints: it is a capacity, not a column in `TimesheetApp`. `VaultCrypto` lives in `model/` because it is a rule about bytes; `VaultFile` lives in `view/` because it is one way of rendering those blobs to a file.
 
 Detalhes em [backend.md](backend.md).
 
@@ -54,6 +60,8 @@ web/src/
 ├── api.ts               # único lugar que fala com /api/*
 ├── Auth.tsx             # login, cookie, guarda RequireAuth
 ├── Company.tsx          # empresa ativa por aba (sessionStorage)
+├── vault/               # crypto (WebCrypto) + generator, strength, duplicates,
+│                        #   clipboard, auto-lock, backup file, Vault.tsx (hook)
 ├── pages/               # uma aba = um arquivo (lazy loading)
 └── ui/                  # Confirm, Unsaved, Connection, ícones
 ```

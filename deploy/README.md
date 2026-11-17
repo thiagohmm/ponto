@@ -2,11 +2,15 @@
 
 O Ponto é uma aplicação pessoal com um login web único (`PONTO_WEB_USER` /
 `PONTO_WEB_PASSWORD` na `.env` do servidor). Sem essas variáveis o deploy aborta.
-O deploy padrão usa SSH em `thiagohmm@192.168.0.8` e publica a web na porta 8090.
-O diretório padrão da instalação é `/home/thiagohmm/ponto-web`.
-Exposição pública via PiTunnel usa HTTPS: o serviço `edge` (Caddy) termina TLS
-local em `127.0.0.1:8443` com uma CA instalada no host; o túnel persistente é
-`pitunnel --host=https://127.0.0.1 --port=8443 --name=ponto --https --persist`.
+O deploy padrão usa SSH em `thiagohmm@192.168.0.8`. O diretório padrão da
+instalação é `/home/thiagohmm/ponto-web`. Na LAN, `http://192.168.0.8:8090`
+redireciona (301) para `https://192.168.0.8:8443` via Caddy; o app em si fica
+só em `127.0.0.1:8090` (smoke/ops). HTTPS local usa cert da CA
+(`ponto-edge/certs`, SAN inclui `192.168.0.8`). O Chrome avisa se a CA não
+estiver instalada no cliente; depois de avançar (ou confiar em `ca.crt`) o
+WebCrypto do cofre funciona.
+Exposição pública via PiTunnel: o túnel aponta para o mesmo edge
+(`pitunnel --host=https://127.0.0.1 --port=8443 --name=ponto --https --persist`).
 A URL pública fica em `https://ponto-thiagohmm1.us1.pitunnel.net` (certificado
 do PiTunnel). A autenticação fica na aplicação, não no `--http-auth` do túnel.
 
@@ -17,13 +21,14 @@ includeSubDomains`), `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` e
 `Permissions-Policy` em todas as respostas (`controller/Web.java`); o `smoke.py`
 confere esses headers no deploy. O Jetty não revela versão
 (`setSendServerVersion(false)`) e o Caddy remove o próprio header `Server`
-(`header -Server`). Ficam expostas, sem remedio por configuração: o `Via: 1.1
+(`header -Server`). O edge força só HTTP/1.1 e HTTP/2 (`servers { protocols h1 h2 }`)
+e remove `Alt-Svc`: atrás do PiTunnel o anúncio `h3=":8443"` fazia o browser
+tentar QUIC numa porta que o túnel não serve, e anexos falhavam só no HTTPS.
+Ficam expostas, sem remedio por configuração: o `Via: 1.1
 Caddy` escrito pelo Caddy 2.10 na gravação da resposta e o `Server: nginx
 (Ubuntu)` da borda do PiTunnel — mera identificação de proxy, sem implicação
-de vulnerabilidade. O HTTP da LAN (`http://192.168.0.8:8090`) é risco aceito:
-o endereço só é alcançável de dentro da rede de casa, e o login lá trafega
-sem criptografia por decisão própria — prefira a URL HTTPS do túnel quando
-possível.
+de vulnerabilidade. O HTTP da LAN (`http://192.168.0.8:8090`) só redireciona
+para HTTPS; login e cofre na rede local usam `:8443`.
 
 ## Verificação e deploy
 
@@ -127,7 +132,9 @@ Para ensaiar sem tocar na instalação, use `--offline`, destinos `--data` e
   requisição. Não é necessário ativar logs de bibliotecas no terminal.
 
 A PWA precacheia os assets de cada build e pede confirmação para atualizar com
-alterações pendentes. Service workers exigem HTTPS ou localhost. No endereço
-HTTP da rede local, a interface web funciona normalmente, mas cache offline e
-instalação PWA dependem de um contexto seguro. Não há fila de alterações offline:
-a interface informa a falha e permite tentar salvar novamente.
+alterações pendentes. O service worker não intercepta `/api/` (só casca e
+`/assets/`), para não transformar falhas de rede em JSON e quebrar anexos no
+túnel. Service workers exigem HTTPS ou localhost. No endereço HTTP da rede
+local, a interface web funciona normalmente, mas cache offline e instalação PWA
+dependem de um contexto seguro. Não há fila de alterações offline: a interface
+informa a falha e permite tentar salvar novamente.

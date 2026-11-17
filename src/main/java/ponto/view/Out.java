@@ -63,7 +63,7 @@ public final class Out {
         ps.println("  " + bold("1") + " novo    " + bold("2") + " editar  " + bold("3") + " apagar  " + bold("4") + " lista");
         ps.println("  " + bold("5") + " soma    " + bold("6") + " buscar  " + bold("7") + " pdf     " + bold("8") + " xls");
         ps.println("  " + bold("9") + " csv     " + bold("d") + " data    " + bold("c") + " config  " + bold("f") + " falta");
-        ps.println("  " + bold("?") + " ajuda   " + bold("x") + " limpar  " + bold("0") + " sair");
+        ps.println("  " + bold("?") + " ajuda   " + bold("x") + " limpar  " + bold("v") + " cofre   " + bold("0") + " sair");
         rule();
     }
 

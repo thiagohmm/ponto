@@ -9,6 +9,13 @@ import ponto.model.Entry;
 import ponto.model.Parse;
 import ponto.model.Period;
 import ponto.model.Report;
+import ponto.model.VaultCrypto;
+import ponto.model.VaultGen;
+import ponto.model.VaultItem;
+import ponto.model.VaultMeta;
+import ponto.model.VaultPayload;
+import ponto.model.VaultRewrap;
+import ponto.model.VaultDraft;
 import ponto.app.Service;
 import ponto.model.Str;
 import ponto.view.Cols;
@@ -16,9 +23,12 @@ import ponto.view.Csv;
 import ponto.view.In;
 import ponto.view.Out;
 import ponto.view.Pdf;
+import ponto.view.VaultFile;
 import ponto.view.Xls;
 
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -26,6 +36,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Scanner;
+
+import javax.crypto.SecretKey;
 
 /**
  * The whole program: one compact menu, one key per action.
@@ -37,6 +50,9 @@ public final class App {
     private final Service svc;
     private final Out out = new Out();
     private final In in;
+
+    /** The vault's key, while the cofre is open. Null the moment it is locked. */
+    private SecretKey cofreKey;
 
     public App(Service svc) { this.svc = svc; this.in = new In(out); }
 
@@ -75,6 +91,7 @@ public final class App {
             case "c" -> config();
             case "d" -> byDate(c.rest());
             case "f" -> falta(c);
+            case "v" -> cofre(c);
             case "x" -> out.clear();
             case "?" -> help();
             default -> out.bad("tecla desconhecida '" + c.key() + "'   ·   ? ajuda");
@@ -571,6 +588,445 @@ public final class App {
         if (in.yes("otimizar o banco?", false)) { svc.setConfig(null, null, true); out.ok("banco otimizado"); }
     }
 
+    // ---- v cofre ---------------------------------------------------------
+    /**
+     * The password vault, in the terminal. One master password opens every company's
+     * records; the key is derived here, in this process, and is dropped when the cofre
+     * is locked or the program ends. Nothing in this section prints a plaintext password
+     * unless the user asked for that one line: the list shows the target and a masked
+     * secret, and the value of a secret appears only for `v s [id]`.
+     *
+     * Keys: `v` status · `v l [texto]` list · `v n` new · `v e [id]` edit ·
+     * `v c` create it · `v s [id]` show one · `v x [id..]` delete · `v g [n]` generate ·
+     * `v b [file]` backup · `v i [file]` import · `v w` forget one company ·
+     * `v k` change the master password · `v q` lock.
+     *
+     * The same envelope the browser writes — PBKDF2-SHA256 + AES-256-GCM, a fresh
+     * nonce per write, the AAD binding each blob to its company — so a vault made
+     * here opens there and the other way round. That interop is the point, and it is
+     * what `VaultFileTest` checks.
+     */
+    private void cofre(In.Cmd c) {
+        String rest = c.rest().strip().toLowerCase();
+        if (rest.isEmpty() || rest.startsWith("s") && rest.startsWith("sta")) { cofreStatus(); return; }
+        char k = rest.charAt(0);
+        if (k == 'q') { lock(); out.ok("cofre locked   ·   nothing left in memory"); return; }
+        if (k == 'g') { cofreGen(rest.substring(1).strip()); return; }
+
+        // Only `v c` (create) and `v n` (add the first credential) may seal a vault:
+        // both ask for the password twice, so a cofre is never created by accident.
+        // Everything else refuses an unsealed vault instead of quietly choosing a master password.
+        SecretKey key = unlock(k == 'c' || k == 'n');
+        if (key == null) return;
+        if (k == 'c') { cofreStatus(); return; }
+        if (k == 'v' || k == 'l') { cofreList(key, rest.substring(1).strip()); return; }
+        if (k == 'n') { cofreNew(key); return; }
+        if (k == 'e') { cofreEdit(key, rest.substring(1).strip()); return; }
+        if (k == 's') { cofreShow(key, c); return; }
+        if (k == 'x') { cofreDel(key, rest.substring(1)); return; }
+        if (k == 'b') { cofreBackup(key, rest.substring(1).strip()); return; }
+        if (k == 'i') { cofreImport(key, rest.substring(1).strip()); return; }
+        if (k == 'w') { cofreWipe(key); return; }
+        if (k == 'k') { cofreRekey(); return; }
+        out.bad("cofre: not a key '" + k + "'   ·   v l · v n · v s [id] · v q");
+    }
+
+    /** The state of the cofre, without opening anything. */
+    private void cofreStatus() {
+        out.title("COFRE");
+        VaultMeta m = svc.vaultMeta();
+        out.note(m.state() + "   ·   " + m.kdf() + "   ·   " + m.iterations() + " interações");
+        out.note("selos " + svc.vaultCount() + " credential(s)");
+        for (var co : svc.listCompanies()) {
+            int n = svc.vaultCount(co.id());
+            if (n > 0) out.note("  #" + co.id() + "  " + Str.cut(co.name(), 24) + "   " + n);
+        }
+        out.note("v l lista   v n novo   v s [id] shows one   v g new password");
+        out.note("v c creates   ·   v b [file] backup   v i [file] import   v k master   v q lock");
+    }
+
+    /**
+     * The key, derived once per cofre session and held only while it is open.
+     *
+     * An unsealed vault offers to be created: the salt and the verifier blob are made
+     * here, in the client, and the server stores only the result. A sealed vault asks
+     * for the master password and proves the key by opening the verifier — a wrong
+     * answer never reaches the store, because nothing was written and nothing was read.
+     */
+    private SecretKey unlock(boolean create) {
+        if (cofreKey != null) return cofreKey;
+        VaultMeta m = svc.vaultMeta();
+        if (!m.sealed()) {
+            if (!create) { out.warn("cofre nunca creou   ·   v c creates it, v n adds the first"); return null; }
+            String master = in.secret("senha mestra (new cofre)");
+            if (master.isEmpty()) { out.bad("senha mestra empty"); return null; }
+            if (!master.equals(in.secret("again, to be sure"))) { out.bad("not the same   ·   nothing was created"); return null; }
+            String salt = VaultCrypto.encode(VaultCrypto.randomSalt());
+            SecretKey key = VaultCrypto.deriveKey(master, VaultCrypto.decode(salt), VaultCrypto.ITERATIONS);
+            svc.vaultCreate(VaultCrypto.KDF, salt, VaultCrypto.ITERATIONS, VaultCrypto.checkBlob(key));
+            cofreKey = key;
+            out.ok("cofre created   ·   " + VaultCrypto.ITERATIONS + " interações");
+            out.warn("there is no recovery: lose this password and the cofre is empty forever");
+            return key;
+        }
+        String master = in.secret("senha mestra");
+        if (master.isEmpty()) { out.bad("senha mestra empty"); return null; }
+        SecretKey key = VaultCrypto.deriveKey(master, VaultCrypto.decode(m.salt()), m.iterations());
+        if (!VaultCrypto.checkOk(key, m.check())) { out.bad("senha mestra incorrecta"); return null; }
+        cofreKey = key;
+        out.ok("cofre open   ·   " + svc.vaultCount() + " credential(s)");
+        return key;
+    }
+
+    /** Drop the key. The records stay sealed in the database; nothing is left here. */
+    private void lock() { cofreKey = null; }
+
+    // ---- list / show -------------------------------------------------------
+
+    /** Every credential, masked. The filter runs on the plaintext, after opening. */
+    private void cofreList(SecretKey key, String filter) {
+        out.title("COFRE · LISTA");
+        List<VaultItem> all = svc.vaultItems(0);
+        if (all.isEmpty()) { out.note("empty   ·   v n adds the first"); return; }
+        out.note(cofreCols("ID", "EMP", "APLICATIVO", "USUARIO", "SENHA"));
+        out.note("-".repeat(58));
+        String f = filter.toLowerCase();
+        int shown = 0;
+        for (VaultItem it : all) {
+            VaultPayload.Plain p = open(key, it);
+            if (!f.isEmpty() && !p.label().toLowerCase().contains(f) && !p.desc().toLowerCase().contains(f)) continue;
+            out.note(cofreCols("" + it.id(), "#" + it.companyId(), Str.cut(p.app(), 18), Str.cut(p.user(), 14), mask(p.pass())));
+            shown++;
+        }
+        out.note(shown + " of " + all.size() + "   ·   v s [id] shows one   ·   v q locks");
+    }
+
+    /**
+     * One secret, on screen, on request. It is printed once and stored nowhere: the
+     * terminal keeps what it prints in its own scrollback, which is the user's choice.
+     */
+    private void cofreShow(SecretKey key, In.Cmd c) {
+        int id = c.arg();
+        if (id <= 0) { out.bad("v s [id]"); return; }
+        VaultItem it = cofreById(id);
+        if (it == null) { out.bad("no credential #" + id); return; }
+        VaultPayload.Plain p = open(key, it);
+        out.title("COFRE · #" + id);
+        out.note("aplicativo  " + (p.app().isEmpty() ? "-" : p.app()));
+        out.note("usuario     " + (p.user().isEmpty() ? "-" : p.user()));
+        out.note("empresa     #" + p.companyId() + "  " + companyName(p.companyId()));
+        out.note("descrição   " + (p.desc().isEmpty() ? "-" : p.desc()));
+        out.note("senha       " + p.pass());
+        out.note(p.pass().length() + " chars   ·   " + strengthLabel(p.pass()));
+    }
+
+    // ---- new / edit / delete ------------------------------------------------
+
+    /**
+     * A new credential. The password is offered generated: a person typing a password
+     * into a terminal has their shell history to think about, so the default here is a
+     * random one, printed once. `pass=…` types one instead.
+     */
+    private void cofreNew(SecretKey key) {
+        out.title("COFRE · NOVO");
+        String app = in.text("aplicativo", "");
+        if (app.strip().isEmpty()) { out.bad("aplicativo empty"); return; }
+        String user = in.text("usuario", "");
+        String desc = in.text("descrição", "");
+        int company = pickCompany(svc.activeCompany().id());
+        out.note("rules   " + VaultGen.sets(true, true, true, true, false) + "   ·   " + VaultGen.DEFAULT_LENGTH + " chars");
+        String typed = in.text("senha (Enter generates, pass= types)", "");
+        String pass = generated(typed);
+        VaultPayload.Plain p = new VaultPayload.Plain(app, user, pass, desc, company);
+        String bad = tooLong(p);
+        if (!bad.isEmpty()) { out.bad(bad); return; }
+        VaultItem made = svc.createVaultItem(company, VaultCrypto.encryptText(key, VaultPayload.json(p), VaultCrypto.aadItem(company)));
+        out.ok("cofre #" + made.id() + "   " + p.label() + "   ·   " + pass.length() + " chars");
+        out.note("the value is not kept here: v s " + made.id() + " shows it again");
+    }
+
+    private void cofreEdit(SecretKey key, String rest) {
+        out.title("COFRE · EDITAR");
+        int id = safeId(rest);
+        if (id <= 0) id = in.ids("id", 0).isEmpty() ? 0 : in.ids("id", 0).getFirst();
+        if (id <= 0) return;
+        VaultItem it = cofreById(id);
+        if (it == null) { out.bad("no credential #" + id); return; }
+        VaultPayload.Plain old = open(key, it);
+        out.note("now   " + old.label() + "   ·   " + mask(old.pass()));
+        VaultPayload.Plain p = editFields(old);
+        String bad = tooLong(p);
+        if (!bad.isEmpty()) { out.bad(bad); return; }
+        if (p.equals(old)) { out.note("mantido"); return; }
+        try {
+            svc.updateVaultItem(id, VaultCrypto.encryptText(key, VaultPayload.json(p), VaultCrypto.aadItem(p.companyId())), it.revision());
+            out.ok("cofre #" + id + "   " + p.label());
+        } catch (ponto.Conflict e) {
+            out.bad("outro acesso selou this record   ·   v l, then v e " + id + " again");
+        }
+    }
+
+    /** The fields, with the current value as the default. Enter keeps, '-' clears. */
+    private VaultPayload.Plain editFields(VaultPayload.Plain old) {
+        String app = in.field("aplicativo", old.app()).value(old.app());
+        String user = in.field("usuario", old.user()).value(old.user());
+        String desc = in.field("descrição", old.desc()).value(old.desc());
+        int company = pickCompany(old.companyId());
+        String typed = in.text("senha (Enter keeps, g regenerates, pass= types)", "");
+        return new VaultPayload.Plain(app, user, editedPass(typed, old.pass()), desc, company);
+    }
+
+    /** Delete one or many, after showing what is about to go. */
+    private void cofreDel(SecretKey key, String rest) {
+        out.title("COFRE · APAGAR");
+        List<Integer> ids = new ArrayList<>();
+        for (String t : rest.split("\\s+")) {
+            int id = safeId(t);
+            if (id > 0) ids.add(id);
+        }
+        if (ids.isEmpty()) ids = in.ids("id(s)", 0);
+        if (ids.isEmpty()) return;
+        List<VaultItem> hits = new ArrayList<>();
+        List<Integer> missing = new ArrayList<>();
+        for (int id : ids) {
+            VaultItem it = cofreById(id);
+            if (it == null) missing.add(id); else hits.add(it);
+        }
+        if (hits.isEmpty()) { out.bad("no credential: " + ids); return; }
+        for (VaultItem h : hits) out.note("  #" + h.id() + "  " + open(key, h).label());
+        if (!in.yes("apagar " + hits.size() + " credential(s)?", false)) { out.note("cancelado"); return; }
+        for (VaultItem h : hits) svc.deleteVaultItem(h.id());
+        out.ok("apagado " + hits.size() + (missing.isEmpty() ? "" : "   not found: " + missing));
+    }
+
+    /** One company's credentials, gone. The others keep theirs. */
+    private void cofreWipe(SecretKey key) {
+        out.title("COFRE · FORGET A COMPANY");
+        var co = svc.activeCompany();
+        List<VaultItem> mine = svc.vaultItems(co.id());
+        if (mine.isEmpty()) { out.note("nothing for " + co.name()); return; }
+        out.warn(mine.size() + " credential(s) of " + co.name() + " will be gone");
+        for (VaultItem it : mine) out.note("  #" + it.id() + "  " + open(key, it).label());
+        if (!in.yes("apagar all " + mine.size() + " of " + co.name() + "?", false)) { out.note("cancelado"); return; }
+        if (!in.yes("sure? there is no undo", false)) { out.note("cancelado"); return; }
+        out.ok("apagado " + svc.deleteVaultCompany(co.id()) + "   ·   " + co.name());
+    }
+
+    // ---- backup / import ----------------------------------------------------
+
+    /**
+     * A backup file: the whole list under one seal, so a file that was edited refuses
+     * to open. The header carries the salt and the iteration count on purpose — they are
+     * public parameters, and carrying them is what lets a backup taken before a re-key
+     * still open with the same master password.
+     */
+    private void cofreBackup(SecretKey key, String path) {
+        out.title("COFRE · BACKUP");
+        List<VaultItem> all = svc.vaultItems(0);
+        if (all.isEmpty()) { out.note("nothing to write"); return; }
+        List<VaultFile.Open> items = new ArrayList<>();
+        for (VaultItem it : all) items.add(new VaultFile.Open(open(key, it), it.revision()));
+        VaultMeta m = svc.vaultMeta();
+        if (path.isEmpty()) path = VaultFile.fileName(Instant.now());
+        try {
+            java.nio.file.Files.writeString(Path.of(path), VaultFile.write(key, items, m.salt(), m.iterations()), StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) { out.bad("not written: " + path + "   ·   " + e.getMessage()); return; }
+        out.ok(path + "   ·   " + items.size() + " record(s)   ·   sealed");
+        out.warn("the file is only as safe as where you keep it");
+    }
+
+    /**
+     * Import a backup. Every record is re-sealed here with the live key before anything
+     * is written, so a file from before a re-key still imports. One company that does
+     * not exist aborts the whole file instead of importing half of it.
+     */
+    private void cofreImport(SecretKey key, String path) {
+        out.title("COFRE · IMPORT");
+        if (path.isEmpty()) path = in.text("file", "");
+        if (path.isEmpty()) { out.bad("v i [file]"); return; }
+        String text;
+        try { text = java.nio.file.Files.readString(Path.of(path), StandardCharsets.UTF_8); }
+        catch (java.io.IOException e) { out.bad("not readable: " + path); return; }
+        String master = in.secret("senha of this file");
+        List<VaultPayload.Plain> plains;
+        // Bad, not Problema: the app's "bad input" exception is a sibling of Problema,
+        // so catching only Problema here would crash the terminal on a broken file
+        try { plains = VaultFile.read(text, master); }
+        catch (RuntimeException e) { out.bad(e.getMessage()); return; }
+        if (plains.isEmpty()) { out.note("the file holds nothing"); return; }
+        out.note(plains.size() + " record(s) in the file   ·   " + svc.vaultCount() + " already here");
+        if (!in.yes("import " + plains.size() + " into this cofre?", false)) { out.note("cancelado"); return; }
+        List<VaultDraft> drafts = new ArrayList<>();
+        for (VaultPayload.Plain p : plains)
+            drafts.add(new VaultDraft(p.companyId(), VaultCrypto.encryptText(key, VaultPayload.json(p), VaultCrypto.aadItem(p.companyId()))));
+        try {
+            out.ok("importado " + svc.createVaultItems(drafts).size() + "   ·   v l lists them");
+        } catch (RuntimeException e) {
+            out.bad("nothing was imported   ·   " + e.getMessage());
+        }
+    }
+
+    /**
+     * A new master password: everything is opened with the old key, re-sealed with the
+     * new one, and the whole set is written in one request. Either all of it moves or
+     * none of it — a half-rekeyed vault would open for nobody.
+     */
+    private void cofreRekey() {
+        out.title("COFRE · NEW MASTER PASSWORD");
+        VaultMeta m = svc.vaultMeta();
+        String from = in.secret("current master password");
+        SecretKey oldKey;
+        try { oldKey = VaultCrypto.deriveKey(from, VaultCrypto.decode(m.salt()), m.iterations()); }
+        catch (RuntimeException e) { out.bad(e.getMessage()); return; }
+        if (!VaultCrypto.checkOk(oldKey, m.check())) { out.bad("wrong current password   ·   nothing changes"); return; }
+
+        String to = in.secret("new master password");
+        if (to.isEmpty() || to.equals(from)) { out.bad("the new password has to be a different one"); return; }
+        if (!to.equals(in.secret("again, to be sure"))) { out.bad("not the same   ·   nothing changed"); return; }
+
+        int iters = inIterations();
+        String salt = VaultCrypto.encode(VaultCrypto.randomSalt());
+        SecretKey newKey = VaultCrypto.deriveKey(to, VaultCrypto.decode(salt), iters);
+
+        List<VaultRewrap> items = new ArrayList<>();
+        for (VaultItem it : svc.vaultItems(0)) {
+            VaultPayload.Plain p = open(oldKey, it);
+            items.add(new VaultRewrap(it.id(), VaultCrypto.encryptText(newKey, VaultPayload.json(p), VaultCrypto.aadItem(p.companyId())), it.revision()));
+        }
+        if (!in.yes("re-seal " + items.size() + " record(s)?", false)) { out.note("cancelado"); return; }
+        VaultMeta after = svc.vaultRekey(VaultCrypto.KDF, salt, iters, VaultCrypto.checkBlob(newKey), items);
+        cofreKey = newKey;
+        out.ok("cofre re-selado   ·   " + after.iterations() + " interações   ·   " + items.size() + " record(s)");
+        out.warn("a backup taken before this was sealed with the old salt: it still opens, with this password");
+    }
+
+    // ---- cofre helpers -----------------------------------------------------
+
+    /** Open one record. A record that will not open is named, never shown as blank. */
+    private VaultPayload.Plain open(SecretKey key, VaultItem it) {
+        try { return VaultPayload.parse(VaultCrypto.decryptText(key, it.blob(), VaultCrypto.aadItem(it.companyId()))); }
+        catch (Problema e) { throw new Problema("cofre #" + it.id() + ": " + e.getMessage()); }
+    }
+
+    private VaultItem cofreById(int id) {
+        try { return svc.vaultItemById(id); } catch (Problema ignored) { return null; }
+    }
+
+    private String companyName(int id) {
+        try { return svc.companyById(id).name(); } catch (Problema ignored) { return "company #" + id; }
+    }
+
+    /** The secret, masked: how long it is, never what it is. */
+    private static String mask(String pass) {
+        if (pass.isEmpty()) return "(empty)";
+        int n = Math.min(pass.length(), 12);
+        return "•".repeat(n) + (pass.length() > n ? " +" + (pass.length() - n) : "") + " (" + pass.length() + ")";
+    }
+
+    /**
+     * The terminal's honest word about a password. It counts the character classes it
+     * can see and subtracts nothing else: it knows no dictionary, no username, no
+     * birthday and no leaked corpus, and says so by being modest rather than confident.
+     */
+    private static String strengthLabel(String pass) {
+        if (pass.isEmpty()) return "empty";
+        boolean upper = pass.chars().anyMatch(Character::isUpperCase);
+        boolean lower = pass.chars().anyMatch(Character::isLowerCase);
+        boolean digits = pass.chars().anyMatch(Character::isDigit);
+        boolean other = pass.chars().anyMatch(c -> !Character.isLetterOrDigit(c));
+        if (pass.length() < VaultGen.MIN_LENGTH) return "too short";
+        double bits = VaultGen.bitsOf(pass.length(), upper, lower, digits, other, false);
+        if (bits < 36) return "too weak";
+        if (bits < 60) return "weak";
+        if (bits < 80) return "ok";
+        if (bits < 120) return "strong";
+        return "very strong";
+    }
+
+    /** Generate, print once, and say the rules that made it. */
+    private void cofreGen(String rest) {
+        int length = VaultGen.DEFAULT_LENGTH;
+        if (!rest.isEmpty()) {
+            try { length = Parse.num(rest, "longueur"); }
+            catch (Bad e) { out.bad(e.getMessage()); return; }
+        }
+        boolean similar = in.yes("drop il1LoO0?", false);
+        try {
+            String pass = VaultGen.generate(length, true, true, true, true, similar);
+            out.ok("senha   " + pass);
+            out.note(VaultGen.sets(true, true, true, true, similar) + "   ·   ~" + Math.round(VaultGen.bitsOf(length, true, true, true, true, similar)) + " bits");
+            out.warn("a terminal keeps what it prints: this line is in your scrollback");
+        } catch (Bad e) { out.bad(e.getMessage()); }
+    }
+
+    /** The company a credential belongs to. The active one is the default. */
+    private int pickCompany(int def) {
+        var all = svc.listCompanies();
+        for (var co : all) out.note("  #" + co.id() + "  " + co.name());
+        String pick = in.text("empresa", "#" + def);
+        if (pick.startsWith("#")) {
+            String n = "";
+            for (char ch : pick.substring(1).toCharArray()) { if (Character.isDigit(ch)) n += ch; else break; }
+            if (!n.isEmpty()) return Integer.parseInt(n);
+        }
+        for (var co : all) if (pick.equalsIgnoreCase(co.name())) return co.id();
+        var act = svc.activeCompany();
+        out.warn("not one of those   ·   " + act.name() + " #" + act.id());
+        return act.id();
+    }
+
+    /** The iteration count, kept inside the bounds the server accepts. */
+    private int inIterations() {
+        int def = Math.max(VaultCrypto.ITERATIONS, svc.vaultMeta().iterations());
+        int n = in.num("interações", def);
+        if (n < VaultCrypto.MIN_ITERATIONS || n > VaultCrypto.MAX_ITERATIONS) {
+            out.warn(n + " is outside " + VaultCrypto.MIN_ITERATIONS + ".." + VaultCrypto.MAX_ITERATIONS + "   ·   " + def + " instead");
+            return def;
+        }
+        return n;
+    }
+
+    /** A generated password unless the user typed one. */
+    private static String generated(String typed) {
+        if (typed.isEmpty()) return VaultGen.generate();
+        if (typed.startsWith("pass=")) return typed.substring(5);
+        return typed;
+    }
+
+    private static String editedPass(String typed, String cur) {
+        if (typed.isEmpty()) return cur;
+        if (typed.equalsIgnoreCase("g")) return VaultGen.generate();
+        if (typed.startsWith("pass=")) return typed.substring(5);
+        return typed;
+    }
+
+    /** The field length rule, as one sentence. Empty means the record is fine. */
+    private static String tooLong(VaultPayload.Plain p) {
+        if (p.app().length() > VaultPayload.APP_MAX) return "aplicativo mais longa que " + VaultPayload.APP_MAX;
+        if (p.user().length() > VaultPayload.USER_MAX) return "usuario mais longa que " + VaultPayload.USER_MAX;
+        if (p.pass().length() > VaultPayload.PASS_MAX) return "senha mais longa que " + VaultPayload.PASS_MAX;
+        if (p.desc().length() > VaultPayload.DESC_MAX) return "descrição mais longa que " + VaultPayload.DESC_MAX;
+        return "";
+    }
+
+    /** The first integer on a line, or 0. Never throws. */
+    private static int safeId(String s) {
+        String n = "";
+        for (char ch : s.strip().toCharArray()) {
+            if (Character.isDigit(ch)) n += ch;
+            else if (!n.isEmpty()) break;
+        }
+        if (n.isEmpty()) return 0;
+        try { return Integer.parseInt(n); } catch (NumberFormatException ignored) { return 0; }
+    }
+
+    private static String cofreCols(String... v) {
+        int[] w = {5, 5, 18, 14, 20};
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < v.length; i++) b.append(i > 0 ? "  " : "").append(Str.fix(v[i], w[i]));
+        return b.toString();
+    }
+
     private String range(ponto.app.ConfigView c) {
         String a = c.from(), b = c.to();
         return a.isEmpty() ? "-" : a + " .. " + b;
@@ -580,7 +1036,10 @@ public final class App {
         out.title("TECLAS");
         out.note("1 novo  2 editar [id]   3 apagar [id id.. | a | dd/mm]   4 lista [n]");
         out.note("5 soma  6 buscar [texto]   7 pdf   8 xls   9 csv   d por data");
-        out.note("c config   f falta [dia | lista]   x limpar tela   ? ajuda   0 sair");
+        out.note("c config   f falta [dia | lista]   v cofre   x limpar tela   ? ajuda   0 sair");
+        out.note("cofre  v c creates · v status · v l [texto] · v n novo · v e [id] · v s [id] mostra · v x [id..]");
+        out.note("cofre  v g [n] genera · v b [file] backup · v i [file] import · v k master · v q lock");
+        out.note("cofre  one master password, no recovery: lose it and the cofre is empty forever");
         out.note("falta  f marca hoje, f 03/11/2026 marca aquele dia, f lista lista (banco de horas)");
         out.note("por data  2026 (ano) · 10/2026 · out · out 2026 · 01/10/2026 · hoje");
         out.note("         4 2026 funciona do mesmo jeito que d 2026");

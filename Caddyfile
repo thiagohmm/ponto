@@ -1,10 +1,22 @@
 {
 	auto_https off
 	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+# :8090 — LAN browsers on 192.168.0.8 go to HTTPS; 127.0.0.1 stays plain for smoke/ops.
+:8090 {
+	header -Server
+	@lan host 192.168.0.8 192.168.0.8:8090
+	redir @lan https://192.168.0.8:8443{uri} permanent
+	reverse_proxy ponto:8080
 }
 
 :8443 {
 	header -Server
+	header -Alt-Svc
 	tls /certs/cert.pem /certs/key.pem
 	reverse_proxy ponto:8080
 }

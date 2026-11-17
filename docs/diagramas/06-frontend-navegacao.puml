@@ -13,13 +13,13 @@ rectangle "/login\nLoginPage" as login #FBE9E7
 rectangle "RequireAuth\n(verifica GET /api/me)" as guard #FFF3E0
 
 rectangle "Shell" as shell #E3F2FD {
-  rectangle "sidebar\n8 abas (NavLink)" as nav
+  rectangle "sidebar\n9 abas (NavLink)" as nav
   rectangle "ConfirmProvider\nUnsavedProvider\nConnection" as ctx
   rectangle "CompanyProvider\n(empresa ativa por aba,\nsessionStorage)" as company #F3E5F5
   rectangle "CompanyBar\nseletor de empresa" as bar #F3E5F5
 }
 
-rectangle "Pages (Routes, key=companyId)\ncada aba é um chunk lazy" as pages #EDE7F6 {
+rectangle "Pages (Routes, key=companyId)\ncada aba é um chunk lazy\n/cofre never sends plaintext" as pages #EDE7F6 {
   rectangle "/  Home" as r1
   rectangle "/novo  Form" as r2
   rectangle "/edit/:id  Form" as r3
@@ -29,6 +29,7 @@ rectangle "Pages (Routes, key=companyId)\ncada aba é um chunk lazy" as pages #E
   rectangle "/kanban  Kanban" as r7
   rectangle "/exportar  Export" as r8
   rectangle "/config  Config" as r9
+  rectangle "/cofre  Cofre\n(vault/)\none key, many companies" as r10
 }
 
 rectangle "PWA\nsw.js (produção)\nmanifest.webmanifest" as pwa #ECEFF1
@@ -39,6 +40,7 @@ guard --> shell : logado
 shell --> pages : <Suspense>
 company --> pages : remonta as rotas\nquando troca a empresa
 bar --> company
+pages --> pwa
 shell --> pwa : registra em produção
 
 note bottom of company
