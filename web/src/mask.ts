@@ -40,3 +40,12 @@ export function nowHm(): string {
   const d = new Date();
   return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
+
+/** Uma hora depois de "HH:MM": a sugestão de próxima entrada após a última
+ *  saída do dia (12:00 → 13:00). Depois das 23h vira 00:XX do mesmo dia. */
+export function plusHour(hm: string): string {
+  const m = hm.match(/^(\d{2}):(\d{2})$/);
+  if (!m) return "";
+  const total = (Number(m[1]) * 60 + Number(m[2]) + 60) % (24 * 60);
+  return String(Math.floor(total / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+}

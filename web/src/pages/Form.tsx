@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useUnsavedChanges } from "../ui/Unsaved";
 import { api } from "../api";
 import { justCategory, loadJustCategories } from "../justTaxonomy";
-import { maskTime, nowHm, timeOk } from "../mask";
+import { maskTime, nowHm, plusHour, timeOk } from "../mask";
 import { useAssist } from "../useAssist";
 import type { DayInfo, Entry } from "../types";
 import { ApiError } from "../types";
@@ -72,7 +72,8 @@ export function FormPage() {
     api.day(dia).then((d) => {
       if (cancelled) return;
       setDay(d);
-      if (!editing && d.lastOut) setTin(current => current || d.lastOut);
+      // sugestão de próxima entrada: última saída do dia + 1h (almoço)
+      if (!editing && d.lastOut) setTin(current => current || plusHour(d.lastOut));
     }).catch(() => { if (!cancelled) setDay(null); });
     return () => { cancelled = true; };
   }, [dia, editing]);
@@ -141,7 +142,10 @@ export function FormPage() {
       try {
         const d = await api.day(dia);
         setDay(d); setCloseOpen(d.open.length > 0);
-        if (d.lastOut) { setTin(d.lastOut); setInitial(JSON.stringify([dia, d.lastOut, "", ""])); }
+        if (d.lastOut) {
+          const next = plusHour(d.lastOut);
+          setTin(next); setInitial(JSON.stringify([dia, next, "", ""]));
+        }
       } catch { setErr("Registro salvo. Não foi possível atualizar os horários do dia; confira a conexão antes do próximo lançamento."); }
       tinRef.current?.focus();
     } catch (e) {

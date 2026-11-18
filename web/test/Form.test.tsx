@@ -6,7 +6,7 @@ import { api } from "../src/api";
 import { ApiError, type DayInfo } from "../src/types";
 vi.mock("../src/api", () => ({ api: { day: vi.fn(), create: vi.fn() } }));
 afterEach(cleanup);
-const day = (dia: string, holiday: string) => ({ dia, holiday, lastOut: "", open: [], entries: [] }) as unknown as DayInfo;
+const day = (dia: string, holiday: string, lastOut = "") => ({ dia, holiday, lastOut, open: [], entries: [] }) as unknown as DayInfo;
 it("ignores an old date response after the date changes", async () => {
   let old!: (value: DayInfo) => void;
   vi.mocked(api.day).mockImplementationOnce(() => new Promise(resolve => { old = resolve; }))
@@ -17,6 +17,20 @@ it("ignores an old date response after the date changes", async () => {
   await act(async () => old(day("2026-05-20", "resposta antiga")));
   expect(screen.queryByText(/resposta antiga/)).toBeNull();
 });
+it("suggests last out + 1h as the entrada on a day that already has a closed punch", async () => {
+  vi.mocked(api.day).mockResolvedValue(day("2026-05-20", "", "12:00"));
+  render(<MemoryRouter><FormPage /></MemoryRouter>);
+  const entrada = await screen.findByPlaceholderText("07:30");
+  await waitFor(() => expect((entrada as HTMLInputElement).value).toBe("13:00"));
+});
+
+it("wraps the suggested entrada to 00:xx when the last out is past 23:00", async () => {
+  vi.mocked(api.day).mockResolvedValue(day("2026-05-20", "", "23:15"));
+  render(<MemoryRouter><FormPage /></MemoryRouter>);
+  const entrada = await screen.findByPlaceholderText("07:30");
+  await waitFor(() => expect((entrada as HTMLInputElement).value).toBe("00:15"));
+});
+
 it("requires a new midnight confirmation when the times change", async () => {
   vi.mocked(api.day).mockResolvedValue(day("2026-05-20", ""));
   vi.mocked(api.create).mockRejectedValue(new ApiError("cruza meia-noite", 409, "midnight"));
