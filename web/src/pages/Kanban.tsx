@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { api } from "../api";
 import { KANBAN_BLOCK_KINDS, type KanbanCard, type KanbanColumn } from "../types";
 import { ApiError } from "../types";
@@ -34,18 +34,27 @@ export function KanbanPage() {
     reload().catch((e: unknown) => setErr(e instanceof Error ? e.message : "erro"));
   }, []);
 
+  const cardsByColumn = useMemo(() => {
+    const map = new Map<number, KanbanCard[]>();
+    for (const c of board.cards) {
+      let list = map.get(c.columnId);
+      if (!list) { list = []; map.set(c.columnId, list); }
+      list.push(c);
+    }
+    for (const list of map.values()) list.sort((a, b) => a.position - b.position || a.id - b.id);
+    return map;
+  }, [board.cards]);
+
   function cardsOf(columnId: number) {
-    return board.cards
-      .filter((c) => c.columnId === columnId)
-      .sort((a, b) => a.position - b.position || a.id - b.id);
+    return cardsByColumn.get(columnId) ?? [];
   }
 
   async function addColumn() {
     setBusy(true);
     setErr("");
     try {
-      await api.createKanbanColumn({ name: "Nova coluna" });
-      await reload();
+      const col = await api.createKanbanColumn({ name: "Nova coluna" });
+      setBoard((cur) => ({ ...cur, columns: [...cur.columns, col] }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não criou a coluna");
     } finally {
@@ -60,8 +69,8 @@ export function KanbanPage() {
     setBusy(true);
     setErr("");
     try {
-      await api.updateKanbanColumn(col.id, { name });
-      await reload();
+      const next = await api.updateKanbanColumn(col.id, { name });
+      setBoard((cur) => ({ ...cur, columns: cur.columns.map((c) => (c.id === next.id ? next : c)) }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não renomeou");
     } finally {
@@ -89,7 +98,10 @@ export function KanbanPage() {
     try {
       await api.removeKanbanColumn(col.id);
       if (editing && editing.columnId === col.id) setEditing(null);
-      await reload();
+      setBoard((cur) => ({
+        columns: cur.columns.filter((c) => c.id !== col.id).map((c, i) => ({ ...c, position: i })),
+        cards: cur.cards.filter((c) => c.columnId !== col.id),
+      }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não apagou");
     } finally {
@@ -102,7 +114,7 @@ export function KanbanPage() {
     setErr("");
     try {
       const card = await api.createKanbanCard({ title: "Novo cartão", body: "", columnId });
-      await reload();
+      setBoard((cur) => ({ ...cur, cards: [...cur.cards, card] }));
       openEdit(card);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não criou o cartão");
@@ -148,7 +160,7 @@ export function KanbanPage() {
       setDraftTitle(next.title);
       setDraftBody(next.body);
       setDraftDone(next.done ?? "");
-      await reload();
+      setBoard((cur) => ({ ...cur, cards: cur.cards.map((c) => (c.id === next.id ? next : c)) }));
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setErr(e.message);
@@ -183,9 +195,10 @@ export function KanbanPage() {
     setBusy(true);
     setErr("");
     try {
-      await api.removeKanbanCard(editing.id);
+      const removedId = editing.id;
+      await api.removeKanbanCard(removedId);
       setEditing(null);
-      await reload();
+      setBoard((cur) => ({ ...cur, cards: cur.cards.filter((c) => c.id !== removedId) }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não apagou");
     } finally {
@@ -206,7 +219,7 @@ export function KanbanPage() {
       const next = await api.blockKanbanCard(editing.id, { kind: blockKind, reason });
       setEditing(next);
       setBlockReason("");
-      await reload();
+      setBoard((cur) => ({ ...cur, cards: cur.cards.map((c) => (c.id === next.id ? next : c)) }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não bloqueou");
     } finally {
@@ -227,7 +240,7 @@ export function KanbanPage() {
     try {
       const next = await api.unblockKanbanCard(editing.id);
       setEditing(next);
-      await reload();
+      setBoard((cur) => ({ ...cur, cards: cur.cards.map((c) => (c.id === next.id ? next : c)) }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "não desbloqueou");
     } finally {
@@ -260,7 +273,7 @@ export function KanbanPage() {
     }
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDropOn(key);
+    setDropOn((cur) => (cur === key ? cur : key));
   }
 
   function allowColumnDrop(e: DragEvent, key: string) {
@@ -268,7 +281,7 @@ export function KanbanPage() {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
-    setDropOn(key);
+    setDropOn((cur) => (cur === key ? cur : key));
   }
 
   async function dropColumn(e: DragEvent, position: number) {
@@ -297,7 +310,6 @@ export function KanbanPage() {
 
     try {
       await api.updateKanbanColumn(columnId, { position: pos });
-      await reload();
     } catch (e) {
       setBoard(prev);
       setErr(e instanceof Error ? e.message : "não moveu a coluna");
@@ -344,7 +356,6 @@ export function KanbanPage() {
 
     try {
       await api.moveKanbanCard(cardId, { columnId, position: pos });
-      await reload();
     } catch (e) {
       setBoard(prev);
       setErr(e instanceof Error ? e.message : "não moveu");

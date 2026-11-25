@@ -25,13 +25,19 @@ import java.util.Map;
  */
 public final class Json {
 
+    private static final Holidays BASE_HOLIDAYS = new Holidays(java.util.List::of);
+
     public static Map<String, Object> json(Entry e) {
+        return json(e, BASE_HOLIDAYS.off(e.dia()));
+    }
+
+    public static Map<String, Object> json(Entry e, String off) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", e.id());
         m.put("dia", Str.d(e.dia()));
         m.put("diaIso", Str.iso(e.dia()));
         m.put("d3", Str.d3(e.dia()));
-        m.put("off", new Holidays(java.util.List::of).off(e.dia()));
+        m.put("off", off == null ? "" : off);
         m.put("tin", Str.t(e.tin()));
         m.put("tout", Str.t(e.tout()));
         m.put("just", e.just());

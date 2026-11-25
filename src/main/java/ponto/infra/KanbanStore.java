@@ -145,8 +145,8 @@ public final class KanbanStore {
         synchronized (lock) {
             return db.transaction(() -> {
                 KanbanCard card = mustCard(id);
-                mustColumn(columnId);
-                if (card.blocked() && done(mustColumn(columnId).name()))
+                KanbanColumn targetCol = mustColumn(columnId);
+                if (card.blocked() && done(targetCol.name()))
                     throw new ponto.Bad("cartão bloqueado não pode ir para Feito");
                 int oldCol = card.columnId();
                 List<KanbanCard> target = cardsInColumn(columnId).stream().filter(c -> c.id() != id).toList();
@@ -154,13 +154,16 @@ public final class KanbanStore {
                 List<KanbanCard> next = new ArrayList<>(target);
                 next.add(pos, card);
                 for (int i = 0; i < next.size(); i++) {
-                    write("UPDATE kanban_card SET column_id=?, position=? WHERE id=? AND company_id=?",
-                          columnId, i, next.get(i).id(), cid());
+                    KanbanCard cur = next.get(i);
+                    if (cur.columnId() != columnId || cur.position() != i) {
+                        write("UPDATE kanban_card SET column_id=?, position=? WHERE id=? AND company_id=?",
+                              columnId, i, cur.id(), cid());
+                    }
                 }
                 if (oldCol != columnId) {
                     renumberCards(oldCol);
-                    String targetName = mustColumn(columnId).name();
-                    if (inProgress(targetName) || done(targetName)) recordActivity(card, "moved");
+                    String targetName = targetCol.name();
+                    if (inProgress(targetName) || done(targetName)) recordActivity(card, "moved", targetName);
                 }
                 return mustCard(id);
             });
@@ -192,10 +195,12 @@ public final class KanbanStore {
         synchronized (lock) {
             List<String> out = new ArrayList<>();
             java.util.Set<String> seen = new java.util.HashSet<>();
-            String sql = "SELECT title FROM kanban_activity WHERE company_id=? AND crea LIKE ? ORDER BY id";
-            try (var q = prep(sql)) {
+            String nextIso = java.time.LocalDate.parse(iso).plusDays(1).toString();
+            String sql = "SELECT title FROM kanban_activity WHERE company_id=? AND crea >= ? AND crea < ? ORDER BY id";
+            try (var q = prepQuery(sql)) {
                 q.setInt(1, cid());
-                q.setString(2, iso + "%");
+                q.setString(2, iso);
+                q.setString(3, nextIso);
                 try (var rs = q.executeQuery()) {
                     while (rs.next()) {
                         String title = nz(rs.getString("title")).trim();
@@ -226,8 +231,10 @@ public final class KanbanStore {
 
     private void renumberCards(int columnId) {
         List<KanbanCard> all = cardsInColumn(columnId);
-        for (int i = 0; i < all.size(); i++)
-            write("UPDATE kanban_card SET position=? WHERE id=? AND company_id=?", i, all.get(i).id(), cid());
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).position() != i)
+                write("UPDATE kanban_card SET position=? WHERE id=? AND company_id=?", i, all.get(i).id(), cid());
+        }
     }
 
     private List<KanbanCard> cardsInColumn(int columnId) {
@@ -236,14 +243,14 @@ public final class KanbanStore {
     }
 
     private int nextColumnPosition() {
-        try (var q = prep("SELECT COALESCE(MAX(position),-1)+1 FROM kanban_column WHERE company_id=?")) {
+        try (var q = prepQuery("SELECT COALESCE(MAX(position),-1)+1 FROM kanban_column WHERE company_id=?")) {
             q.setInt(1, cid());
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     private int nextCardPosition(int columnId) {
-        try (var q = prep("SELECT COALESCE(MAX(position),-1)+1 FROM kanban_card WHERE company_id=? AND column_id=?")) {
+        try (var q = prepQuery("SELECT COALESCE(MAX(position),-1)+1 FROM kanban_card WHERE company_id=? AND column_id=?")) {
             q.setInt(1, cid());
             q.setInt(2, columnId);
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
@@ -271,7 +278,7 @@ public final class KanbanStore {
     private static String nz(String s) { return s == null ? "" : s; }
 
     private List<KanbanColumn> columnRows(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             try (var rs = q.executeQuery()) {
                 List<KanbanColumn> out = new ArrayList<>();
@@ -282,7 +289,7 @@ public final class KanbanStore {
     }
 
     private List<KanbanCard> cardRows(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             try (var rs = q.executeQuery()) {
                 List<KanbanCard> out = new ArrayList<>();
@@ -298,20 +305,27 @@ public final class KanbanStore {
 
     private List<KanbanCard> withBlocks(List<KanbanCard> cards) {
         if (cards.isEmpty()) return cards;
+        if (cards.size() == 1) {
+            KanbanCard card = cards.getFirst();
+            List<KanbanBlock> blocks = blockRows(
+                    "SELECT id, card_id, kind, reason, crea, cleared FROM kanban_block WHERE company_id=? AND card_id=? ORDER BY id DESC",
+                    cid(), card.id());
+            return List.of(card.withBlocks(blocks));
+        }
         Map<Integer, List<KanbanBlock>> byCard = new LinkedHashMap<>();
         for (KanbanBlock block : blockRows(
                 "SELECT id, card_id, kind, reason, crea, cleared FROM kanban_block WHERE company_id=? ORDER BY id DESC",
                 cid())) {
             byCard.computeIfAbsent(block.cardId(), k -> new ArrayList<>()).add(block);
         }
-        List<KanbanCard> out = new ArrayList<>();
+        List<KanbanCard> out = new ArrayList<>(cards.size());
         for (KanbanCard card : cards)
             out.add(card.withBlocks(byCard.getOrDefault(card.id(), List.of())));
         return out;
     }
 
     private List<KanbanBlock> blockRows(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             try (var rs = q.executeQuery()) {
                 List<KanbanBlock> out = new ArrayList<>();
@@ -326,8 +340,12 @@ public final class KanbanStore {
      * "kafeine" history past {@link #ACTIVITY_TTL_DAYS} days. Caller holds the lock.
      */
     private void recordActivity(KanbanCard card, String kind) {
+        recordActivity(card, kind, mustColumn(card.columnId()).name());
+    }
+
+    private void recordActivity(KanbanCard card, String kind, String columnName) {
         insert("INSERT INTO kanban_activity(card_id, title, kind, column_name, company_id) VALUES(?,?,?,?,?)",
-                card.id(), card.title(), kind, normalizeName(mustColumn(card.columnId()).name()), cid());
+                card.id(), card.title(), kind, normalizeName(columnName), cid());
         write("DELETE FROM kanban_activity WHERE company_id=? "
                 + "AND crea < to_char(now() - interval '" + ACTIVITY_TTL_DAYS + " days', 'YYYY-MM-DD')", cid());
     }
@@ -351,21 +369,25 @@ public final class KanbanStore {
     }
 
     private int write(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             return q.executeUpdate();
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     private int insert(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepInsert(sql)) {
             bind(q, args);
             q.executeUpdate();
             try (var ks = q.getGeneratedKeys()) { return ks.next() ? ks.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
-    private PreparedStatement prep(String sql) throws SQLException {
+    private PreparedStatement prepQuery(String sql) throws SQLException {
+        return db.conn().prepareStatement(sql);
+    }
+
+    private PreparedStatement prepInsert(String sql) throws SQLException {
         return db.conn().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
     }
 

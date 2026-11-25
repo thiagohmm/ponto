@@ -13,7 +13,7 @@ import java.sql.Statement;
  * with the final version half-way through.
  */
 public final class Migrations {
-    public static final int VERSION = 8;
+    public static final int VERSION = 9;
 
     static void apply(Db db) {
         int version = 0;
@@ -51,6 +51,14 @@ public final class Migrations {
         if (version == 7) {
             db.transaction(() -> {
                 createKanbanActivity(db);
+                db.exec("UPDATE schema_migrations SET version = 8");
+                return null;
+            });
+            version = 8;
+        }
+        if (version == 8) {
+            db.transaction(() -> {
+                createHttpClientCollection(db);
                 db.exec("UPDATE schema_migrations SET version = " + VERSION);
                 return null;
             });
@@ -155,6 +163,7 @@ public final class Migrations {
 
         createVault(db);
         createDayDigest(db);
+        createHttpClientCollection(db);
 
         db.exec("CREATE INDEX ix_note_upd ON note(upd)");
         db.exec("CREATE INDEX ix_note_company ON note(company_id, upd)");
@@ -204,6 +213,18 @@ public final class Migrations {
                 + "model TEXT NOT NULL DEFAULT '', " + created + ", "
                 + "upd TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI'), "
                 + "PRIMARY KEY (company_id, dia))");
+    }
+
+    /** Shared ponto-http collection (curl imports / requests) per company. */
+    static void createHttpClientCollection(Db db) {
+        String created = "crea TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI')";
+        String company = "company_id INTEGER NOT NULL REFERENCES company(id)";
+        db.exec("CREATE TABLE http_client_collection ("
+                + company + " PRIMARY KEY, "
+                + "blob TEXT NOT NULL DEFAULT '{}', "
+                + "revision BIGINT NOT NULL DEFAULT 0, "
+                + created + ", "
+                + "upd TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI'))");
     }
 
     /**

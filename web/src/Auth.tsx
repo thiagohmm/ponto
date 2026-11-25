@@ -1,24 +1,43 @@
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api } from "./api";
 import { BrandMark } from "./ui/BrandMark";
-import { ApiError } from "./types";
+import { ApiError, type CompanyList } from "./types";
 
-type AuthState = { user: string | null; ready: boolean; refresh: () => Promise<void>; logout: () => Promise<void> };
+type AuthState = {
+  user: string | null;
+  ready: boolean;
+  initialCompanies: CompanyList | null;
+  refresh: () => Promise<void>;
+  logout: () => Promise<void>;
+};
 
-const Ctx = createContext<AuthState>({ user: null, ready: false, refresh: async () => {}, logout: async () => {} });
+const Ctx = createContext<AuthState>({
+  user: null,
+  ready: true,
+  initialCompanies: null,
+  refresh: async () => {},
+  logout: async () => {},
+});
 
 export function useAuth() { return useContext(Ctx); }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [initialCompanies, setInitialCompanies] = useState<CompanyList | null>(null);
 
   async function refresh() {
     try {
       const me = await api.me();
       setUser(me.user);
+      if (typeof me.activeId === "number" && Array.isArray(me.companies)) {
+        setInitialCompanies({ activeId: me.activeId, companies: me.companies });
+      } else {
+        setInitialCompanies(null);
+      }
     } catch (e) {
+      setInitialCompanies(null);
       if (e instanceof ApiError && e.status === 401) setUser(null);
       else if (!navigator.onLine || (e instanceof ApiError && (e.status === 503 || e.status === 0))) {
         // Keep the offline PWA shell mounted; Connection shows the banner.
@@ -35,11 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     await api.logout();
     setUser(null);
+    setInitialCompanies(null);
   }
 
   useEffect(() => { refresh().catch(() => setReady(true)); }, []);
 
-  return <Ctx.Provider value={{ user, ready, refresh, logout }}>{children}</Ctx.Provider>;
+  const value = useMemo(
+    () => ({ user, ready, initialCompanies, refresh, logout }),
+    [user, ready, initialCompanies],
+  );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function RequireAuth({ children }: { children: ReactNode }) {

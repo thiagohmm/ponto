@@ -23,6 +23,7 @@ function mesFromDia(dia: string) {
 export function useHomeData() {
   const { active } = useCompany();
   const request = useRef(0);
+  const lastBankYm = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [home, setHome] = useState<Home | null>(null);
   const [rows, setRows] = useState<Entry[]>([]);
@@ -42,28 +43,38 @@ export function useHomeData() {
   const [ate, setAte] = useState(mesPickerAtual);
   const [err, setErr] = useState("");
 
-  async function load(nextQ = q, nextDia = dia, nextDe = de, nextAte = ate) {
+  async function load(
+    nextQ = q,
+    nextDia = dia,
+    nextDe = de,
+    nextAte = ate,
+    mode: "all" | "filter" = "all",
+  ) {
     const current = ++request.current;
     setLoading(true);
     setErr("");
     const useRange = !nextDia && nextDe && nextAte;
     const deV = useRange && nextAte < nextDe ? nextAte : nextDe;
     const ateV = useRange && nextAte < nextDe ? nextDe : nextAte;
+    const bankYm = useRange ? ateV : (mesFromDia(nextDia) || "");
+    const needBank = mode === "all" || lastBankYm.current !== bankYm;
     const hoje = (() => {
       const d = new Date();
       return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
     })();
     try {
+      const entriesPromise = useRange
+        ? api.entriesRange(deV + "-01", lastDiaIso(ateV), 500, nextQ)
+        : api.entries({ q: nextQ, dia: nextDia, n: 500 });
+      const bankPromise = needBank ? api.bank(bankYm || undefined) : Promise.resolve(null);
       const [h, list, bk, day] = await Promise.all([
-        api.home(),
-        useRange
-          ? api.entriesRange(deV + "-01", lastDiaIso(ateV), 500, nextQ)
-          : api.entries({ q: nextQ, dia: nextDia, n: 500 }),
-        api.bank(useRange ? ateV : (mesFromDia(nextDia) || undefined)),
-        api.day(hoje),
+        mode === "all" ? api.home() : Promise.resolve(null),
+        entriesPromise,
+        bankPromise,
+        mode === "all" ? api.day(hoje) : Promise.resolve(null),
       ]);
       if (current !== request.current) return;
-      setHome(h);
+      if (h) setHome(h);
       setRows(list.entries);
       setTotal(list.total);
       setFilterDur(list.dur);
@@ -72,8 +83,11 @@ export function useHomeData() {
       setFilterOt(list.overtime);
       setFaltas(new Set(list.faltas));
       setNormais(new Set(list.normais));
-      setBank(bk);
-      setTodayDay(day);
+      if (bk) {
+        lastBankYm.current = bankYm;
+        setBank(bk);
+      }
+      if (day) setTodayDay(day);
       setClock(nowHm());
     } catch (e) {
       if (current === request.current) setErr(e instanceof Error ? e.message : "Não foi possível carregar os registros.");
@@ -82,7 +96,10 @@ export function useHomeData() {
     }
   }
 
-  useEffect(() => { void load(); }, [active?.id]);
+  useEffect(() => {
+    lastBankYm.current = null;
+    void load(q, dia, de, ate, "all");
+  }, [active?.id]);
 
   useEffect(() => {
     const tick = window.setInterval(() => setClock(nowHm()), 30_000);

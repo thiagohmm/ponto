@@ -91,6 +91,25 @@ public final class Files implements AutoCloseable {
         }
     }
 
+    public Map<Integer, String> statesForNote(int noteId) {
+        synchronized (lock) { return states("SELECT id, state FROM note_file WHERE note_id=?", noteId); }
+    }
+
+    public Map<Integer, String> statesForCard(int cardId) {
+        synchronized (lock) { return states("SELECT id, state FROM kanban_card_file WHERE card_id=?", cardId); }
+    }
+
+    private Map<Integer, String> states(String sql, int ownerId) {
+        try (var q = db.conn().prepareStatement(sql)) {
+            q.setInt(1, ownerId);
+            Map<Integer, String> out = new LinkedHashMap<>();
+            try (var rs = q.executeQuery()) {
+                while (rs.next()) out.put(rs.getInt(1), rs.getString(2));
+            }
+            return out;
+        } catch (SQLException e) { throw problem(e); }
+    }
+
     public String state(int id) {
         synchronized (lock) {
             try (var q = db.conn().prepareStatement("SELECT state FROM note_file WHERE id=?")) {
@@ -119,7 +138,7 @@ public final class Files implements AutoCloseable {
                 } catch (SQLException e) { throw problem(e); }
             });
         } catch (RuntimeException e) { deleteStaged(up.staged().toString()); throw e; }
-        process(up.key());
+        process(up.key(), data);
         return must(id);
     }
 
@@ -157,7 +176,7 @@ public final class Files implements AutoCloseable {
                 } catch (SQLException e) { throw problem(e); }
             });
         } catch (RuntimeException e) { deleteStaged(up.staged().toString()); throw e; }
-        process(up.key());
+        process(up.key(), data);
         return mustCardFile(id);
     }
 
@@ -281,13 +300,15 @@ public final class Files implements AutoCloseable {
         }
     }
 
-    private void process(String key) {
+    private void process(String key) { process(key, null); }
+
+    private void process(String key, byte[] inMemory) {
         synchronized (objects[(key.hashCode() & Integer.MAX_VALUE) % objects.length]) {
             Job job = job(key);
             if (job == null || job.attempts() >= 3 || s3 == null) return;
             try {
                 if (job.operation().equals("PUT")) {
-                    byte[] data = java.nio.file.Files.readAllBytes(Path.of(job.path()));
+                    byte[] data = inMemory != null ? inMemory : java.nio.file.Files.readAllBytes(Path.of(job.path()));
                     s3.ensureBucket(); s3.put(key, data, job.ctype());
                 } else s3.delete(key);
                 db.transaction(() -> {

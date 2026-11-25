@@ -16,7 +16,17 @@ export default defineConfig({
     cssCodeSplit: true,
     assetsInlineLimit: 2048,
     // as páginas entram por import() dinâmico (ver App.tsx): o Rollup separa
-    // um arquivo por aba e o primeiro carregamento só traz a casca
-    rollupOptions: { output: {} },
+    // um arquivo por aba e o primeiro carregamento só traz a casca.
+    // react/router vão para um chunk `vendor` estável (cache imutável entre deploys).
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/react/") || id.includes("node_modules/react-dom/")
+              || id.includes("node_modules/react-router") || id.includes("node_modules/scheduler/")) {
+            return "vendor";
+          }
+        },
+      },
+    },
   },
 });

@@ -126,7 +126,12 @@ final class KanbanRoutes {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         svc.kanbanCardById(id);
-        ctx.json(Map.of("files", svc.listCardFiles(id).stream().map(f -> fileJson(svc, f)).toList()));
+        Map<Integer, String> states = svc.cardFileStates(id);
+        ctx.json(Map.of("files", svc.listCardFiles(id).stream().map(f -> {
+            var json = Json.json(f);
+            json.put("state", states.getOrDefault(f.id(), "ready"));
+            return json;
+        }).toList()));
     }
 
     private void fileUpload(Context ctx) {

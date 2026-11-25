@@ -59,6 +59,10 @@ public final class Web {
             cfg.showJavalinBanner = false;
             cfg.http.maxRequestSize = Service.maxUpload() + 1024 * 1024;
             cfg.jsonMapper(new Json3());
+            // Single-user Raspberry Pi 4B: bounded small thread pool avoids Jetty's 200-thread default stack footprint.
+            var pool = new org.eclipse.jetty.util.thread.QueuedThreadPool(16, 2, 60_000);
+            pool.setName("ponto-http");
+            cfg.jetty.threadPool = pool;
             cfg.jetty.modifyHttpConfiguration(httpConfig -> httpConfig.setSendServerVersion(false));
             if (Web.class.getResource("/public/index.html") != null) {
                 // assets com hash no nome: o navegador guarda para sempre, sem
@@ -145,8 +149,12 @@ public final class Web {
             ctx.json(auth.login(ctx, r.user(), r.password()));
         });
         app.get("/api/me", ctx -> {
-            if (auth == null) { ctx.json(Map.of("user", "open")); return; }
-            ctx.json(auth.me());
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("user", auth == null ? "open" : auth.me().get("user"));
+            Company act = svc.activeCompany();
+            out.put("activeId", act.id());
+            out.put("companies", svc.listCompanies().stream().map(Json::json).toList());
+            ctx.json(out);
         });
         app.post("/api/logout", ctx -> {
             if (auth != null) auth.logout(ctx);
@@ -181,6 +189,7 @@ public final class Web {
         new AssistRoutes(assist).register(app);
         new DiarioRoutes(this::service, assist).register(app);
         new VaultRoutes(this::service).register(app);
+        new HttpClientRoutes(this::service).register(app);
         app.events(events -> events.serverStopped(svc::closeResources));
         return app;
     }
@@ -239,9 +248,11 @@ public final class Web {
     }
 
     private static Map<String, Object> entryJson(Service svc, Entry entry) {
-        var json = Json.json(entry);
-        json.put("off", svc.holiday(entry.dia()));
-        return json;
+        return entryJson(svc, entry, svc.extraOffDays());
+    }
+
+    private static Map<String, Object> entryJson(Service svc, Entry entry, java.util.Set<LocalDate> extraOff) {
+        return Json.json(entry, svc.calendar().off(entry.dia(), extraOff));
     }
 
     private void list(Context ctx) {
@@ -253,42 +264,31 @@ public final class Web {
         int n = Math.min(1000, Math.max(1, intParam(ctx, "n", 40)));
         int skip = intParam(ctx, "skip", 0);
         boolean range = !isBlank(fromRaw) && !isBlank(toRaw);
-        List<Entry> rows;
-        Service.Totals tot;
-        long total;
-        long ot;
+        ponto.app.TimesheetApp.EntriesPage page;
         if (range) {
             LocalDate from = Service.parseDate(fromRaw, null);
             LocalDate to = Service.parseDate(toRaw, null);
             if (from == null || to == null) throw new Bad("from/to: use uma data como 2026-09-01");
             if (to.isBefore(from)) { LocalDate x = from; from = to; to = x; }
-            if (!isBlank(q)) {
-                var result = svc.filteredRange(from, to, q, n, skip);
-                rows = result.entries(); tot = result.totals(); total = result.total(); ot = result.overtime();
-            } else {
-            rows = svc.listBetween(from, to, n, skip);
-            tot = svc.totalsBetween(from, to);
-            total = svc.countBetween(from, to);
-            ot = svc.overtimeBetween(from, to);
-            }
+            page = svc.entriesRange(from, to, q, n, skip);
         } else {
-            rows = svc.list(q, dia, n, skip);
-            tot = svc.listTotals(q, dia);
-            total = svc.count(q, dia);
-            ot = svc.overtime(q, dia);
+            page = svc.entriesList(q, dia, n, skip);
         }
+        var extraOff = svc.extraOffDays();
+        List<Entry> rows = page.entries();
+        Service.Totals tot = page.totals();
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", total);
+        out.put("total", page.total());
         out.put("shown", rows.size());
         out.put("skip", skip);
         out.put("mins", tot.mins());
         out.put("dur", tot.dur());
         out.put("hours", tot.hours());
         out.put("open", tot.open());
-        out.put("overtime", ot);
-        out.put("faltas", svc.faltas().stream().map(Str::iso).toList());
-        out.put("normais", svc.normais().stream().map(Str::iso).toList());
-        out.put("entries", rows.stream().map(e -> entryJson(svc, e)).toList());
+        out.put("overtime", page.overtime());
+        out.put("faltas", page.faltas().stream().map(Str::iso).toList());
+        out.put("normais", page.normais().stream().map(Str::iso).toList());
+        out.put("entries", rows.stream().map(e -> entryJson(svc, e, extraOff)).toList());
         ctx.json(out);
     }
 
@@ -347,16 +347,17 @@ public final class Web {
         for (Entry e : rows) if (e.tout() != null && (best == null || e.tout().isAfter(best))) best = e.tout();
         if (best != null) lastOut = Str.t(best);
         List<Entry> open = rows.stream().filter(e -> e.tin() != null && e.tout() == null).toList();
+        String off = svc.holiday(d);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dia", Str.d(d));
         out.put("diaIso", Str.iso(d));
         out.put("d3", Str.d3(d));
-        out.put("holiday", svc.holiday(d));
+        out.put("holiday", off);
         out.put("falta", svc.falta(d));
         out.put("normal", svc.normal(d));
         out.put("lastOut", lastOut);
-        out.put("open", open.stream().map(e -> entryJson(svc, e)).toList());
-        out.put("entries", rows.stream().map(e -> entryJson(svc, e)).toList());
+        out.put("open", open.stream().map(e -> Json.json(e, off)).toList());
+        out.put("entries", rows.stream().map(e -> Json.json(e, off)).toList());
         ctx.json(out);
     }
 
@@ -399,9 +400,10 @@ public final class Web {
             try { ym = YearMonth.parse(raw); }
             catch (RuntimeException e) { throw new Bad("mês: '" + raw + "'  (AAAA-MM)"); }
         }
-        Map<String, Object> out = new LinkedHashMap<>(Json.jsonBank(svc.bank(ym)));
-        out.put("days", svc.bankDays(ym).stream().map(Json::jsonBankDay).toList());
-        out.put("months", svc.history(ym, 12).stream().map(Json::jsonMonthSaldo).toList());
+        var snap = svc.bankSnapshot(ym, 12);
+        Map<String, Object> out = new LinkedHashMap<>(Json.jsonBank(snap.bank()));
+        out.put("days", snap.days().stream().map(Json::jsonBankDay).toList());
+        out.put("months", snap.months().stream().map(Json::jsonMonthSaldo).toList());
         ctx.json(out);
     }
 

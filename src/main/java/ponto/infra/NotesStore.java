@@ -49,28 +49,31 @@ public final class NotesStore {
             if (needle.isEmpty())
                 return attachTags(rows("SELECT " + COLS + " FROM note WHERE company_id = ?" + ORDER, c));
 
-            // Folded haystack: title + body + tag names + attachment names.
-            String hay = """
-                    translate(lower(
-                      coalesce(n.title,'') || ' ' || coalesce(n.body,'') || ' ' ||
-                      coalesce((SELECT string_agg(t.name, ' ') FROM note_tag nt
-                                JOIN tag t ON t.id = nt.tag_id WHERE nt.note_id = n.id), '') || ' ' ||
-                      coalesce((SELECT string_agg(f.name, ' ') FROM note_file f
-                                WHERE f.note_id = n.id), '')
-                    ), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')""";
+            // Folded haystack computed once per note in a CTE (instead of per search term).
+            String cte = """
+                    WITH hay AS (
+                      SELECT n.id, n.title, n.body, n.crea, n.upd, n.folder_id, n.revision,
+                        translate(lower(
+                          coalesce(n.title,'') || ' ' || coalesce(n.body,'') || ' ' ||
+                          coalesce((SELECT string_agg(t.name, ' ') FROM note_tag nt
+                                    JOIN tag t ON t.id = nt.tag_id WHERE nt.note_id = n.id), '') || ' ' ||
+                          coalesce((SELECT string_agg(f.name, ' ') FROM note_file f
+                                    WHERE f.note_id = n.id), '')
+                        ), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn') AS txt
+                      FROM note n WHERE n.company_id = ?
+                    )
+                    SELECT id, title, body, crea, upd, folder_id, revision FROM hay WHERE true""";
 
-            StringBuilder sql = new StringBuilder(
-                    "SELECT n.id, n.title, n.body, n.crea, n.upd, n.folder_id, n.revision "
-                            + "FROM note n WHERE n.company_id = ?");
+            StringBuilder sql = new StringBuilder(cte);
             List<Object> args = new ArrayList<>();
             args.add(c);
             for (String w : needle.split("\\s+")) {
                 String term = fold(w);
                 if (term.isEmpty()) continue;
-                sql.append(" AND ").append(hay).append(" LIKE ?");
+                sql.append(" AND txt LIKE ?");
                 args.add("%" + term + "%");
             }
-            sql.append(" ORDER BY n.upd DESC, n.id DESC");
+            sql.append(" ORDER BY upd DESC, id DESC");
             return attachTags(rows(sql.toString(), args.toArray()));
         }
     }
@@ -306,7 +309,7 @@ public final class NotesStore {
     private String colorOf(String color) {
         if (color != null && color.matches("#[0-9A-Fa-f]{6}")) return color.toLowerCase();
         int n = 0;
-        try (var q = prep("SELECT COUNT(*) FROM tag WHERE company_id = ?")) {
+        try (var q = prepQuery("SELECT COUNT(*) FROM tag WHERE company_id = ?")) {
             q.setInt(1, cid());
             try (var rs = q.executeQuery()) { if (rs.next()) n = rs.getInt(1); }
         } catch (SQLException e) { throw new Problema(clean(e)); }
@@ -325,7 +328,7 @@ public final class NotesStore {
     }
 
     private List<Note> rows(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             try (var rs = q.executeQuery()) {
                 List<Note> out = new ArrayList<>();
@@ -340,7 +343,7 @@ public final class NotesStore {
         Map<Integer, List<Integer>> by = new LinkedHashMap<>();
         for (Note n : notes) by.put(n.id(), new ArrayList<>());
         String in = String.join(",", notes.stream().map(n -> "?").toList());
-        try (var q = prep("SELECT note_id, tag_id FROM note_tag WHERE note_id IN (" + in + ") ORDER BY tag_id")) {
+        try (var q = prepQuery("SELECT note_id, tag_id FROM note_tag WHERE note_id IN (" + in + ") ORDER BY tag_id")) {
             int i = 1;
             for (Note n : notes) q.setInt(i++, n.id());
             try (var rs = q.executeQuery()) {
@@ -350,7 +353,7 @@ public final class NotesStore {
                 }
             }
         } catch (SQLException e) { throw new Problema(clean(e)); }
-        List<Note> out = new ArrayList<>();
+        List<Note> out = new ArrayList<>(notes.size());
         for (Note n : notes)
             out.add(new Note(n.id(), n.title(), n.body(), n.crea(), n.upd(), n.folderId(),
                              List.copyOf(by.get(n.id())), n.revision()));
@@ -358,7 +361,7 @@ public final class NotesStore {
     }
 
     private List<Tag> tags(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             try (var rs = q.executeQuery()) {
                 List<Tag> out = new ArrayList<>();
@@ -371,7 +374,7 @@ public final class NotesStore {
     }
 
     private List<Folder> folders(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             try (var rs = q.executeQuery()) {
                 List<Folder> out = new ArrayList<>();
@@ -386,21 +389,25 @@ public final class NotesStore {
     }
 
     private int write(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             return q.executeUpdate();
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     private int insert(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepInsert(sql)) {
             bind(q, args);
             q.executeUpdate();
             try (var ks = q.getGeneratedKeys()) { return ks.next() ? ks.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
-    private PreparedStatement prep(String sql) throws SQLException {
+    private PreparedStatement prepQuery(String sql) throws SQLException {
+        return db.conn().prepareStatement(sql);
+    }
+
+    private PreparedStatement prepInsert(String sql) throws SQLException {
         return db.conn().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
     }
 

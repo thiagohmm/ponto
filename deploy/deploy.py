@@ -19,6 +19,9 @@ def main():
     host = os.environ.get('PONTO_HOST', 'thiagohmm@192.168.0.8')
     remote = os.environ.get('PONTO_REMOTE', '/home/thiagohmm/ponto-web')
     for command in (
+        ['mvn', '-B', '-f', 'http-tool/pom.xml', 'verify'],
+        ['mkdir', '-p', 'web/public/downloads'],
+        ['cp', 'http-tool/target/ponto-http.jar', 'web/public/downloads/ponto-http.jar'],
         ['npm', '--prefix', 'web', 'ci'],
         ['npm', '--prefix', 'web', 'test'],
         ['npm', '--prefix', 'web', 'run', 'build'],

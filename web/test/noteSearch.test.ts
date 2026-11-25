@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { normalize, noteHaystack, noteMatches } from "../src/pages/noteSearch";
+import { normalize, noteHaystack, noteMatches, noteMatchesNormalized, queryTerms } from "../src/pages/noteSearch";
 import type { Note } from "../src/types";
 
 const note = (over: Partial<Note> = {}): Note => ({
@@ -32,4 +32,11 @@ it("rejects a missing word and accepts an empty query", () => {
   expect(noteMatches("ponto inexistente", hay)).toBe(false);
   expect(noteMatches("", hay)).toBe(true);
   expect(noteMatches("   ", hay)).toBe(true);
+});
+
+it("matches pre-normalized haystacks using queryTerms", () => {
+  const norm = normalize(noteHaystack(note({ title: "Reunião Técnica", body: "Ação urgente" }), () => ""));
+  expect(noteMatchesNormalized(queryTerms("reuniao acao"), norm)).toBe(true);
+  expect(noteMatchesNormalized(queryTerms("reuniao ausente"), norm)).toBe(false);
+  expect(noteMatchesNormalized(queryTerms("  "), norm)).toBe(true);
 });

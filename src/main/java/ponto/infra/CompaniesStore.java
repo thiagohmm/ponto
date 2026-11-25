@@ -11,7 +11,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Workplaces in the same PostgreSQL database. Shares Service's lock: the JDBC
@@ -19,12 +21,28 @@ import java.util.List;
  */
 public final class CompaniesStore {
 
+    /** Shared across company-scoped views of the same Db; always accessed under lock. */
+    public static final class Cache {
+        List<Company> list;
+        Map<Integer, Company> byId;
+        void clear() { list = null; byId = null; }
+    }
+
     private static final String COLS = "id, name, off, daily, crea";
 
     private final Db db;
     private final Object lock;
+    private final Cache cache;
 
-    public CompaniesStore(Db db, Object lock) { this.db = db; this.lock = lock; }
+    public CompaniesStore(Db db, Object lock) { this(db, lock, new Cache()); }
+
+    public CompaniesStore(Db db, Object lock, Cache cache) {
+        this.db = db;
+        this.lock = lock;
+        this.cache = cache == null ? new Cache() : cache;
+    }
+
+    public Cache cache() { return cache; }
 
     public List<Company> list() {
         synchronized (lock) { return listLocked(); }
@@ -45,6 +63,7 @@ public final class CompaniesStore {
             String d = nzDaily(daily);
             int id = insert("INSERT INTO company(name, off, daily) VALUES(?,?,?)", n, o, d);
             Migrations.seedKanbanColumns(db, id);
+            cache.clear();
             return must(id);
         }
     }
@@ -56,6 +75,7 @@ public final class CompaniesStore {
             String o = off == null ? cur.off() : nzOff(off);
             String d = daily == null ? cur.daily() : nzDaily(daily);
             write("UPDATE company SET name=?, off=?, daily=? WHERE id=?", n, o, d, id);
+            cache.clear();
             return must(id);
         }
     }
@@ -86,24 +106,39 @@ public final class CompaniesStore {
                 int next = all.stream().filter(c -> c.id() != id).findFirst().orElseThrow().id();
                 db.setCfg("company", String.valueOf(next));
             }
-
+            cache.clear();
             return null;
             });
         }
     }
 
+    private void ensureLoaded() {
+        if (cache.list != null) return;
+        List<Company> loaded = List.copyOf(rows("SELECT " + COLS + " FROM company ORDER BY lower(name), id"));
+        Map<Integer, Company> byId = new HashMap<>(Math.max(4, loaded.size() * 2));
+        for (Company c : loaded) byId.put(c.id(), c);
+        cache.list = loaded;
+        cache.byId = byId;
+    }
+
     private List<Company> listLocked() {
-        return rows("SELECT " + COLS + " FROM company ORDER BY lower(name), id");
+        ensureLoaded();
+        return cache.list;
     }
 
     private Company must(int id) {
+        ensureLoaded();
+        Company hit = cache.byId.get(id);
+        if (hit != null) return hit;
+        // Miss: check DB once in case an external process inserted a company.
         List<Company> r = rows("SELECT " + COLS + " FROM company WHERE id = ?", id);
         if (r.isEmpty()) throw new ponto.NotFound("empresa " + id + " não existe");
+        cache.clear();
         return r.getFirst();
     }
 
     private int countTable(String table, int id) {
-        try (var q = prep("SELECT count(*) FROM " + table + " WHERE company_id = ?")) {
+        try (var q = prepQuery("SELECT count(*) FROM " + table + " WHERE company_id = ?")) {
             q.setInt(1, id);
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
@@ -126,7 +161,7 @@ public final class CompaniesStore {
     }
 
     private List<Company> rows(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             try (var rs = q.executeQuery()) {
                 List<Company> out = new ArrayList<>();
@@ -137,21 +172,25 @@ public final class CompaniesStore {
     }
 
     private int write(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepQuery(sql)) {
             bind(q, args);
             return q.executeUpdate();
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
     private int insert(String sql, Object... args) {
-        try (var q = prep(sql)) {
+        try (var q = prepInsert(sql)) {
             bind(q, args);
             q.executeUpdate();
             try (var ks = q.getGeneratedKeys()) { return ks.next() ? ks.getInt(1) : 0; }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
-    private PreparedStatement prep(String sql) throws SQLException {
+    private PreparedStatement prepQuery(String sql) throws SQLException {
+        return db.conn().prepareStatement(sql);
+    }
+
+    private PreparedStatement prepInsert(String sql) throws SQLException {
         return db.conn().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
     }
 

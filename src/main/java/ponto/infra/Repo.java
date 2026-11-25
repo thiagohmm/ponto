@@ -172,10 +172,27 @@ public final class Repo {
                   + " OR (tin IS NULL AND tout IS NOT NULL))" + ORDER, cid(), d);
     }
 
+    public record Stats(int count, LocalDate min, LocalDate max) { }
+    public record DayFlags(List<LocalDate> faltas, List<LocalDate> normais) { }
+
     public int count() {
         try (var q = prep("SELECT count(*) FROM ponto WHERE company_id = ?")) {
             bind(q, new Object[]{cid()});
             try (var rs = q.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
+    /** Count, first and last recorded day in one query. */
+    public Stats stats() {
+        try (var q = prep("SELECT count(*), min(dia), max(dia) FROM ponto WHERE company_id = ?")) {
+            bind(q, new Object[]{cid()});
+            try (var rs = q.executeQuery()) {
+                if (!rs.next()) return new Stats(0, null, null);
+                int c = rs.getInt(1);
+                String lo = rs.getString(2);
+                String hi = rs.getString(3);
+                return new Stats(c, lo == null ? null : LocalDate.parse(lo), hi == null ? null : LocalDate.parse(hi));
+            }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }
 
@@ -263,6 +280,23 @@ public final class Repo {
                 List<LocalDate> out = new ArrayList<>();
                 while (rs.next()) out.add(LocalDate.parse(rs.getString(1)));
                 return out;
+            }
+        } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
+    /** Both `falta` and `normal` days in a single query, oldest first. */
+    public DayFlags allFlags() {
+        try (var q = prep("SELECT dia, flag FROM dia_flag WHERE company_id = ? ORDER BY dia")) {
+            bind(q, new Object[]{cid()});
+            try (var rs = q.executeQuery()) {
+                List<LocalDate> faltas = new ArrayList<>();
+                List<LocalDate> normais = new ArrayList<>();
+                while (rs.next()) {
+                    LocalDate d = LocalDate.parse(rs.getString(1));
+                    if ("falta".equals(rs.getString(2))) faltas.add(d);
+                    else normais.add(d);
+                }
+                return new DayFlags(List.copyOf(faltas), List.copyOf(normais));
             }
         } catch (SQLException e) { throw new Problema(clean(e)); }
     }

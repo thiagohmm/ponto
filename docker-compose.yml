@@ -3,11 +3,15 @@ services:
     image: cgr.dev/chainguard/minio@sha256:e234321fd3abff7fb968b0674056e883b702aa1ad93a0d4d795cb6c21fa46407
     container_name: ponto-minio
     restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 384m
     user: "0"
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${PONTO_S3_ACCESS:?Configure PONTO_S3_ACCESS in .env}
       MINIO_ROOT_PASSWORD: ${PONTO_S3_SECRET:?Configure PONTO_S3_SECRET in .env}
+      MINIO_API_REQUESTS_MAX: "32"
+      GOMEMLIMIT: "200MiB"
     ports:
       - "127.0.0.1:9001:9001"
     volumes:
@@ -18,6 +22,8 @@ services:
     image: ponto:web
     container_name: ponto
     restart: unless-stopped
+    mem_limit: 384m
+    memswap_limit: 512m
     depends_on:
       - minio
     # No host port: LAN uses edge :8090 (redirect) / :8443 (TLS); smoke hits 127.0.0.1:8090 via Caddy.
@@ -39,8 +45,8 @@ services:
       - agenttk_default
     command: ["--serve", "--port=8080"]
     healthcheck:
-      test: ["CMD", "java", "-cp", "/app/ponto.jar", "ponto.HealthCheck"]
-      interval: 30s
+      test: ["CMD", "bash", "-c", "if command -v curl >/dev/null 2>&1; then curl -fsS --max-time 4 http://127.0.0.1:8080/api/health >/dev/null; else exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '; fi"]
+      interval: 60s
       timeout: 6s
       start_period: 20s
       retries: 3
@@ -51,6 +57,8 @@ services:
     image: caddy:2.10.2-alpine
     container_name: ponto-edge
     restart: unless-stopped
+    mem_limit: 96m
+    memswap_limit: 128m
     depends_on:
       - ponto
     ports:

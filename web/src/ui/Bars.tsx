@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { memo, useState, type CSSProperties } from "react";
 
 /**
  * Gráfico de barras em HTML puro.
@@ -67,7 +67,7 @@ function axis(lo: number, hi: number, snap: number): { min: number; max: number;
   return { min, max: max === min ? min + step : max, ticks };
 }
 
-export function Bars({
+export const Bars = memo(function Bars({
   bars,
   height = 200,
   format = String,
@@ -139,4 +139,4 @@ export function Bars({
       </div>
     </div>
   );
-}
+});

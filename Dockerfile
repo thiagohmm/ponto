@@ -4,11 +4,12 @@ COPY target/ponto.jar /app/ponto.jar
 # The PostgreSQL JDBC URL (user/password included) is injected by docker-compose
 # from the server .env (PONTO_DB_URL). No default: the app refuses to boot without it.
 EXPOSE 8080
-# Um app, um usuário, um banco pequeno: SerialGC gasta menos memória e menos
-# threads que G1, e MaxRAMPercentage deixa o heap seguir o limite do container
-# em vez de um -Xmx fixo. ExitOnOutOfMemoryError troca um servidor zumbi por um
-# restart, que o compose faz sozinho; sem UsePerfData, sem arquivo em /tmp.
-# Nas flags do ENTRYPOINT (e não em JAVA_TOOL_OPTIONS) para o JVM não imprimir
-# "Picked up JAVA_TOOL_OPTIONS" a cada start.
-ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-XX:MaxRAMPercentage=60", "-XX:+UseSerialGC", "-XX:+ExitOnOutOfMemoryError", "-XX:-UsePerfData", "-jar", "/app/ponto.jar"]
+# Um app, um usuário, um banco pequeno no Raspberry Pi 4B:
+# - UseCompactObjectHeaders (JEP 519, Java 25): cabeçalho de objeto de 8 B (~10-20% menos heap).
+# - SerialGC: menos memória nativa e menos threads que G1 para heap pequeno.
+# - Initial/MaxRAMPercentage segue o mem_limit do container (384m -> ~58m..210m heap).
+# - MaxMetaspaceSize, ReservedCodeCacheSize e Xss256k evitam crescimento silencioso fora do heap.
+# - ExitOnOutOfMemoryError troca servidor zumbi por restart automático do compose.
+# - Sem UsePerfData: sem arquivo de mmap em /tmp.
+ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-XX:+UseCompactObjectHeaders", "-XX:InitialRAMPercentage=15", "-XX:MaxRAMPercentage=55", "-XX:MaxMetaspaceSize=128m", "-XX:ReservedCodeCacheSize=48m", "-Xss256k", "-XX:+UseSerialGC", "-XX:+ExitOnOutOfMemoryError", "-XX:-UsePerfData", "-jar", "/app/ponto.jar"]
 CMD ["--serve", "--port=8080"]

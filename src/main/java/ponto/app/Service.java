@@ -7,6 +7,8 @@ import ponto.infra.Db;
 import ponto.infra.Files;
 import ponto.infra.KanbanStore;
 import ponto.infra.NotesStore;
+import ponto.infra.HttpClientStore;
+import ponto.infra.Repo;
 import ponto.infra.VaultStore;
 import ponto.model.*;
 
@@ -14,9 +16,10 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -49,6 +52,8 @@ public final class Service {
 
     private final Db db;
     private final Object lock;
+    private final ReadCache cache;
+    private final Map<Integer, Service> scopedServices;
     private final Holidays calendar;
     private final CompanyApp companies;
     private final NotesApp notes;
@@ -57,12 +62,22 @@ public final class Service {
     private final TimesheetApp timesheet;
     private final DiarioApp diario;
     private final VaultApp vault;
+    private final HttpClientStore httpClient;
+
+    private String cachedOffRaw;
+    private Set<LocalDate> cachedOffSet = Set.of();
 
     public Service(Db db) {
+        this(db, new CompaniesStore.Cache(), new ReadCache(), new HashMap<>());
+    }
+
+    private Service(Db db, CompaniesStore.Cache companyCache, ReadCache cache, Map<Integer, Service> scopedServices) {
         this.db = db;
         this.lock = db.lock;
-        this.companies = new CompanyApp(new CompaniesStore(db, lock));
-        this.calendar = new Holidays(() -> offDates(companies.active().off()));
+        this.cache = cache;
+        this.scopedServices = scopedServices;
+        this.companies = new CompanyApp(new CompaniesStore(db, lock, companyCache));
+        this.calendar = new Holidays(() -> offDates(companies.active().off()), this::extraOffDays);
         this.notes = new NotesApp(new NotesStore(db, lock));
         this.kanban = new KanbanApp(new KanbanStore(db, lock));
         this.files = new FilesApp(db, lock);
@@ -70,14 +85,31 @@ public final class Service {
         this.diario = new DiarioApp(db, lock, timesheet.repo(), calendar,
                 timesheet::dailyMinutes, timesheet::falta, timesheet::normal);
         this.vault = new VaultApp(new VaultStore(db, lock));
+        this.httpClient = new HttpClientStore(db, lock);
     }
 
-    /** Scoped view for one company; reuses Files worker/storage. */
+    /** Cached parsed extra days off for the active company (0 SQL + 0 parse on steady state). */
+    public Set<LocalDate> extraOffDays() {
+        synchronized (lock) {
+            String raw = companies.active().off();
+            if (raw == null) raw = "";
+            if (raw.equals(cachedOffRaw)) return cachedOffSet;
+            List<LocalDate> parsed = offDates(raw);
+            cachedOffSet = parsed.isEmpty() ? Set.of() : Set.copyOf(parsed);
+            cachedOffRaw = raw;
+            return cachedOffSet;
+        }
+    }
+
+    /** Scoped view for one company; cached per companyId and shares Files/Cache. */
     public Service forCompany(int id) {
         synchronized (lock) {
             companies.byId(id);
-            Service scoped = new Service(db.forCompany(id));
+            Service hit = scopedServices.get(id);
+            if (hit != null) return hit;
+            Service scoped = new Service(db.forCompany(id), companies.store().cache(), cache, scopedServices);
             scoped.files.adopt(this.files);
+            scopedServices.put(id, scoped);
             return scoped;
         }
     }
@@ -87,6 +119,7 @@ public final class Service {
     public LocalDate today() { return Time.today(); }
     public int companyId() { synchronized (lock) { return db.company(); } }
     public java.nio.file.Path dataDir() { return db.dataDir; }
+    public Holidays calendar() { return calendar; }
 
     public static String maskDbUrl(String url) {
         if (url == null || url.isBlank() || !url.startsWith("jdbc:")) return url;
@@ -117,6 +150,7 @@ public final class Service {
             notes.delete(id);
             return null;
         });
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES, ReadCache.Domain.DIARIO);
         files.kick();
     }
 
@@ -127,6 +161,7 @@ public final class Service {
             kanban.deleteCard(id);
             return null;
         });
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
         files.kick();
     }
 
@@ -138,6 +173,7 @@ public final class Service {
             kanban.deleteColumn(id);
             return null;
         });
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
         files.kick();
     }
 
@@ -150,39 +186,101 @@ public final class Service {
     public static long maxUpload() { return FilesApp.maxUpload(); }
 
     // ---- notes -----------------------------------------------------------------
-    public List<Note> listNotes(String q) { return notes.list(q); }
+    public List<Note> listNotes(String q) {
+        if (q == null || q.isBlank()) {
+            return cache.get(companyId(), ReadCache.Domain.NOTES, "list", () -> List.copyOf(notes.list(null)));
+        }
+        return notes.list(q);
+    }
     public Note noteById(int id) { return notes.byId(id); }
-    public Note createNote(String title, String body) { return notes.create(title, body); }
+    public Note createNote(String title, String body) {
+        Note n = notes.create(title, body);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES, ReadCache.Domain.DIARIO);
+        return n;
+    }
     public Note createNote(String title, String body, Integer folderId, List<Integer> tagIds) {
-        return notes.create(title, body, folderId, tagIds);
+        Note n = notes.create(title, body, folderId, tagIds);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES, ReadCache.Domain.DIARIO);
+        return n;
     }
     public Note updateNote(int id, String title, String body, int revision) {
-        return notes.update(id, title, body, revision);
+        Note n = notes.update(id, title, body, revision);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES, ReadCache.Domain.DIARIO);
+        return n;
     }
-    public Note moveNote(int id, Integer folderId) { return notes.move(id, folderId); }
-    public Note setNoteTags(int id, List<Integer> tagIds) { return notes.setTags(id, tagIds); }
-    public Note addNoteTag(int id, int tagId) { return notes.addTag(id, tagId); }
-    public List<Tag> tags() { return notes.tags(); }
-    public Tag createTag(String name, String color) { return notes.createTag(name, color); }
-    public Tag renameTag(int id, String name, String color) { return notes.renameTag(id, name, color); }
-    public void deleteTag(int id) { notes.deleteTag(id); }
-    public List<Folder> folders() { return notes.folders(); }
-    public Folder createFolder(String name, Integer parent) { return notes.createFolder(name, parent); }
-    public Folder renameFolder(int id, String name) { return notes.renameFolder(id, name); }
-    public Folder moveFolder(int id, Integer parent) { return notes.moveFolder(id, parent); }
-    public void deleteFolder(int id) { notes.deleteFolder(id); }
+    public Note moveNote(int id, Integer folderId) {
+        Note n = notes.move(id, folderId);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return n;
+    }
+    public Note setNoteTags(int id, List<Integer> tagIds) {
+        Note n = notes.setTags(id, tagIds);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return n;
+    }
+    public Note addNoteTag(int id, int tagId) {
+        Note n = notes.addTag(id, tagId);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return n;
+    }
+    public List<Tag> tags() {
+        return cache.get(companyId(), ReadCache.Domain.NOTES, "tags", () -> List.copyOf(notes.tags()));
+    }
+    public Tag createTag(String name, String color) {
+        Tag t = notes.createTag(name, color);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return t;
+    }
+    public Tag renameTag(int id, String name, String color) {
+        Tag t = notes.renameTag(id, name, color);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return t;
+    }
+    public void deleteTag(int id) {
+        notes.deleteTag(id);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+    }
+    public List<Folder> folders() {
+        return cache.get(companyId(), ReadCache.Domain.NOTES, "folders", () -> List.copyOf(notes.folders()));
+    }
+    public Folder createFolder(String name, Integer parent) {
+        Folder f = notes.createFolder(name, parent);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return f;
+    }
+    public Folder renameFolder(int id, String name) {
+        Folder f = notes.renameFolder(id, name);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return f;
+    }
+    public Folder moveFolder(int id, Integer parent) {
+        Folder f = notes.moveFolder(id, parent);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return f;
+    }
+    public void deleteFolder(int id) {
+        notes.deleteFolder(id);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+    }
 
     // ---- note / card files -----------------------------------------------------
     public Map<Integer, List<String>> noteFileNames(List<Integer> noteIds) { return files.namesByNotes(noteIds); }
     public List<NoteFile> listNoteFiles(int noteId) { return files.list(noteId); }
+    public Map<Integer, String> noteFileStates(int noteId) { return files.statesForNote(noteId); }
     public NoteFile addNoteFile(int noteId, String name, String ctype, byte[] data) {
-        return files.add(noteId, name, ctype, data);
+        NoteFile f = files.add(noteId, name, ctype, data);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+        return f;
     }
     public NoteFile mustNoteFile(int id) { return files.must(id); }
     public byte[] downloadNoteFile(int id) { return files.download(id); }
-    public void removeNoteFile(int id) { files.remove(id); }
+    public void removeNoteFile(int id) {
+        files.remove(id);
+        cache.invalidate(companyId(), ReadCache.Domain.NOTES);
+    }
     public String noteFileState(int id) { return files.state(id); }
     public List<KanbanCardFile> listCardFiles(int cardId) { return files.listForCard(cardId); }
+    public Map<Integer, String> cardFileStates(int cardId) { return files.statesForCard(cardId); }
     public KanbanCardFile addCardFile(int cardId, String name, String ctype, byte[] data) {
         return files.addForCard(cardId, name, ctype, data);
     }
@@ -192,32 +290,65 @@ public final class Service {
     public String cardFileState(int id) { return files.cardState(id); }
 
     /** Test hook: inject object store before first files use. */
-    public Files filesForTest(ponto.model.ObjectStore store) { return files.raw(store); }
+    public Files filesForTest(ponto.model.ObjectStore store) {
+        synchronized (lock) {
+            Files f = files.raw(store);
+            for (Service s : scopedServices.values()) s.files.adopt(this.files);
+            return f;
+        }
+    }
 
     // ---- kanban ----------------------------------------------------------------
-    public List<KanbanColumn> kanbanColumns() { return kanban.columns(); }
-    public List<KanbanCard> kanbanCards() { return kanban.cards(); }
-    public KanbanColumn createKanbanColumn(String name) { return kanban.createColumn(name); }
-    public KanbanColumn updateKanbanColumn(int id, String name, Integer position) {
-        return kanban.updateColumn(id, name, position);
+    public List<KanbanColumn> kanbanColumns() {
+        return cache.get(companyId(), ReadCache.Domain.KANBAN, "cols", () -> List.copyOf(kanban.columns()));
     }
-    public void deleteKanbanColumnOnly(int id) { kanban.deleteColumn(id); }
+    public List<KanbanCard> kanbanCards() {
+        return cache.get(companyId(), ReadCache.Domain.KANBAN, "cards", () -> List.copyOf(kanban.cards()));
+    }
+    public KanbanColumn createKanbanColumn(String name) {
+        KanbanColumn c = kanban.createColumn(name);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+        return c;
+    }
+    public KanbanColumn updateKanbanColumn(int id, String name, Integer position) {
+        KanbanColumn c = kanban.updateColumn(id, name, position);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+        return c;
+    }
+    public void deleteKanbanColumnOnly(int id) {
+        kanban.deleteColumn(id);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+    }
     public KanbanCard createKanbanCard(String title, String body, int columnId) {
-        return kanban.createCard(title, body, columnId);
+        KanbanCard c = kanban.createCard(title, body, columnId);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+        return c;
     }
     public KanbanCard updateKanbanCard(int id, String title, String body, String done, int revision) {
-        return kanban.updateCard(id, title, body, done, revision);
+        KanbanCard c = kanban.updateCard(id, title, body, done, revision);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+        return c;
     }
     public KanbanCard moveKanbanCard(int id, int columnId, int position) {
-        return kanban.moveCard(id, columnId, position);
+        KanbanCard c = kanban.moveCard(id, columnId, position);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+        return c;
     }
     public KanbanCard blockKanbanCard(int id, String kind, String reason) {
-        return kanban.blockCard(id, kind, reason);
+        KanbanCard c = kanban.blockCard(id, kind, reason);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+        return c;
     }
-    public KanbanCard unblockKanbanCard(int id) { return kanban.unblockCard(id); }
+    public KanbanCard unblockKanbanCard(int id) {
+        KanbanCard c = kanban.unblockCard(id);
+        cache.invalidate(companyId(), ReadCache.Domain.KANBAN, ReadCache.Domain.DIARIO);
+        return c;
+    }
     public KanbanCard kanbanCardById(int id) { return kanban.byId(id); }
     /** Distinct kanban card titles touched on the day ("kafeine", 5-day retention). */
-    public List<String> kanbanActivity(java.time.LocalDate dia) { return kanban.activityOn(Str.iso(dia)); }
+    public List<String> kanbanActivity(java.time.LocalDate dia) {
+        return kanban.activityOn(Str.iso(dia));
+    }
 
     // ---- vault ---------------------------------------------------------------
     // The vault is one: a single master password opens every company's records.
@@ -244,12 +375,23 @@ public final class Service {
     public List<Company> listCompanies() { return companies.list(); }
     public Company companyById(int id) { return companies.byId(id); }
     public Company createCompany(String name, String off, String daily) {
-        return companies.create(name, off, daily);
+        Company c = companies.create(name, off, daily);
+        cache.invalidateDomain(ReadCache.Domain.COMPANY);
+        return c;
     }
     public Company updateCompany(int id, String name, String off, String daily) {
-        return companies.update(id, name, off, daily);
+        Company c = companies.update(id, name, off, daily);
+        cache.invalidate(id, ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
+        cache.invalidateDomain(ReadCache.Domain.COMPANY);
+        return c;
     }
-    public void deleteCompany(int id) { companies.delete(id); }
+    public void deleteCompany(int id) {
+        synchronized (lock) {
+            companies.delete(id);
+            scopedServices.remove(id);
+        }
+        cache.invalidateAll();
+    }
 
     // ---- timesheet delegates ---------------------------------------------------
     public void registerOff() { timesheet.registerOff(); }
@@ -280,15 +422,43 @@ public final class Service {
     public Warn inspect(Entry e, int skip) { return timesheet.inspect(e, skip); }
     public Entry create(LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean closeOpen, boolean confirmMidnight, boolean confirmOverlap) {
-        return timesheet.create(dia, tin, tout, just, closeOpen, confirmMidnight, confirmOverlap);
+        Entry e = timesheet.create(dia, tin, tout, just, closeOpen, confirmMidnight, confirmOverlap);
+        cache.invalidate(companyId(), ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
+        return e;
     }
     public Entry update(int id, LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean confirmMidnight, boolean confirmOverlap) {
-        return timesheet.update(id, dia, tin, tout, just, confirmMidnight, confirmOverlap);
+        Entry e = timesheet.update(id, dia, tin, tout, just, confirmMidnight, confirmOverlap);
+        cache.invalidate(companyId(), ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
+        return e;
     }
-    public void delete(int id) { timesheet.delete(id); }
-    public int deleteDay(LocalDate d) { return timesheet.deleteDay(d); }
-    public HomeView home() { return timesheet.home(); }
+    public void delete(int id) {
+        timesheet.delete(id);
+        cache.invalidate(companyId(), ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
+    }
+    public int deleteDay(LocalDate d) {
+        int n = timesheet.deleteDay(d);
+        cache.invalidate(companyId(), ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
+        return n;
+    }
+    public HomeView home() {
+        return cache.get(companyId(), ReadCache.Domain.TIMESHEET, "home:" + Time.today(), timesheet::home);
+    }
+    public TimesheetApp.EntriesPage entriesRange(LocalDate from, LocalDate to, String query, int n, int skip) {
+        String key = "er:" + Time.today() + ":" + from + ":" + to + ":" + (query == null ? "" : query) + ":" + n + ":" + skip;
+        return cache.get(companyId(), ReadCache.Domain.TIMESHEET, key,
+                () -> timesheet.entriesRange(from, to, query, n, skip));
+    }
+    public TimesheetApp.EntriesPage entriesList(String q, String filter, int n, int skip) {
+        String key = "el:" + Time.today() + ":" + (q == null ? "" : q) + ":" + (filter == null ? "" : filter) + ":" + n + ":" + skip;
+        return cache.get(companyId(), ReadCache.Domain.TIMESHEET, key,
+                () -> timesheet.entriesList(q, filter, n, skip));
+    }
+    public TimesheetApp.BankSnapshot bankSnapshot(YearMonth ym, int months) {
+        String key = "bank:" + Time.today() + ":" + ym + ":" + months;
+        return cache.get(companyId(), ReadCache.Domain.TIMESHEET, key,
+                () -> timesheet.bankSnapshot(ym, months));
+    }
     public List<Entry> list(String q, String filter, int n, int skip) { return timesheet.list(q, filter, n, skip); }
     public int count(String q, String filter) { return timesheet.count(q, filter); }
     public Totals listTotals(String q, String filter) { return timesheet.listTotals(q, filter); }
@@ -309,10 +479,16 @@ public final class Service {
     public List<BankDay> bankDays(YearMonth ym) { return timesheet.bankDays(ym); }
     public List<MonthSaldo> history(YearMonth ym, int n) { return timesheet.history(ym, n); }
     public boolean falta(LocalDate d) { return timesheet.falta(d); }
-    public void falta(LocalDate d, boolean on) { timesheet.falta(d, on); }
+    public void falta(LocalDate d, boolean on) {
+        timesheet.falta(d, on);
+        cache.invalidate(companyId(), ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
+    }
     public List<LocalDate> faltas() { return timesheet.faltas(); }
     public boolean normal(LocalDate d) { return timesheet.normal(d); }
-    public void normal(LocalDate d, boolean on) { timesheet.normal(d, on); }
+    public void normal(LocalDate d, boolean on) {
+        timesheet.normal(d, on);
+        cache.invalidate(companyId(), ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
+    }
     public List<LocalDate> normais() { return timesheet.normais(); }
     public String normalWarn(LocalDate d) { return timesheet.normalWarn(d); }
     public String faltaWarn(LocalDate d) { return timesheet.faltaWarn(d); }
@@ -322,22 +498,28 @@ public final class Service {
     public Report report(LocalDate from, LocalDate to) { return timesheet.report(from, to); }
 
     public Map<String, Object> diario(LocalDate dia) {
-        synchronized (lock) { return diario.snapshot(dia); }
+        String key = "diario:" + Str.iso(dia) + ":" + Time.today();
+        return cache.get(companyId(), ReadCache.Domain.DIARIO, key, () -> {
+            synchronized (lock) { return diario.snapshot(dia); }
+        });
     }
 
     public DigestView gerarResumoDiario(LocalDate dia, Assist assist) {
-        synchronized (lock) { return diario.gerarResumo(dia, assist); }
+        DigestView out;
+        synchronized (lock) { out = diario.gerarResumo(dia, assist); }
+        cache.invalidate(companyId(), ReadCache.Domain.DIARIO);
+        return out;
     }
 
     public ConfigView config() {
         boolean storageReady = storageUp();
         synchronized (lock) {
-            timesheet.registerOff();
             Company c = companies.active();
+            Repo.Stats st = timesheet.stats();
             return new ConfigView(
                     who(), c.name(), c.id(), c.off(), c.daily(), dailyMinutes(),
-                    maskDbUrl(db.url), timesheet.count(),
-                    Str.d(timesheet.min()), Str.d(timesheet.max()),
+                    maskDbUrl(db.url), st.count(),
+                    Str.d(st.min()), Str.d(st.max()),
                     System.getProperty("java.version"), db.version(),
                     storageReady, files.pending(),
                     Files.maxUpload() / (1024 * 1024),
@@ -366,14 +548,16 @@ public final class Service {
             });
             if (vacuum) db.vacuum();
         }
+        cache.invalidateDomain(ReadCache.Domain.COMPANY, ReadCache.Domain.TIMESHEET, ReadCache.Domain.DIARIO);
         return config();
     }
 
     public Company activate(int id) {
         synchronized (lock) {
             companies.activate(id);
-            timesheet.registerOff();
-            return companies.active();
+            Company active = companies.active();
+            cache.invalidateDomain(ReadCache.Domain.COMPANY);
+            return active;
         }
     }
 
@@ -427,5 +611,11 @@ public final class Service {
     public static LocalTime parseTime(String raw) {
         if (raw == null || raw.isBlank() || raw.equals("-")) return null;
         return Parse.time(raw);
+    }
+
+    public Map<String, Object> httpClientCollection() { return httpClient.load(); }
+
+    public Map<String, Object> saveHttpClientCollection(String blobJson) {
+        return httpClient.save(blobJson);
     }
 }

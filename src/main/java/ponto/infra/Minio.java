@@ -155,7 +155,9 @@ public final class Minio implements ObjectStore {
             if (contentType != null) b.header("Content-Type", contentType);
             HttpResponse<byte[]> res = http.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
             byte[] raw = res.body() == null ? new byte[0] : res.body();
-            return new Response(res.statusCode(), raw, new String(raw, StandardCharsets.UTF_8));
+            // Decode UTF-8 only on error responses: avoids a 20-40 MB String spike on binary downloads.
+            String text = res.statusCode() >= 300 ? new String(raw, StandardCharsets.UTF_8) : "";
+            return new Response(res.statusCode(), raw, text);
         } catch (Problema e) {
             throw e;
         } catch (InterruptedException e) {

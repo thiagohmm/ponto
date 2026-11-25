@@ -34,10 +34,11 @@ public final class Diario {
     public Map<String, Object> snapshot(LocalDate dia, int dailyMins, boolean falta, boolean normal) {
         synchronized (lock) {
             String iso = Str.iso(dia);
+            String nextIso = Str.iso(dia.plusDays(1));
             List<Entry> entries = repo.on(dia);
-            List<Map<String, Object>> notes = notesOn(iso);
-            List<Map<String, Object>> cards = cardsOn(iso);
-            List<Map<String, Object>> blocks = blocksOn(iso);
+            List<Map<String, Object>> notes = notesOn(iso, nextIso);
+            List<Map<String, Object>> cards = cardsOn(iso, nextIso);
+            List<Map<String, Object>> blocks = blocksOn(iso, nextIso);
             List<Map<String, Object>> timeline = timeline(entries, notes, cards, blocks);
             List<Map<String, Object>> pairs = new ArrayList<>();
             long mins = 0;
@@ -64,14 +65,15 @@ public final class Diario {
             charts.put("dayMins", mins);
             charts.put("dailyMins", dailyMins);
 
-            List<Map<String, Object>> entryMaps = new ArrayList<>();
-            for (Entry e : entries) entryMaps.add(entryMap(e, calendar.off(e.dia())));
+            String off = calendar.off(dia);
+            List<Map<String, Object>> entryMaps = new ArrayList<>(entries.size());
+            for (Entry e : entries) entryMaps.add(entryMap(e, off));
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("dia", Str.d(dia));
             out.put("diaIso", iso);
             out.put("d3", Str.d3(dia));
-            out.put("holiday", calendar.off(dia));
+            out.put("holiday", off);
             out.put("falta", falta);
             out.put("normal", normal);
             out.put("entries", entryMaps);
@@ -240,14 +242,16 @@ public final class Diario {
     /** Entries of a day for facts (caller already holds the lock). */
     public List<Entry> entriesOf(LocalDate dia) { return repo.on(dia); }
 
-    private List<Map<String, Object>> notesOn(String iso) {
+    private List<Map<String, Object>> notesOn(String iso, String nextIso) {
         List<Map<String, Object>> out = new ArrayList<>();
         String sql = "SELECT id, title, body, crea, upd FROM note WHERE company_id=? "
-                + "AND (crea LIKE ? OR upd LIKE ?) ORDER BY upd DESC, id DESC";
+                + "AND ((crea >= ? AND crea < ?) OR (upd >= ? AND upd < ?)) ORDER BY upd DESC, id DESC";
         try (PreparedStatement q = db.conn().prepareStatement(sql)) {
             q.setInt(1, db.company());
-            q.setString(2, iso + "%");
-            q.setString(3, iso + "%");
+            q.setString(2, iso);
+            q.setString(3, nextIso);
+            q.setString(4, iso);
+            q.setString(5, nextIso);
             try (ResultSet rs = q.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> m = new LinkedHashMap<>();
@@ -265,15 +269,17 @@ public final class Diario {
         return out;
     }
 
-    private List<Map<String, Object>> cardsOn(String iso) {
+    private List<Map<String, Object>> cardsOn(String iso, String nextIso) {
         List<Map<String, Object>> out = new ArrayList<>();
         String sql = "SELECT c.id, c.title, c.body, c.crea, c.upd, c.done, col.name AS column_name "
                 + "FROM kanban_card c JOIN kanban_column col ON col.id=c.column_id AND col.company_id=c.company_id "
-                + "WHERE c.company_id=? AND (c.crea LIKE ? OR c.upd LIKE ?) ORDER BY c.upd DESC, c.id DESC";
+                + "WHERE c.company_id=? AND ((c.crea >= ? AND c.crea < ?) OR (c.upd >= ? AND c.upd < ?)) ORDER BY c.upd DESC, c.id DESC";
         try (PreparedStatement q = db.conn().prepareStatement(sql)) {
             q.setInt(1, db.company());
-            q.setString(2, iso + "%");
-            q.setString(3, iso + "%");
+            q.setString(2, iso);
+            q.setString(3, nextIso);
+            q.setString(4, iso);
+            q.setString(5, nextIso);
             try (ResultSet rs = q.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> m = new LinkedHashMap<>();
@@ -293,16 +299,18 @@ public final class Diario {
         return out;
     }
 
-    private List<Map<String, Object>> blocksOn(String iso) {
+    private List<Map<String, Object>> blocksOn(String iso, String nextIso) {
         List<Map<String, Object>> out = new ArrayList<>();
         String sql = "SELECT b.id, b.card_id, b.kind, b.reason, b.crea, b.cleared, c.title AS card_title "
                 + "FROM kanban_block b JOIN kanban_card c ON c.id=b.card_id AND c.company_id=b.company_id "
-                + "WHERE b.company_id=? AND (b.crea LIKE ? OR (b.cleared IS NOT NULL AND b.cleared LIKE ?)) "
+                + "WHERE b.company_id=? AND ((b.crea >= ? AND b.crea < ?) OR (b.cleared IS NOT NULL AND b.cleared >= ? AND b.cleared < ?)) "
                 + "ORDER BY b.id DESC";
         try (PreparedStatement q = db.conn().prepareStatement(sql)) {
             q.setInt(1, db.company());
-            q.setString(2, iso + "%");
-            q.setString(3, iso + "%");
+            q.setString(2, iso);
+            q.setString(3, nextIso);
+            q.setString(4, iso);
+            q.setString(5, nextIso);
             try (ResultSet rs = q.executeQuery()) {
                 while (rs.next()) {
                     String kind = nz(rs.getString("kind"));

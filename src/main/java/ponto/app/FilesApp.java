@@ -60,6 +60,7 @@ public final class FilesApp implements AutoCloseable {
         return raw().namesByNotes(noteIds);
     }
     public List<NoteFile> list(int noteId) { return raw().list(noteId); }
+    public Map<Integer, String> statesForNote(int noteId) { return raw().statesForNote(noteId); }
     public NoteFile add(int noteId, String name, String ctype, byte[] data) {
         return raw().add(noteId, name, ctype, data);
     }
@@ -69,6 +70,7 @@ public final class FilesApp implements AutoCloseable {
     public String state(int id) { return raw().state(id); }
 
     public List<KanbanCardFile> listForCard(int cardId) { return raw().listForCard(cardId); }
+    public Map<Integer, String> statesForCard(int cardId) { return raw().statesForCard(cardId); }
     public KanbanCardFile addForCard(int cardId, String name, String ctype, byte[] data) {
         return raw().addForCard(cardId, name, ctype, data);
     }

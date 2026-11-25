@@ -50,6 +50,10 @@ class WebTest {
                 assertTrue(health.headers().firstValue("Strict-Transport-Security").orElse("").contains("max-age=31536000"));
                 assertTrue(health.headers().firstValue("Server").orElse("").isEmpty()||!health.headers().firstValue("Server").orElse("").contains("Jetty"));
                 assertEquals(200,call("GET","/api/companies",null).statusCode());
+                var me=json(call("GET","/api/me",null).body());
+                assertEquals("open",me.get("user"));
+                assertEquals(a,((Number)me.get("activeId")).intValue());
+                assertTrue(((List<?>)me.get("companies")).size()>=2);
                 assertEquals(400,call("GET","/api/entries",null).statusCode());
                 assertEquals(400,call("GET","/api/entries?companyId=no",null).statusCode());
                 assertEquals(404,call("GET","/api/entries/"+entry.id()+"?companyId="+b,null).statusCode());

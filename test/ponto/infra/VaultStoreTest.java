@@ -292,12 +292,13 @@ final class VaultStoreTest {
     @Test
     void upgradingFromV6BringsTheVaultAndKeepsTheTimesheet() throws Exception {
         String url = TestDb.freshUrl();
-        // A v6-shaped database: today's schema minus the vault, version rolled back to 6,
+        // A v6-shaped database: today's schema minus vault+later tables, version rolled back to 6,
         // with a punch already stored so "the upgrade kept my data" is testable.
         try (Db db = Db.open(dir, url)) {
             db.exec("DROP TABLE kanban_activity");
             db.exec("DROP TABLE vault_item");
             db.exec("DROP TABLE vault_meta");
+            db.exec("DROP TABLE http_client_collection");
             db.exec("UPDATE schema_migrations SET version = 6");
             assertEquals(6, db.migrationVersion());
             Service s = new Service(db);
@@ -308,6 +309,7 @@ final class VaultStoreTest {
             assertEquals(Migrations.VERSION, db.migrationVersion());
             assertTrue(db.hasTable("vault_meta"));
             assertTrue(db.hasTable("vault_item"));
+            assertTrue(db.hasTable("http_client_collection"));
             var s = new Service(db);
             assertEquals(1, s.count());
             assertEquals("antes", s.recent(1, 0).getFirst().just());

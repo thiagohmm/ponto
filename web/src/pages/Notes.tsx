@@ -1,6 +1,6 @@
 import { NoteNavigation } from "./NoteNavigation";
 import { fileName, folderOf, tagIds, isInside } from "./noteTree";
-import { noteHaystack, noteMatches } from "./noteSearch";
+import { normalize, noteHaystack, noteMatchesNormalized, queryTerms } from "./noteSearch";
 import { NoteAttachments } from "./NoteAttachments";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -49,14 +49,21 @@ export function NotesPage() {
   const lookNode = useRef<HTMLDivElement | null>(null);
   const [look, setLook] = useState<Look>({});
 
-  const visible = useMemo(() => {
+  const indexedNotes = useMemo(() => {
     const byTag = new Map(tags.map((t) => [t.id, t]));
     const tagName = (id: number) => byTag.get(id)?.name ?? "";
-    return notes.filter((n) => {
-      if (tagHere && !tagIds(n).includes(tagHere)) return false;
-      return noteMatches(q, noteHaystack(n, tagName));
-    });
-  }, [notes, q, tagHere, tags]);
+    return notes.map((note) => ({ note, haystack: normalize(noteHaystack(note, tagName)) }));
+  }, [notes, tags]);
+
+  const visible = useMemo(() => {
+    const terms = queryTerms(q);
+    return indexedNotes
+      .filter(({ note, haystack }) => {
+        if (tagHere && !tagIds(note).includes(tagHere)) return false;
+        return noteMatchesNormalized(terms, haystack);
+      })
+      .map(({ note }) => note);
+  }, [indexedNotes, q, tagHere]);
   const editingTags = tagIds(notes.find((n) => n.id === currentId));
 
   useEffect(() => { setPickTag(false); setLook({}); setSuggestIds([]); }, [currentId]);
@@ -313,12 +320,31 @@ export function NotesPage() {
     }
   }
 
+  const navActionsRef = useRef({
+    openNote, create, addFolder, addTag, renameFolder, removeFolder, renameTag, removeTag, dropOnTag, dropItem,
+  });
+  navActionsRef.current = {
+    openNote, create, addFolder, addTag, renameFolder, removeFolder, renameTag, removeTag, dropOnTag, dropItem,
+  };
+  const navActions = useMemo(() => ({
+    openNote: (id: number) => navActionsRef.current.openNote(id),
+    create: (t?: string, b?: string) => navActionsRef.current.create(t, b),
+    addFolder: () => navActionsRef.current.addFolder(),
+    addTag: () => navActionsRef.current.addTag(),
+    renameFolder: (f: Folder) => navActionsRef.current.renameFolder(f),
+    removeFolder: (f: Folder) => navActionsRef.current.removeFolder(f),
+    renameTag: (t: Tag) => navActionsRef.current.renameTag(t),
+    removeTag: (t: Tag) => navActionsRef.current.removeTag(t),
+    dropOnTag: (raw: string, tag: number) => navActionsRef.current.dropOnTag(raw, tag),
+    dropItem: (raw: string, dest: number | null) => navActionsRef.current.dropItem(raw, dest),
+  }), []);
+
   return (
     <div className={"vault" + (currentId ? " editing" : "")}>
       <NoteNavigation notes={notes} folders={folders} tags={tags} visible={visible} currentId={currentId}
         q={q} setQ={setQ} here={here} setHere={setHere} tagHere={tagHere} setTagHere={setTagHere}
         open={open} setOpen={setOpen} dropOn={dropOn} setDropOn={setDropOn}
-        actions={{ openNote, create, addFolder, addTag, renameFolder, removeFolder, renameTag, removeTag, dropOnTag, dropItem }} />
+        actions={navActions} />
 
       <section
         className="vault-editor"

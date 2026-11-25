@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type DragEvent, type ReactNode, type Dispatch, type SetStateAction } from "react";
+import { memo, useMemo, useRef, type CSSProperties, type DragEvent, type ReactNode, type Dispatch, type SetStateAction } from "react";
 import { excerpt, todoStats } from "../md";
 import type { Folder, Note, Tag } from "../types";
 import { fileName, folderOf, tagIds, kids, pathOf } from "./noteTree";
@@ -32,13 +32,38 @@ function Ico({ path }: { path: string }) {
   );
 }
 
-export function NoteNavigation({ notes, folders, tags, visible, currentId, q, setQ, here, setHere,
+export const NoteNavigation = memo(function NoteNavigation({ notes, folders, tags, visible, currentId, q, setQ, here, setHere,
     tagHere, setTagHere, open, setOpen, dropOn, setDropOn, actions }: Props) {
   const { openNote, create, addFolder, addTag, renameFolder, removeFolder, renameTag, removeTag, dropOnTag, dropItem } = actions;
   const dragged = useRef(false);
   const searching = Boolean(q.trim());
   const filtering = searching || tagHere != null;
-  const openTodos = visible.reduce((count, note) => count + todoStats(note.body).open, 0);
+
+  const { tagById, folderCounts, tagCounts, noteMeta } = useMemo(() => {
+    const byTag = new Map<number, Tag>();
+    for (const t of tags) byTag.set(t.id, t);
+    const fCounts = new Map<number, number>();
+    const tCounts = new Map<number, number>();
+    const meta = new Map<number, { stats: ReturnType<typeof todoStats>; excerpt: string; mine: Tag[] }>();
+    for (const n of notes) {
+      const fid = folderOf(n);
+      if (fid != null) fCounts.set(fid, (fCounts.get(fid) ?? 0) + 1);
+      const mine: Tag[] = [];
+      for (const tid of tagIds(n)) {
+        tCounts.set(tid, (tCounts.get(tid) ?? 0) + 1);
+        const t = byTag.get(tid);
+        if (t) mine.push(t);
+      }
+      meta.set(n.id, { stats: todoStats(n.body), excerpt: excerpt(n.body), mine });
+    }
+    return { tagById: byTag, folderCounts: fCounts, tagCounts: tCounts, noteMeta: meta };
+  }, [notes, tags]);
+
+  const openTodos = useMemo(
+    () => visible.reduce((count, note) => count + (noteMeta.get(note.id)?.stats.open ?? 0), 0),
+    [visible, noteMeta],
+  );
+
   function dragPayload(e: DragEvent, payload: string) {
     dragged.current = true;
     e.dataTransfer.setData("text/plain", payload);
@@ -48,12 +73,14 @@ export function NoteNavigation({ notes, folders, tags, visible, currentId, q, se
   function allowDrop(e: DragEvent, target: number | "root" | string) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDropOn(target);
+    setDropOn((cur) => (cur === target ? cur : target));
   }
 
   function noteRow(n: Note, depth = 0) {
-    const stats = todoStats(n.body);
-    const mine = tagIds(n).map((id) => tags.find((t) => t.id === id)).filter((t): t is Tag => Boolean(t));
+    const m = noteMeta.get(n.id);
+    const stats = m?.stats ?? todoStats(n.body);
+    const mine = m?.mine ?? [];
+    const ex = m?.excerpt ?? "";
     return (
       <button
         key={n.id}
@@ -78,7 +105,7 @@ export function NoteNavigation({ notes, folders, tags, visible, currentId, q, se
           <i>
             {filtering && pathOf(folders, folderOf(n)) ? pathOf(folders, folderOf(n)) + " · " : ""}
             {stats.total > 0 ? stats.done + "/" + stats.total + " · " : ""}
-            {excerpt(n.body) || n.upd}
+            {ex || n.upd}
           </i>
         </span>
       </button>
@@ -87,12 +114,12 @@ export function NoteNavigation({ notes, folders, tags, visible, currentId, q, se
 
   function folderBlock(parent: number | null, depth: number): ReactNode {
     const list = kids(folders, parent);
-        const files = filtering ? [] : visible.filter((n) => folderOf(n) === parent);
+    const files = filtering ? [] : visible.filter((n) => folderOf(n) === parent);
     return (
       <>
         {list.map((f) => {
           const expanded = open[f.id] !== false;
-          const count = notes.filter((n) => folderOf(n) === f.id).length;
+          const count = folderCounts.get(f.id) ?? 0;
           return (
             <div key={"f" + f.id} className="vault-branch">
               <div
@@ -160,7 +187,7 @@ export function NoteNavigation({ notes, folders, tags, visible, currentId, q, se
         {tags.length > 0 && (
           <div className="vault-tagbar">
             {tags.map((t) => {
-              const count = notes.filter((n) => tagIds(n).includes(t.id)).length;
+              const count = tagCounts.get(t.id) ?? 0;
               return (
                 <div
                   key={t.id}
@@ -205,8 +232,8 @@ export function NoteNavigation({ notes, folders, tags, visible, currentId, q, se
         <p className="muted vault-count">
           {visible.length} nota(s){openTodos > 0 ? " · " + openTodos + " aberta(s)" : ""}
           {here ? " · " + pathOf(folders, here) : ""}
-          {tagHere ? " · " + (tags.find((t) => t.id === tagHere)?.name ?? "tag") : ""}
+          {tagHere ? " · " + (tagById.get(tagHere)?.name ?? "tag") : ""}
         </p>
       </aside>
   );
-}
+});

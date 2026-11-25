@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bars } from "../ui/Bars";
 import { api } from "../api";
@@ -141,12 +141,28 @@ export function HomePage() {
   const pageMins = useMemo(() => visible.reduce((s, e) => s + minsOf(e), 0), [visible]);
   const selDay = bank?.days.find((d) => d.diaIso === sel) ?? null;
 
+  const formatHours = useCallback((v: number) => Math.round(v / 60) + "h", []);
+
+  const dayBars = useMemo(() => (bank?.days ?? []).map((d) => ({
+    value: d.mins,
+    label: String(Number(d.diaIso.slice(8, 10))),
+    color: dayColor(d),
+    tip: d.dia + " · " + hm(d.mins),
+  })), [bank?.days]);
+
+  const monthBars = useMemo(() => (bank?.months ?? []).map((m) => ({
+    value: m.saldoMins,
+    label: m.ym.slice(5) + "/" + m.ym.slice(2, 4),
+    color: m.saldoMins < 0 ? "#ff3b30" : "#34c759",
+    tip: m.ym.slice(5) + "/" + m.ym.slice(2, 4) + " · " + otVal(m.saldoMins),
+  })), [bank?.months]);
+
   /** Clique numa barra do gráfico diário: filtra a lista por esse dia. */
   function onChartDayClick(d: BankDay) {
     setDia(d.diaIso);
     setJustCat("");
     setSel("");
-    void load(q, d.diaIso, de, ate);
+    void load(q, d.diaIso, de, ate, "filter");
   }
 
   /** Clique numa barra do gráfico de banco de horas (mês): filtra a lista por esse mês. */
@@ -155,7 +171,7 @@ export function HomePage() {
     setDe(ym);
     setAte(ym);
     setSel("");
-    void load(q, "", ym, ym);
+    void load(q, "", ym, ym, "filter");
   }
 
   async function del(id: number) {
@@ -263,7 +279,7 @@ export function HomePage() {
       <div className="toolbar">
         <label>Buscar justificativa<input placeholder="Ex.: atestado" value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} /></label>
+          onKeyDown={(e) => { if (e.key === "Enter") void load(q, dia, de, ate, "filter"); }} /></label>
         <div className="just-cats" role="group" aria-label="Categorias de justificativa">
           {justCats.filter((c) => c.code !== "outro").map((c) => (
             <button
@@ -274,15 +290,17 @@ export function HomePage() {
               onClick={() => {
                 const next = justCat === c.code ? "" : c.code;
                 setJustCat(next);
-                if (next) setQ("");
-                void load(next ? "" : q);
+                if (next && q.trim()) {
+                  setQ("");
+                  void load("", dia, de, ate, "filter");
+                }
               }}
             >{c.label}</button>
           ))}
         </div>
         <details className="advanced-filter"><summary>Mais filtros</summary><label>Data específica<input placeholder="Dia, mês ou ano" value={dia}
           onChange={(e) => setDia(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void load(); }} /></label><small>Quando preenchida, esta data substitui o intervalo de meses.</small></details>
+          onKeyDown={(e) => { if (e.key === "Enter") void load(q, dia, de, ate, "filter"); }} /></label><small>Quando preenchida, esta data substitui o intervalo de meses.</small></details>
         <label>Do mês<input type="month" className="mes" title="do mês — a lista abre no mês corrente e aceita um período"
           value={de} max={ate || undefined} disabled={Boolean(dia)}
           onChange={(e) => {
@@ -290,7 +308,7 @@ export function HomePage() {
             if (!v) return;
             const a = ate && v > ate ? v : ate;
             setDe(v); setAte(a); setDia(""); setSel("");
-            void load(q, "", v, a);
+            void load(q, "", v, a, "filter");
           }} /></label>
         <label>Até o mês<input type="month" className="mes" title="até mês — com o outro selecionado, vale o período inteiro"
           value={ate} min={de || undefined} disabled={Boolean(dia)}
@@ -299,14 +317,14 @@ export function HomePage() {
             if (!v) return;
             const d2 = de && v < de ? v : de;
             setAte(v); setDe(d2); setDia(""); setSel("");
-            void load(q, "", d2, v);
+            void load(q, "", d2, v, "filter");
           }} /></label>
         <button className="btn tema" title="tema claro/escuro" aria-label="alternar tema"
           onClick={() => { toggleTema(); setEscuro(isEscuro()); }}>
           {escuro ? <Ico path={SUN} /> : <Ico path={MOON} />}
         </button>
-        <button className="btn" disabled={loading} onClick={() => void load()}>Aplicar filtros</button>
-        <button className="btn" onClick={() => { const m = mesPickerAtual(); setQ(""); setJustCat(""); setDia(""); setDe(m); setAte(m); setSel(""); void load("", "", m, m); }}>Limpar filtros</button>
+        <button className="btn" disabled={loading} onClick={() => void load(q, dia, de, ate, "filter")}>Aplicar filtros</button>
+        <button className="btn" onClick={() => { const m = mesPickerAtual(); setQ(""); setJustCat(""); setDia(""); setDe(m); setAte(m); setSel(""); void load("", "", m, m, "filter"); }}>Limpar filtros</button>
         <Link className="btn primary push" to="/novo">+ Novo registro</Link>
         <Link className="btn" to="/exportar">PDF / XLS / CSV</Link>
       </div>
@@ -429,19 +447,14 @@ export function HomePage() {
               {bank.planLabel && <> · plano <b>{bank.planLabel}</b> (linha a {hm(bank.dailyMins + bank.planMins)})</>}
             </p>
             <Bars height={220} yWidth={CHART_Y_WIDTH} every={2} label="minutos por dia"
-              format={(v) => Math.round(v / 60) + "h"}
+              format={formatHours}
               snap={60}
               mark={bank.dailyMins + bank.planMins}
               onPick={(i) => {
                 const d = bank.days[i];
                 if (d) onChartDayClick(d);
               }}
-              bars={bank.days.map((d) => ({
-                value: d.mins,
-                label: String(Number(d.diaIso.slice(8, 10))),
-                color: dayColor(d),
-                tip: d.dia + " · " + hm(d.mins),
-              }))} />
+              bars={dayBars} />
             {bank.days.length > 0 && (
               <div className="day-chips" title="clique num dia para marcar falta ou dia normal (vale para dia vazio e futuro)">
                 {bank.days.map((d) => (
@@ -475,18 +488,13 @@ export function HomePage() {
           <div className="card">
             <p className="muted">banco de horas · últimos 12 meses</p>
             <Bars height={220} yWidth={CHART_Y_WIDTH} label="banco de horas, últimos 12 meses" zero
-              format={(v) => Math.round(v / 60) + "h"}
+              format={formatHours}
               snap={60}
               onPick={(i) => {
                 const m = bank.months[i];
                 if (m) onChartMonthClick(m.ym);
               }}
-              bars={bank.months.map((m) => ({
-                value: m.saldoMins,
-                label: m.ym.slice(5) + "/" + m.ym.slice(2, 4),
-                color: m.saldoMins < 0 ? "#ff3b30" : "#34c759",
-                tip: m.ym.slice(5) + "/" + m.ym.slice(2, 4) + " · " + otVal(m.saldoMins),
-              }))} />
+              bars={monthBars} />
           </div>
           </div>
         </>

@@ -78,11 +78,18 @@ export function DiarioPage() {
     if (!data) return [];
     const c = data.charts.counts;
     return [
-      { name: "Ponto", value: c.ponto },
-      { name: "Notas", value: c.notas },
-      { name: "Kanban", value: c.kanban },
+      { label: "Ponto", value: c.ponto, color: COUNT_COLORS[0] },
+      { label: "Notas", value: c.notas, color: COUNT_COLORS[1] },
+      { label: "Kanban", value: c.kanban, color: COUNT_COLORS[2] },
     ];
   }, [data]);
+
+  const pairBars = useMemo(() => (data?.charts.pairs ?? []).map((p) => ({
+    value: p.mins,
+    label: p.label,
+    color: "#007aff",
+    tip: p.label + " · " + hm(p.mins),
+  })), [data]);
 
   const summaryParts = useMemo(() => {
     const raw = data?.digest?.summary ?? "";
@@ -148,25 +155,19 @@ export function DiarioPage() {
 
             <section className="card">
               <h2>Atividade</h2>
-              <Bars height={180} yWidth={28} label="atividade diária"
-                bars={countBars.map((b, i) => ({ value: b.value, label: b.name, color: COUNT_COLORS[i % COUNT_COLORS.length] }))} />
+              <Bars height={180} yWidth={28} label="atividade diária" bars={countBars} />
             </section>
           </div>
 
           <section className="card" style={{ marginTop: 16 }}>
             <h2>Minutos por batida</h2>
-            {data.charts.pairs.length === 0 ? (
+            {pairBars.length === 0 ? (
               <p className="muted">Nenhum par fechado neste dia.</p>
             ) : (
               <Bars height={200} yWidth={36} label="minutos por batida"
                 format={(v) => Math.round(v / 60) + "h"}
                 snap={60}
-                bars={data.charts.pairs.map((p) => ({
-                  value: p.mins,
-                  label: p.label,
-                  color: "#007aff",
-                  tip: p.label + " · " + hm(p.mins),
-                }))} />
+                bars={pairBars} />
             )}
           </section>
 

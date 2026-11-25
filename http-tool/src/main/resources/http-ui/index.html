@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ponto-http</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Collection">
+      <div class="sidebar-brand">
+        <span class="logo">ponto-http</span>
+        <span class="badge">local</span>
+      </div>
+      <div class="sidebar-head">
+        <div>
+          <p class="side-label">Collection</p>
+          <h2 id="collection-name" contenteditable="true" spellcheck="false" title="Renomear">Minha collection</h2>
+        </div>
+        <div class="side-actions">
+          <button type="button" class="icon-btn" id="btn-new" title="Nova requisição">+</button>
+          <button type="button" class="icon-btn" id="btn-curl" title="Importar curl">⤵</button>
+          <button type="button" class="icon-btn" id="btn-sync" title="Sync com o Ponto (banco)">☁</button>
+        </div>
+      </div>
+      <input id="collection-filter" class="side-search" type="search" placeholder="Buscar…" spellcheck="false" />
+      <div id="collection-list" class="collection-list" role="list"></div>
+      <p id="wsl-banner" class="side-note hidden" role="status"></p>
+      <div class="sidebar-foot">
+        <label class="check"><input type="checkbox" id="follow" checked /> Redirects</label>
+        <label class="check hidden" id="wsl-map-wrap" title="No WSL, localhost é o Linux">
+          <input type="checkbox" id="wsl-map" checked /> → Windows
+        </label>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <div class="url-bar">
+        <select id="method" class="method" aria-label="Método">
+          <option>GET</option>
+          <option>POST</option>
+          <option>PUT</option>
+          <option>PATCH</option>
+          <option>DELETE</option>
+          <option>HEAD</option>
+          <option>OPTIONS</option>
+        </select>
+        <input id="url" type="url" placeholder="https://api.exemplo.com/v1/recurso" spellcheck="false" />
+        <button type="button" class="btn primary" id="btn-send">Send</button>
+      </div>
+
+      <input id="req-name" class="req-name" type="text" placeholder="Nome da requisição" spellcheck="false" />
+
+      <div class="pane-split">
+        <section class="pane request-pane">
+          <div class="tabs-row">
+            <div class="tabs" role="tablist">
+              <button type="button" class="tab on" data-tab="headers" role="tab">Headers</button>
+              <button type="button" class="tab" data-tab="body" role="tab">Body</button>
+            </div>
+            <div id="body-mode-bar" class="body-mode-bar hidden">
+              <select id="body-mode" aria-label="Body mode">
+                <option value="none">No Body</option>
+                <option value="json">JSON</option>
+                <option value="text">Text</option>
+                <option value="xml">XML</option>
+                <option value="formUrlEncoded">Form URL Encoded</option>
+                <option value="multipartForm">Multipart Form</option>
+              </select>
+              <button type="button" class="btn ghost sm" id="btn-prettify" title="Prettify">Prettify</button>
+            </div>
+          </div>
+          <div id="panel-headers" class="panel">
+            <div class="headers-head"><span></span><span>Key</span><span>Value</span><span></span></div>
+            <div id="headers"></div>
+            <button type="button" class="btn ghost" id="btn-add-header">+ Header</button>
+          </div>
+          <div id="panel-body" class="panel body-panel hidden">
+            <div id="body-none" class="body-none hidden">No Body</div>
+            <div id="body-editor-wrap" class="body-editor-wrap">
+              <div class="body-gutter" aria-hidden="true" id="body-gutter">1</div>
+              <textarea id="body" class="body-editor" spellcheck="false" placeholder=""></textarea>
+            </div>
+            <div id="body-form" class="body-form hidden">
+              <div class="headers-head"><span></span><span>Key</span><span>Value</span><span></span></div>
+              <div id="form-params"></div>
+              <button type="button" class="btn ghost" id="btn-add-param">+ Param</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="pane response-pane">
+          <div class="resp-bar">
+            <h2>Response</h2>
+            <span id="resp-meta" class="muted">—</span>
+          </div>
+          <p id="resp-error" class="err hidden"></p>
+          <div class="tabs" role="tablist">
+            <button type="button" class="tab on" data-rtab="body" role="tab">Body</button>
+            <button type="button" class="tab" data-rtab="headers" role="tab">Headers</button>
+          </div>
+          <pre id="resp-body" class="code">Envie uma requisição para ver a resposta.</pre>
+          <pre id="resp-headers" class="code hidden"></pre>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="curl-dialog">
+    <form method="dialog" class="curl-form">
+      <h2>Importar curl</h2>
+      <p class="muted">A requisição entra na Collection ao lado — as anteriores permanecem.</p>
+      <textarea id="curl-text" rows="10" placeholder="curl 'https://…' -H 'Authorization: …' -d '{…}'" spellcheck="false"></textarea>
+      <p id="curl-error" class="err hidden"></p>
+      <div class="row">
+        <button type="submit" class="btn" value="cancel">Cancelar</button>
+        <button type="button" class="btn primary" id="btn-curl-apply">Importar para Collection</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="sync-dialog">
+    <form method="dialog" class="curl-form">
+      <h2>Sync com o Ponto</h2>
+      <p class="muted">Os curls ficam no banco do servidor e sobem/baixam de
+        <code>https://ponto-thiagohmm1.us1.pitunnel.net</code>.</p>
+      <label class="field">URL do Ponto
+        <input id="sync-url" type="url" spellcheck="false" />
+      </label>
+      <label class="field">Usuário
+        <input id="sync-user" type="text" autocomplete="username" spellcheck="false" />
+      </label>
+      <label class="field">Senha
+        <input id="sync-password" type="password" autocomplete="current-password" />
+      </label>
+      <label class="field">Empresa (companyId)
+        <input id="sync-company" type="number" min="1" step="1" value="1" />
+      </label>
+      <label class="check"><input type="checkbox" id="sync-enabled" checked /> Sync ligado</label>
+      <p id="sync-status" class="muted"></p>
+      <p id="sync-error" class="err hidden"></p>
+      <div class="row">
+        <button type="submit" class="btn" value="cancel">Fechar</button>
+        <button type="button" class="btn" id="btn-sync-save">Salvar</button>
+        <button type="button" class="btn" id="btn-sync-pull">Baixar</button>
+        <button type="button" class="btn primary" id="btn-sync-push">Enviar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

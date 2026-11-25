@@ -93,14 +93,15 @@ export function useVaultWorkspace(activeCompany: number) {
     void refresh();
   }, [refresh]);
 
-  /** Read every row and open it. One row that will not open closes the whole vault. */
+  /** Read every row and open it in parallel via WebCrypto. One bad row closes the whole vault. */
   async function load(key: CryptoKey): Promise<void> {
     const r = await api.vaultItems();
-    const opened: VaultOpen[] = [];
-    for (const record of r.items) {
-      const text = await open(key, record.blob, aadItem(record.companyId));
-      opened.push({ ...record, plain: parsePayload(text) });
-    }
+    const opened: VaultOpen[] = await Promise.all(
+      r.items.map(async (record) => {
+        const text = await open(key, record.blob, aadItem(record.companyId));
+        return { ...record, plain: parsePayload(text) };
+      }),
+    );
     opened.sort(byLabel);
     setItems(opened);
     setPhase("unlocked");
@@ -245,11 +246,12 @@ export function useVaultWorkspace(activeCompany: number) {
       const salt = randomSalt();
       const to = await deriveKey(newMaster, salt, iterations);
       const source: RekeyRow[] = itemsRef.current.map(({ id, companyId, blob, revision }) => ({ id, companyId, blob, revision }));
-      const resealed: { id: number; blob: string; revision: number }[] = [];
-      for (const record of source) {
-        const text = await open(from, record.blob, aadItem(record.companyId));
-        resealed.push({ id: record.id, blob: await seal(to, text, aadItem(record.companyId)), revision: record.revision });
-      }
+      const resealed = await Promise.all(
+        source.map(async (record) => {
+          const text = await open(from, record.blob, aadItem(record.companyId));
+          return { id: record.id, blob: await seal(to, text, aadItem(record.companyId)), revision: record.revision };
+        }),
+      );
       await api.vaultRekey({ kdf: KDF, salt, iterations, check: await sealCheck(to), items: resealed });
       keyRef.current = to;
       await load(to);

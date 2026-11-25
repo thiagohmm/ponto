@@ -99,9 +99,15 @@ export function useNotesWorkspace(currentId: number) {
       setSavedBody("");
       return;
     }
+    const cached = notesRef.current.find((n) => n.id === currentId);
+    if (cached && boundId.current !== currentId) apply(cached);
     let cancelled = false;
     api.note(currentId).then((n) => {
       if (cancelled) return;
+      if (boundId.current === n.id
+          && (draft.current.title !== saved.current.title || draft.current.body !== saved.current.body)) {
+        return;
+      }
       apply(n);
     }).catch((e: unknown) => {
       if (cancelled) return;

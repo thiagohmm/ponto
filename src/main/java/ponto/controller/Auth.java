@@ -25,6 +25,7 @@ public final class Auth {
     private final SecureRandom random = new SecureRandom();
     private final ConcurrentHashMap<String, Instant> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Deque<Long>> attempts = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger checks = new java.util.concurrent.atomic.AtomicInteger();
 
     public Auth(String user, String password) {
         this.user = user;
@@ -53,6 +54,7 @@ public final class Auth {
             return false;
         }
         sessions.put(token, Instant.now().plusSeconds(SESSION_TTL_SEC));
+        if ((checks.incrementAndGet() & 63) == 0) sweep();
         return true;
     }
 
@@ -73,6 +75,7 @@ public final class Auth {
             throw new UnauthorizedResponse("Usuário ou senha inválidos.");
         }
         attempts.remove(ip);
+        sweep();
         String token = newToken();
         sessions.put(token, Instant.now().plusSeconds(SESSION_TTL_SEC));
         setCookie(ctx, token, (int) SESSION_TTL_SEC);
@@ -150,11 +153,19 @@ public final class Auth {
         return diff == 0;
     }
 
-    /** Drop expired sessions occasionally (idle cleanup). */
+    /** Drop expired sessions and stale rate-limit windows (amortized cleanup). */
     void sweep() {
         Instant now = Instant.now();
         for (Iterator<Map.Entry<String, Instant>> it = sessions.entrySet().iterator(); it.hasNext(); ) {
             if (it.next().getValue().isBefore(now)) it.remove();
+        }
+        long cut = System.currentTimeMillis() - LOGIN_WINDOW_MS;
+        for (Iterator<Map.Entry<String, Deque<Long>>> it = attempts.entrySet().iterator(); it.hasNext(); ) {
+            Deque<Long> q = it.next().getValue();
+            synchronized (q) {
+                while (!q.isEmpty() && q.peekFirst() < cut) q.removeFirst();
+                if (q.isEmpty()) it.remove();
+            }
         }
     }
 }

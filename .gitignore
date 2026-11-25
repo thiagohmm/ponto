@@ -19,6 +19,10 @@ ponto-*.csv
 # PlantUML renderer downloaded on demand (see docs/README.md)
 tools/plantuml.jar
 
+# Fat JAR gerado pelo módulo http-tool (copiado no build para download)
+web/public/downloads/*.jar
+!web/public/downloads/.gitkeep
+
 .DS_Store
 
 # Local credentials, WAL sidecars and browser test artifacts

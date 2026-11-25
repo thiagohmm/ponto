@@ -36,6 +36,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: sudo apt-get update && sudo apt-get install -y zsh postgresql-client
+      - run: mvn -B -f http-tool/pom.xml verify
+      - run: mkdir -p web/public/downloads && cp http-tool/target/ponto-http.jar web/public/downloads/
       - run: npm --prefix web ci
       - run: npm --prefix web test
       - run: npm --prefix web run build

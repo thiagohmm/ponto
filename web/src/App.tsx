@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, LoginPage, RequireAuth, useAuth } from "./Auth";
 import { CompanyBar, CompanyProvider, useCompany } from "./Company";
@@ -8,16 +8,40 @@ import { BrandMark } from "./ui/BrandMark";
 import { ConfirmProvider } from "./ui/Confirm";
 
 // Uma aba = um arquivo. O carregamento inicial leva só a casca e a tela que o
-// usuário abriu; notas, kanban, exportação e configurações vêm quando pedidas.
-const HomePage = lazy(() => import("./pages/Home").then((m) => ({ default: m.HomePage })));
-const FormPage = lazy(() => import("./pages/Form").then((m) => ({ default: m.FormPage })));
-const SumPage = lazy(() => import("./pages/Sum").then((m) => ({ default: m.SumPage })));
-const DiarioPage = lazy(() => import("./pages/Diario").then((m) => ({ default: m.DiarioPage })));
-const NotesPage = lazy(() => import("./pages/Notes").then((m) => ({ default: m.NotesPage })));
-const KanbanPage = lazy(() => import("./pages/Kanban").then((m) => ({ default: m.KanbanPage })));
-const ExportPage = lazy(() => import("./pages/Export").then((m) => ({ default: m.ExportPage })));
-const ConfigPage = lazy(() => import("./pages/Config").then((m) => ({ default: m.ConfigPage })));
-const CofrePage = lazy(() => import("./pages/Cofre").then((m) => ({ default: m.CofrePage })));
+// usuário abriu; notas, kanban, exportação e configurações vêm quando pedidas
+// (e pré-carregam no hover/focus da barra lateral).
+const LOADERS = {
+  "/": () => import("./pages/Home"),
+  "/novo": () => import("./pages/Form"),
+  "/soma": () => import("./pages/Sum"),
+  "/diario": () => import("./pages/Diario"),
+  "/notas": () => import("./pages/Notes"),
+  "/kanban": () => import("./pages/Kanban"),
+  "/exportar": () => import("./pages/Export"),
+  "/config": () => import("./pages/Config"),
+  "/cofre": () => import("./pages/Cofre"),
+  "/http": () => import("./pages/HttpClient"),
+} as const;
+
+function prefetchRoute(path: string) {
+  const key = path === "/" ? "/"
+    : path.startsWith("/edit") ? "/novo"
+    : path.startsWith("/notas") ? "/notas"
+    : (path as keyof typeof LOADERS);
+  const loader = LOADERS[key as keyof typeof LOADERS];
+  if (loader) void loader();
+}
+
+const HomePage = lazy(() => LOADERS["/"]().then((m) => ({ default: m.HomePage })));
+const FormPage = lazy(() => LOADERS["/novo"]().then((m) => ({ default: m.FormPage })));
+const SumPage = lazy(() => LOADERS["/soma"]().then((m) => ({ default: m.SumPage })));
+const DiarioPage = lazy(() => LOADERS["/diario"]().then((m) => ({ default: m.DiarioPage })));
+const NotesPage = lazy(() => LOADERS["/notas"]().then((m) => ({ default: m.NotesPage })));
+const KanbanPage = lazy(() => LOADERS["/kanban"]().then((m) => ({ default: m.KanbanPage })));
+const ExportPage = lazy(() => LOADERS["/exportar"]().then((m) => ({ default: m.ExportPage })));
+const ConfigPage = lazy(() => LOADERS["/config"]().then((m) => ({ default: m.ConfigPage })));
+const CofrePage = lazy(() => LOADERS["/cofre"]().then((m) => ({ default: m.CofrePage })));
+const HttpClientPage = lazy(() => LOADERS["/http"]().then((m) => ({ default: m.HttpClientPage })));
 
 function Ico({ path }: { path: string }) {
   return (
@@ -37,9 +61,15 @@ const TABS = [
   { to: "/exportar", label: "Exportar", path: "M12 4v12M8 12l4 4 4-4M5 20h14" },
   { to: "/config", label: "Configurações", path: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 3v2M12 19v2M4.2 6.2l1.4 1.4M18.4 16.4l1.4 1.4M3 12h2M19 12h2M4.2 17.8l1.4-1.4M18.4 7.6l1.4-1.4" },
   { to: "/cofre", label: "Cofre", path: "M6 10h12v11H6zM9 10V7a3 3 0 0 1 6 0v3" },
+  { to: "/http", label: "HTTP", path: "M4 8h16M4 16h16M8 4v16M16 4v16" },
 ] as const;
 
 export function App() {
+  const loc = useLocation();
+  // Start downloading the active route chunk while /api/me is still in flight.
+  useEffect(() => {
+    if (loc.pathname !== "/login") prefetchRoute(loc.pathname);
+  }, [loc.pathname]);
   return (
     <AuthProvider>
       <Routes>
@@ -66,7 +96,9 @@ function Shell() {
         ? "Tudo o que aconteceu no dia — ponto, notas, kanban e um resumo com IA."
         : loc.pathname === "/cofre"
           ? "Passwords guardados encrypted. One master password, no recovery."
-          : "Organize sua rotina e acompanhe cada hora.";
+          : loc.pathname === "/http"
+            ? "Cliente HTTP local: a requisição sai da sua máquina, não do servidor."
+            : "Organize sua rotina e acompanhe cada hora.";
   return (
     <ConfirmProvider><UnsavedProvider><Connection /><CompanyProvider>
       <div className={vault ? "workspace notes-workspace" : kanban ? "workspace kanban-workspace" : "workspace"}>
@@ -80,6 +112,7 @@ function Shell() {
           <p className="nav-caption">ESPAÇO DE TRABALHO</p>
           <nav id="main-navigation" className="side-nav" aria-label="Navegação principal">
             {TABS.map(t => <NavLink key={t.to} to={t.to} end={"end" in t ? t.end : false}
+              onMouseEnter={() => prefetchRoute(t.to)} onFocus={() => prefetchRoute(t.to)}
               onClick={() => setMenu(false)} className={({ isActive }) => isActive || (t.to === "/novo" && editing) ? "active" : ""}>
               <Ico path={t.path} />{t.label}
             </NavLink>)}
@@ -128,6 +161,7 @@ function Pages() {
         <Route path="/exportar" element={<ExportPage />} />
         <Route path="/config" element={<ConfigPage />} />
         <Route path="/cofre" element={<CofrePage />} />
+        <Route path="/http" element={<HttpClientPage />} />
       </Routes>
     </Suspense>
   );

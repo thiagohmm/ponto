@@ -4,8 +4,10 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -37,11 +39,28 @@ public final class Holidays {
 
     /** One year, built once and kept: date -> the day off on it. */
     private static final ConcurrentHashMap<Integer, Map<LocalDate, Off>> YEARS = new ConcurrentHashMap<>();
+    private static final Off OWN_OFF = new Off("sua folga", false);
 
     /** Days the user calls off too (`c config`, key `off`). */
     private final java.util.function.Supplier<List<LocalDate>> extras;
+    private final java.util.function.Supplier<Set<LocalDate>> extraSet;
 
-    public Holidays(java.util.function.Supplier<List<LocalDate>> extras) { this.extras = extras; }
+    public Holidays(java.util.function.Supplier<List<LocalDate>> extras) {
+        this(extras, null);
+    }
+
+    public Holidays(java.util.function.Supplier<List<LocalDate>> extras,
+                    java.util.function.Supplier<Set<LocalDate>> extraSet) {
+        this.extras = extras;
+        this.extraSet = extraSet;
+    }
+
+    /** Snapshot of the user's extra days off as a Set (fast O(1) membership). */
+    public Set<LocalDate> extraDays() {
+        if (extraSet != null) return extraSet.get();
+        List<LocalDate> list = extras.get();
+        return list.isEmpty() ? Set.of() : new HashSet<>(list);
+    }
 
     /** One day off: what it is called, and whether the whole day is off. */
     record Off(String label, boolean optional) {
@@ -64,7 +83,12 @@ public final class Holidays {
 
     /** "" on a working day; otherwise what to say after the date. */
     public String off(LocalDate d) {
-        Off o = year(d.getYear()).get(d);
+        return off(d, extraDays());
+    }
+
+    /** Zero-allocation lookup for hot loops that already hold the extraDays set. */
+    public String off(LocalDate d, Set<LocalDate> extraDays) {
+        Off o = (extraDays != null && extraDays.contains(d)) ? OWN_OFF : of(d.getYear()).get(d);
         if (o == null) return weekend(d) ? "fim de semana" : "";
         return o.text() + (weekend(d) ? "   ·   fim de semana" : "");
     }
@@ -78,17 +102,20 @@ public final class Holidays {
     public List<String> next(int n) {
         List<String> r = new ArrayList<>();
         LocalDate today = ponto.model.Time.today();
+        Set<LocalDate> own = extraDays();
         for (int step = 0; step < 2 && r.size() < n; step++) {
-            for (var e : year(today.getYear() + step).entrySet()) {
+            for (var e : year(today.getYear() + step, own).entrySet()) {
                 if (!e.getKey().isBefore(today)) r.add(Str.d(e.getKey()) + "   " + e.getValue().text());
             }
         }
         return r.stream().limit(n).toList();
     }
 
-    private Map<LocalDate, Off> year(int year) {
-        TreeMap<LocalDate, Off> days = new TreeMap<>(of(year));
-        for (LocalDate d : extras.get()) if (d.getYear() == year) days.put(d, new Off("sua folga", false));
+    private Map<LocalDate, Off> year(int year, Set<LocalDate> own) {
+        Map<LocalDate, Off> base = of(year);
+        if (own.isEmpty()) return base;
+        TreeMap<LocalDate, Off> days = new TreeMap<>(base);
+        for (LocalDate d : own) if (d.getYear() == year) days.put(d, OWN_OFF);
         return days;
     }
 

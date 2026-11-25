@@ -86,6 +86,8 @@ without reopening the page — the balance asks for confirmation over
 overlapping pairs.
 
 ```sh
+mvn -f http-tool/pom.xml package
+mkdir -p web/public/downloads && cp http-tool/target/ponto-http.jar web/public/downloads/
 npm --prefix web ci && npm --prefix web run build   # writes web/dist; Maven packages it
 mvn package
 ./ponto --serve --port=8090
@@ -180,6 +182,24 @@ and a verifier — no plaintext, no hints, no "last used", nothing to hand over.
 
 The Java and the browser implementations are pinned to the same bytes by `test/vault-fixtures.json`, and
 `test/vault-node.mjs` (WebCrypto in Node) is the third implementation both test suites must agree with.
+
+### Cliente HTTP local (`ponto-http`)
+
+APIs só alcançáveis da sua rede/VPN não funcionam se a chamada sair do servidor.
+A aba **HTTP** na web oferece o JAR `ponto-http` (bytecode Java 17, roda em JDK 17–25).
+Na sua máquina:
+
+```sh
+java -jar ponto-http.jar          # UI em http://127.0.0.1:1984
+java -jar ponto-http.jar --port=9090
+java -jar ponto-http.jar --no-open
+```
+
+O JAR usa `java.net.http.HttpClient` localmente (importar curl, headers, body).
+A **collection** fica em disco (`~/.local/share/ponto-http/collection.json`, ou
+`%LOCALAPPDATA%\ponto-http` no Windows) — qualquer browser em `http://127.0.0.1:1984`
+vê os mesmos requests. No **WSL2**, abre o browser do Windows e pode mapear `localhost`
+da URL de destino para o IP do host Windows. Módulo e testes: `http-tool/`.
 
 ## Data
 

@@ -9,7 +9,6 @@ import ponto.model.Dur;
 import ponto.model.Entry;
 import ponto.model.Holidays;
 import ponto.model.Parse;
-import ponto.model.Period;
 import ponto.model.Report;
 import ponto.model.Str;
 import ponto.model.Time;
@@ -34,6 +33,11 @@ import java.util.function.Supplier;
  * Holds the shared JDBC lock with the rest of the application services.
  */
 public final class TimesheetApp {
+
+    public record BankSnapshot(Service.Bank bank, List<Service.BankDay> days, List<Service.MonthSaldo> months) { }
+
+    public record EntriesPage(List<Entry> entries, Service.Totals totals, long total, long overtime,
+                              List<LocalDate> faltas, List<LocalDate> normais) { }
 
     private final Db db;
     private final Repo repo;
@@ -62,9 +66,8 @@ public final class TimesheetApp {
     public void registerOff(Consumer<String> bad) {
         synchronized (lock) { Service.offDates(company.get().off(), bad); }
     }
-    private void applyOff() { applyOff(s -> { }); }
-    private void applyOff(Consumer<String> bad) { Service.offDates(company.get().off(), bad); }
 
+    public Repo.Stats stats() { synchronized (lock) { return repo.stats(); } }
     public int count() { synchronized (lock) { return repo.count(); } }
     public LocalDate min() { synchronized (lock) { return repo.min(); } }
     public LocalDate max() { synchronized (lock) { return repo.max(); } }
@@ -114,7 +117,6 @@ public final class TimesheetApp {
     public Entry create(LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean closeOpen, boolean confirmMidnight, boolean confirmOverlap) {
         synchronized (lock) {
-            applyOff();
             if (tin == null && tout == null && (just == null || just.isBlank()))
                 throw new Bad("nada digitado");
             List<Entry> same = repo.on(dia);
@@ -137,7 +139,6 @@ public final class TimesheetApp {
     public Entry update(int id, LocalDate dia, LocalTime tin, LocalTime tout, String just,
                  boolean confirmMidnight, boolean confirmOverlap) {
         synchronized (lock) {
-            applyOff();
             Entry e = repo.byId(id);
             String j = just == null ? "" : just;
             Entry now = new Entry(e.id(), dia, tin, tout, j, e.crea());
@@ -158,26 +159,31 @@ public final class TimesheetApp {
 
     public HomeView home() {
         synchronized (lock) {
-            applyOff();
-            LocalDate from = Time.today().withDayOfMonth(1);
-            LocalDate to = Time.today();
+            LocalDate today = Time.today();
+            LocalDate from = today.withDayOfMonth(1);
+            List<Entry> monthRows = repo.between(from, today);
             long mins = 0;
-            for (Entry e : repo.between(from, to)) if (e.min() > 0) mins += e.min();
+            for (Entry e : monthRows) if (e.min() > 0) mins += e.min();
             List<Entry> half = repo.openAll().stream().filter(Entry::open).toList();
             String since = "";
             if (!half.isEmpty() && half.getFirst().dia().isBefore(from))
                 since = Str.d(half.getFirst().dia());
-            LocalDate min = repo.min(), max = repo.max();
+            Repo.Stats st = repo.stats();
             Company c = company.get();
-            Service.Bank b = bank();
+            int daily = dailyMinutes(c);
+            Repo.DayFlags flags = repo.allFlags();
+            Set<LocalDate> fl = new HashSet<>(flags.faltas());
+            Set<LocalDate> nm = new HashSet<>(flags.normais());
+            Set<LocalDate> extraOff = calendar.extraDays();
+            Service.Bank b = computeBank(YearMonth.from(today), today, daily, dayMins(monthRows), fl, nm, extraOff);
             return new HomeView(
-                    who.get(), c.name(), c.id(), repo.count(),
+                    who.get(), c.name(), c.id(), st.count(),
                     mins, Dur.hm(mins), Str.n(mins / 60.0),
                     b.saldoLabel(), b.saldoMins(), b.planLabel(), b.neg(),
                     half.size(), since, Service.maskDbUrl(db.url),
-                    min == null ? "" : Str.iso(min),
-                    max == null ? "" : Str.iso(max),
-                    Str.d(min), Str.d(max));
+                    st.min() == null ? "" : Str.iso(st.min()),
+                    st.max() == null ? "" : Str.iso(st.max()),
+                    Str.d(st.min()), Str.d(st.max()));
         }
     }
 
@@ -202,13 +208,7 @@ public final class TimesheetApp {
 
     public Service.Totals listTotals(String q, String filter) {
         synchronized (lock) {
-            long mins = 0;
-            int open = 0;
-            for (Entry e : rows(q, filter)) {
-                if (e.min() > 0) mins += e.min();
-                if (!e.closed()) open++;
-            }
-            return new Service.Totals(mins, open);
+            return computeTotals(rows(q, filter));
         }
     }
 
@@ -218,22 +218,67 @@ public final class TimesheetApp {
 
     public Service.FilteredRange filteredRange(LocalDate from, LocalDate to, String query, int n, int skip) {
         synchronized (lock) {
-            applyOff();
             var matches = repo.search(query).stream()
                 .filter(e -> !e.dia().isBefore(from) && !e.dia().isAfter(to)).toList();
-            long minutes = matches.stream().mapToLong(e -> Math.max(0, e.min())).sum();
-            int open = (int) matches.stream().filter(e -> !e.closed()).count();
-            var mins = dayMins(matches);
-            var faltas = new HashSet<>(repo.flags("falta", "%"));
-            var normais = new HashSet<>(repo.flags("normal", "%"));
+            Service.Totals tot = computeTotals(matches);
+            Repo.DayFlags flags = repo.allFlags();
+            Set<LocalDate> fl = new HashSet<>(flags.faltas());
+            Set<LocalDate> nm = new HashSet<>(flags.normais());
+            Set<LocalDate> extraOff = calendar.extraDays();
+            long daily = dailyMinutes();
+            LocalDate today = Time.today();
             long overtime = 0;
-            for (var day : mins.entrySet()) {
-                if (!day.getKey().isAfter(Time.today()))
-                    overtime += BankRules.day(day.getValue(), dailyMinutes(), faltas.contains(day.getKey()),
-                        normais.contains(day.getKey()), !calendar.off(day.getKey()).isEmpty(), true);
+            for (var day : dayMins(matches).entrySet()) {
+                if (!day.getKey().isAfter(today))
+                    overtime += BankRules.day(day.getValue(), daily, fl.contains(day.getKey()),
+                        nm.contains(day.getKey()), !calendar.off(day.getKey(), extraOff).isEmpty(), true);
             }
-            return new Service.FilteredRange(matches.stream().skip(Math.max(0, skip)).limit(Math.max(0, n)).toList(),
-                new Service.Totals(minutes, open), matches.size(), overtime);
+            return new Service.FilteredRange(slice(matches, n, skip), tot, matches.size(), overtime);
+        }
+    }
+
+    /** Single-pass range query for GET /api/entries?from=...&to=... (2 SQL queries total). */
+    public EntriesPage entriesRange(LocalDate from, LocalDate to, String query, int n, int skip) {
+        synchronized (lock) {
+            Repo.DayFlags flags = repo.allFlags();
+            Set<LocalDate> fl = new HashSet<>(flags.faltas());
+            Set<LocalDate> nm = new HashSet<>(flags.normais());
+            Set<LocalDate> extraOff = calendar.extraDays();
+            long daily = dailyMinutes();
+            LocalDate today = Time.today();
+            if (query != null && !query.isBlank()) {
+                var matches = repo.search(query).stream()
+                        .filter(e -> !e.dia().isBefore(from) && !e.dia().isAfter(to)).toList();
+                Service.Totals tot = computeTotals(matches);
+                long overtime = 0;
+                for (var day : dayMins(matches).entrySet()) {
+                    if (!day.getKey().isAfter(today))
+                        overtime += BankRules.day(day.getValue(), daily, fl.contains(day.getKey()),
+                                nm.contains(day.getKey()), !calendar.off(day.getKey(), extraOff).isEmpty(), true);
+                }
+                return new EntriesPage(slice(matches, n, skip), tot, matches.size(), overtime, flags.faltas(), flags.normais());
+            }
+            List<Entry> all = repo.between(from, to);
+            Service.Totals tot = computeTotals(all);
+            long overtime = computeSaldoBetween(from, to, today, daily, dayMins(all), fl, nm, extraOff);
+            return new EntriesPage(slice(all, n, skip), tot, all.size(), overtime, flags.faltas(), flags.normais());
+        }
+    }
+
+    /** Single-pass filtered/unfiltered list for GET /api/entries (2 SQL queries total). */
+    public EntriesPage entriesList(String q, String filter, int n, int skip) {
+        synchronized (lock) {
+            Repo.DayFlags flags = repo.allFlags();
+            Set<LocalDate> fl = new HashSet<>(flags.faltas());
+            Set<LocalDate> nm = new HashSet<>(flags.normais());
+            Set<LocalDate> extraOff = calendar.extraDays();
+            long daily = dailyMinutes();
+            LocalDate today = Time.today();
+            List<Entry> all = rows(q, filter);
+            Service.Totals tot = computeTotals(all);
+            long ot = computeOvertime(q, filter, all, today, daily, fl, nm, extraOff);
+            List<Entry> page = (q != null && !q.isBlank()) ? all : slice(all, n, skip);
+            return new EntriesPage(page, tot, all.size(), ot, flags.faltas(), flags.normais());
         }
     }
 
@@ -242,54 +287,62 @@ public final class TimesheetApp {
     }
 
     public Service.Totals totalsBetween(LocalDate from, LocalDate to) {
-        synchronized (lock) {
-            long mins = 0;
-            int open = 0;
-            for (Entry e : repo.between(from, to)) {
-                if (e.min() > 0) mins += e.min();
-                if (!e.closed()) open++;
-            }
-            return new Service.Totals(mins, open);
-        }
+        synchronized (lock) { return computeTotals(repo.between(from, to)); }
     }
 
     public long overtimeBetween(LocalDate from, LocalDate to) {
-        synchronized (lock) {
-            applyOff();
-            return saldoBetween(from, to);
-        }
+        synchronized (lock) { return saldoBetween(from, to); }
     }
 
     public int dailyMinutes() {
-        synchronized (lock) {
-            try { return Service.parseDailyMins(company.get().daily()); }
-            catch (Bad e) { return Service.DEFAULT_DAILY_MINS; }
-        }
+        synchronized (lock) { return dailyMinutes(company.get()); }
+    }
+
+    private static int dailyMinutes(Company c) {
+        try { return Service.parseDailyMins(c.daily()); }
+        catch (Bad e) { return Service.DEFAULT_DAILY_MINS; }
     }
 
     public long overtime(String q, String filter) {
         synchronized (lock) {
-            applyOff();
-            long daily = dailyMinutes();
-            List<Entry> rows = rows(q, filter);
-            Map<LocalDate, Long> mins = dayMins(rows);
-            Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
-            Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"));
-            LocalDate today = Time.today();
-            Set<LocalDate> days = new HashSet<>();
-            for (LocalDate d : mins.keySet()) if (!d.isAfter(today)) days.add(d);
-            if (q == null || q.isBlank()) {
-                String pattern = (filter == null || filter.isBlank()) ? "%" : Parse.like(filter).pattern();
-                for (LocalDate d : fl) if (!d.isAfter(today) && like(pattern, d)) days.add(d);
-            }
-            long sum = 0;
-            for (LocalDate d : days) {
-                long m = mins.getOrDefault(d, 0L);
-                sum += BankRules.day(m, daily, fl.contains(d), nm.contains(d),
-                               !calendar.off(d).isEmpty(), mins.containsKey(d));
-            }
-            return sum;
+            Repo.DayFlags flags = repo.allFlags();
+            return computeOvertime(q, filter, rows(q, filter), Time.today(), dailyMinutes(),
+                    new HashSet<>(flags.faltas()), new HashSet<>(flags.normais()), calendar.extraDays());
         }
+    }
+
+    private long computeOvertime(String q, String filter, List<Entry> rows, LocalDate today, long daily,
+                                 Set<LocalDate> fl, Set<LocalDate> nm, Set<LocalDate> extraOff) {
+        Map<LocalDate, Long> mins = dayMins(rows);
+        Set<LocalDate> days = new HashSet<>();
+        for (LocalDate d : mins.keySet()) if (!d.isAfter(today)) days.add(d);
+        if (q == null || q.isBlank()) {
+            String pattern = (filter == null || filter.isBlank()) ? "%" : Parse.like(filter).pattern();
+            for (LocalDate d : fl) if (!d.isAfter(today) && like(pattern, d)) days.add(d);
+        }
+        long sum = 0;
+        for (LocalDate d : days) {
+            long m = mins.getOrDefault(d, 0L);
+            sum += BankRules.day(m, daily, fl.contains(d), nm.contains(d),
+                    !calendar.off(d, extraOff).isEmpty(), mins.containsKey(d));
+        }
+        return sum;
+    }
+
+    private static Service.Totals computeTotals(List<Entry> rows) {
+        long mins = 0;
+        int open = 0;
+        for (Entry e : rows) {
+            if (e.min() > 0) mins += e.min();
+            if (!e.closed()) open++;
+        }
+        return new Service.Totals(mins, open);
+    }
+
+    private static List<Entry> slice(List<Entry> rows, int n, int skip) {
+        int from = Math.min(rows.size(), Math.max(0, skip));
+        int to = Math.min(rows.size(), from + Math.max(0, n));
+        return rows.subList(from, to);
     }
 
     private static Map<LocalDate, Long> dayMins(List<Entry> rows) {
@@ -308,94 +361,139 @@ public final class TimesheetApp {
         return iso.equals(p);
     }
 
-    private long saldoBetween(LocalDate from, LocalDate to) {
-        LocalDate end = to.isAfter(Time.today()) ? Time.today() : to;
+    private long computeSaldoBetween(LocalDate from, LocalDate to, LocalDate today, long daily,
+                                     Map<LocalDate, Long> mins, Set<LocalDate> fl, Set<LocalDate> nm,
+                                     Set<LocalDate> extraOff) {
+        LocalDate end = to.isAfter(today) ? today : to;
         if (from.isAfter(end)) return 0;
-        long daily = dailyMinutes();
-        Map<LocalDate, Long> mins = dayMins(repo.between(from, end));
-        Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
-        Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"));
         long sum = 0;
         for (LocalDate d = from; !d.isAfter(end); d = d.plusDays(1)) {
             long m = mins.getOrDefault(d, 0L);
             sum += BankRules.day(m, daily, fl.contains(d), nm.contains(d),
-                           !calendar.off(d).isEmpty(), mins.containsKey(d));
+                    !calendar.off(d, extraOff).isEmpty(), mins.containsKey(d));
         }
         return sum;
     }
 
+    private long saldoBetween(LocalDate from, LocalDate to) {
+        LocalDate today = Time.today();
+        LocalDate end = to.isAfter(today) ? today : to;
+        if (from.isAfter(end)) return 0;
+        Repo.DayFlags flags = repo.allFlags();
+        return computeSaldoBetween(from, to, today, dailyMinutes(), dayMins(repo.between(from, end)),
+                new HashSet<>(flags.faltas()), new HashSet<>(flags.normais()), calendar.extraDays());
+    }
+
     public long monthSaldo(YearMonth ym) {
-        synchronized (lock) {
-            applyOff();
-            return saldoBetween(ym.atDay(1), ym.atEndOfMonth());
-        }
+        synchronized (lock) { return saldoBetween(ym.atDay(1), ym.atEndOfMonth()); }
     }
 
     public Service.Bank bank() { return bank(Time.month()); }
 
     public Service.Bank bank(YearMonth ym) {
         synchronized (lock) {
-            applyOff();
-            long saldo = saldoBetween(ym.atDay(1), ym.atEndOfMonth());
             LocalDate today = Time.today();
-            int remaining = 0;
-            if (!ym.atEndOfMonth().isBefore(today)) {
-                LocalDate from = ym.atDay(1).isAfter(today) ? ym.atDay(1) : today;
-                Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
-                Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"));
-                for (LocalDate d = from; !d.isAfter(ym.atEndOfMonth()); d = d.plusDays(1)) {
-                    if (fl.contains(d)) continue;
-                    if (!calendar.off(d).isEmpty() && !nm.contains(d)) continue;
-                    remaining++;
-                }
-            }
-            int planMins = 0;
-            String planLabel = "";
-            if (saldo != 0 && remaining > 0) {
-                planMins = (int) Math.round(-saldo / (double) remaining);
-                if (planMins == 0) planMins = saldo > 0 ? -1 : 1;
-                long a = Math.abs(planMins);
-                planLabel = a + (planMins < 0 ? " min a menos/dia" : " min a mais/dia");
-            }
-            return new Service.Bank(ym, saldo, Dur.signed(saldo), dailyMinutes(),
-                            remaining, planMins, planLabel, saldo < 0);
+            LocalDate from = ym.atDay(1), end = ym.atEndOfMonth().isAfter(today) ? today : ym.atEndOfMonth();
+            Map<LocalDate, Long> mins = from.isAfter(end) ? Map.of() : dayMins(repo.between(from, end));
+            Repo.DayFlags flags = repo.allFlags();
+            return computeBank(ym, today, dailyMinutes(), mins,
+                    new HashSet<>(flags.faltas()), new HashSet<>(flags.normais()), calendar.extraDays());
         }
+    }
+
+    private Service.Bank computeBank(YearMonth ym, LocalDate today, int daily, Map<LocalDate, Long> mins,
+                                     Set<LocalDate> fl, Set<LocalDate> nm, Set<LocalDate> extraOff) {
+        long saldo = computeSaldoBetween(ym.atDay(1), ym.atEndOfMonth(), today, daily, mins, fl, nm, extraOff);
+        int remaining = 0;
+        if (!ym.atEndOfMonth().isBefore(today)) {
+            LocalDate from = ym.atDay(1).isAfter(today) ? ym.atDay(1) : today;
+            for (LocalDate d = from; !d.isAfter(ym.atEndOfMonth()); d = d.plusDays(1)) {
+                if (fl.contains(d)) continue;
+                if (!calendar.off(d, extraOff).isEmpty() && !nm.contains(d)) continue;
+                remaining++;
+            }
+        }
+        int planMins = 0;
+        String planLabel = "";
+        if (saldo != 0 && remaining > 0) {
+            planMins = (int) Math.round(-saldo / (double) remaining);
+            if (planMins == 0) planMins = saldo > 0 ? -1 : 1;
+            long a = Math.abs(planMins);
+            planLabel = a + (planMins < 0 ? " min a menos/dia" : " min a mais/dia");
+        }
+        return new Service.Bank(ym, saldo, Dur.signed(saldo), daily, remaining, planMins, planLabel, saldo < 0);
     }
 
     public List<Service.BankDay> bankDays(YearMonth ym) {
         synchronized (lock) {
-            applyOff();
             LocalDate today = Time.today();
             LocalDate from = ym.atDay(1), to = ym.atEndOfMonth();
             if (from.isAfter(today)) return List.of();
             Map<LocalDate, Long> mins = dayMins(repo.between(from, to));
-            Set<LocalDate> fl = new HashSet<>(repo.flags("falta", "%"));
-            Set<LocalDate> nm = new HashSet<>(repo.flags("normal", "%"));
-            List<Service.BankDay> out = new ArrayList<>();
-            for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
-                boolean falta = fl.contains(d);
-                boolean normal = nm.contains(d);
-                String off = calendar.off(d);
-                String kind = falta ? "falta"
-                           : off.isEmpty() || normal ? "work"
-                           : off.startsWith("weekend") ? "weekend"
-                           : off.startsWith("holiday:") ? "holiday"
-                           : off.startsWith("optional:") ? "optional" : "off";
-                out.add(new Service.BankDay(d, mins.getOrDefault(d, 0L), falta, normal, kind));
-            }
-            return out;
+            Repo.DayFlags flags = repo.allFlags();
+            return computeBankDays(ym, today, mins,
+                    new HashSet<>(flags.faltas()), new HashSet<>(flags.normais()), calendar.extraDays());
         }
+    }
+
+    private List<Service.BankDay> computeBankDays(YearMonth ym, LocalDate today, Map<LocalDate, Long> mins,
+                                                  Set<LocalDate> fl, Set<LocalDate> nm, Set<LocalDate> extraOff) {
+        LocalDate from = ym.atDay(1), to = ym.atEndOfMonth();
+        if (from.isAfter(today)) return List.of();
+        List<Service.BankDay> out = new ArrayList<>(ym.lengthOfMonth());
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            boolean falta = fl.contains(d);
+            boolean normal = nm.contains(d);
+            String off = calendar.off(d, extraOff);
+            String kind = falta ? "falta"
+                       : off.isEmpty() || normal ? "work"
+                       : off.startsWith("weekend") ? "weekend"
+                       : off.startsWith("holiday:") ? "holiday"
+                       : off.startsWith("optional:") ? "optional" : "off";
+            out.add(new Service.BankDay(d, mins.getOrDefault(d, 0L), falta, normal, kind));
+        }
+        return List.copyOf(out);
     }
 
     public List<Service.MonthSaldo> history(YearMonth ym, int n) {
         synchronized (lock) {
-            applyOff();
-            List<Service.MonthSaldo> out = new ArrayList<>();
-            for (int i = n - 1; i >= 0; i--) {
-                YearMonth m = ym.minusMonths(i);
-                out.add(new Service.MonthSaldo(m, saldoBetween(m.atDay(1), m.atEndOfMonth())));
-            }
-            return out;
+            LocalDate today = Time.today();
+            LocalDate start = ym.minusMonths(Math.max(0, n - 1)).atDay(1);
+            LocalDate end = ym.atEndOfMonth().isAfter(today) ? today : ym.atEndOfMonth();
+            Map<LocalDate, Long> mins = start.isAfter(end) ? Map.of() : dayMins(repo.between(start, end));
+            Repo.DayFlags flags = repo.allFlags();
+            return computeHistory(ym, n, today, dailyMinutes(), mins,
+                    new HashSet<>(flags.faltas()), new HashSet<>(flags.normais()), calendar.extraDays());
+        }
+    }
+
+    private List<Service.MonthSaldo> computeHistory(YearMonth ym, int n, LocalDate today, int daily,
+                                                    Map<LocalDate, Long> mins, Set<LocalDate> fl, Set<LocalDate> nm,
+                                                    Set<LocalDate> extraOff) {
+        List<Service.MonthSaldo> out = new ArrayList<>(n);
+        for (int i = n - 1; i >= 0; i--) {
+            YearMonth m = ym.minusMonths(i);
+            out.add(new Service.MonthSaldo(m, computeSaldoBetween(m.atDay(1), m.atEndOfMonth(), today, daily, mins, fl, nm, extraOff)));
+        }
+        return List.copyOf(out);
+    }
+
+    /** Complete bank + month days + 12-month history in just 2 SQL queries (down from ~450+). */
+    public BankSnapshot bankSnapshot(YearMonth ym, int historyMonths) {
+        synchronized (lock) {
+            LocalDate today = Time.today();
+            LocalDate start = ym.minusMonths(Math.max(0, historyMonths - 1)).atDay(1);
+            LocalDate to = ym.atEndOfMonth();
+            Map<LocalDate, Long> mins = dayMins(repo.between(start, to));
+            Repo.DayFlags flags = repo.allFlags();
+            Set<LocalDate> fl = new HashSet<>(flags.faltas());
+            Set<LocalDate> nm = new HashSet<>(flags.normais());
+            Set<LocalDate> extraOff = calendar.extraDays();
+            int daily = dailyMinutes();
+            Service.Bank b = computeBank(ym, today, daily, mins, fl, nm, extraOff);
+            List<Service.BankDay> days = computeBankDays(ym, today, mins, fl, nm, extraOff);
+            List<Service.MonthSaldo> months = computeHistory(ym, historyMonths, today, daily, mins, fl, nm, extraOff);
+            return new BankSnapshot(b, days, months);
         }
     }
 
@@ -418,7 +516,6 @@ public final class TimesheetApp {
 
     public String normalWarn(LocalDate d) {
         synchronized (lock) {
-            applyOff();
             if (repo.flagOn(d, "falta")) return "o dia também tem falta — a falta ganha";
             if (calendar.off(d).isEmpty()) return "o dia não é dia off (sem efeito)";
             return "batidas pagam a jornada (não somam banco)";
@@ -427,7 +524,6 @@ public final class TimesheetApp {
 
     public String faltaWarn(LocalDate d) {
         synchronized (lock) {
-            applyOff();
             String off = calendar.off(d);
             if (!off.isEmpty()) return "dia off (" + off + ")   ·   a falta deduz a jornada";
             for (Entry e : repo.on(d)) if (e.closed()) return "o dia já tem batidas (a falta não muda o saldo)";
@@ -447,15 +543,11 @@ public final class TimesheetApp {
     }
 
     public String holiday(LocalDate d) {
-        synchronized (lock) {
-            applyOff();
-            return calendar.off(d);
-        }
+        synchronized (lock) { return calendar.off(d); }
     }
 
     public Report report(LocalDate from, LocalDate to) {
         synchronized (lock) {
-            applyOff();
             LocalDate today = Time.today();
             String plano = (!from.isAfter(today) && !to.isBefore(today)) ? bank().planLabel() : "";
             return reports.create(from, to, saldoBetween(from, to), plano);
@@ -464,7 +556,6 @@ public final class TimesheetApp {
 
     public Map<String, Object> dayInfo(LocalDate dia) {
         synchronized (lock) {
-            applyOff();
             List<Entry> rows = repo.on(dia);
             long mins = 0;
             for (Entry e : rows) if (e.min() > 0) mins += e.min();

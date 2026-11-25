@@ -56,7 +56,7 @@ async function authReq<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  me: () => authReq<{ user: string }>("/me"),
+  me: () => authReq<{ user: string; activeId?: number; companies?: Company[] }>("/me"),
   login: (user: string, password: string) =>
     authReq<{ ok: boolean; user: string }>("/login", { method: "POST", body: JSON.stringify({ user, password }) }),
   logout: () => authReq<{ ok: boolean }>("/logout", { method: "POST" }),
@@ -224,4 +224,9 @@ export const api = {
   /** A new master password: the whole vault comes back re-sealed, in one request. */
   vaultRekey: (body: { kdf: string; salt: string; iterations: number; check: string; items: { id: number; blob: string; revision: number }[] }) =>
     req<VaultMeta>("/vault/rekey", { method: "POST", body: JSON.stringify(body) }),
+
+  // ---- ponto-http collection (shared curls / requests) ---------------------
+  httpClientCollection: () => req<Record<string, unknown>>("/http-client/collection"),
+  saveHttpClientCollection: (body: unknown) =>
+    req<Record<string, unknown>>("/http-client/collection", { method: "PUT", body: JSON.stringify(body) }),
 };

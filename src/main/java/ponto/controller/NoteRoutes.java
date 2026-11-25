@@ -147,7 +147,12 @@ final class NoteRoutes {
         Service svc = service.apply(ctx);
         int id = ctx.pathParamAsClass("id", Integer.class).get();
         svc.noteById(id);
-        ctx.json(Map.of("files", svc.listNoteFiles(id).stream().map(f -> fileJson(svc, f)).toList()));
+        Map<Integer, String> states = svc.noteFileStates(id);
+        ctx.json(Map.of("files", svc.listNoteFiles(id).stream().map(f -> {
+            var json = Json.json(f);
+            json.put("state", states.getOrDefault(f.id(), "ready"));
+            return json;
+        }).toList()));
     }
 
     private void fileUpload(Context ctx) {
