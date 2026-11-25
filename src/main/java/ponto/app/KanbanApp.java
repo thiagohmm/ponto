@@ -36,4 +36,5 @@ public final class KanbanApp {
     public KanbanCard unblockCard(int id) { return store.unblockCard(id); }
     public KanbanCard byId(int id) { return store.byId(id); }
     public void deleteCard(int id) { store.deleteCard(id); }
+    public List<String> activityOn(String iso) { return store.activityOn(iso); }
 }

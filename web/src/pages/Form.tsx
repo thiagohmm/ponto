@@ -5,6 +5,8 @@ import { api } from "../api";
 import { justCategory, loadJustCategories } from "../justTaxonomy";
 import { maskTime, nowHm, plusHour, timeOk } from "../mask";
 import { useAssist } from "../useAssist";
+import { useCompany } from "../Company";
+import { readKanbanTitles, writeKanbanTitles } from "../kanbanCache";
 import type { DayInfo, Entry } from "../types";
 import { ApiError } from "../types";
 
@@ -22,6 +24,9 @@ export function FormPage() {
   const nav = useNavigate();
   const editing = Boolean(id);
   const { available: assistOn } = useAssist();
+  const { active } = useCompany();
+  const companyId = active?.id ?? 0;
+  const [kanbanTitles, setKanbanTitles] = useState<string[]>([]);
   const [dia, setDia] = useState(todayIso());
   const [tin, setTin] = useState("");
   const [tout, setTout] = useState("");
@@ -77,6 +82,30 @@ export function FormPage() {
     }).catch(() => { if (!cancelled) setDay(null); });
     return () => { cancelled = true; };
   }, [dia, editing]);
+
+  // "Kafeine": títulos das tarefas do kanban tocadas no dia (5 dias de cache).
+  // Dia corrente sempre revalida na API; dias passados usam o cache até expirar.
+  useEffect(() => {
+    if (!dia) return;
+    let cancelled = false;
+    const cached = readKanbanTitles(companyId, dia);
+    setKanbanTitles(cached ?? []);
+    if (cached && dia !== todayIso()) return;
+    api.kanbanActivity(dia).then((r) => {
+      if (cancelled) return;
+      const titles = r.titles ?? [];
+      setKanbanTitles(titles);
+      writeKanbanTitles(companyId, dia, titles);
+    }).catch(() => { /* offline/erro: mantém o cache, se houver */ });
+    return () => { cancelled = true; };
+  }, [dia, companyId]);
+
+  function gerarJustificativa() {
+    const existing = just.split("\n").map((l) => l.trim().toLocaleLowerCase("pt-BR"));
+    const add = kanbanTitles.filter((t) => !existing.includes(t.trim().toLocaleLowerCase("pt-BR")));
+    if (add.length === 0) return;
+    setJust(just.trim() ? just.replace(/\s+$/, "") + "\n" + add.join("\n") : add.join("\n"));
+  }
 
   useEffect(() => {
     if (!assistOn) {
@@ -194,6 +223,13 @@ export function FormPage() {
         </label>
         <label className="span2">Justificativa
           <textarea rows={3} value={just} onChange={(e) => setJust(e.target.value)} />
+          <div className="row" style={{ marginTop: 6 }}>
+            <button className="btn" type="button" disabled={kanbanTitles.length === 0}
+              title={kanbanTitles.length === 0
+                ? "sem atividade no kanban neste dia"
+                : "acrescenta as tarefas do kanban deste dia à justificativa"}
+              onClick={gerarJustificativa}>Gerar justificativa</button>
+          </div>
           {assistOn && (justCat || justPhrases.length > 0) && (
             <div className="assist-just" aria-live="polite">
               {justCat && (

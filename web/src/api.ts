@@ -150,6 +150,8 @@ export const api = {
     req<Tag>("/tags/" + id, { method: "PUT", body: JSON.stringify(body) }),
   removeTag: (id: number) => req<{ ok: boolean }>("/tags/" + id, { method: "DELETE" }),
   kanban: () => req<KanbanBoard>("/kanban"),
+  kanbanActivity: (dia: string) =>
+    req<{ dia: string; titles: string[] }>("/kanban/activity?dia=" + encodeURIComponent(dia)),
   createKanbanColumn: (body: { name: string }) =>
     req<KanbanColumn>("/kanban/columns", { method: "POST", body: JSON.stringify(body) }),
   updateKanbanColumn: (id: number, body: { name?: string; position?: number }) =>

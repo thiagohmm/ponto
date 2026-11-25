@@ -295,6 +295,7 @@ final class VaultStoreTest {
         // A v6-shaped database: today's schema minus the vault, version rolled back to 6,
         // with a punch already stored so "the upgrade kept my data" is testable.
         try (Db db = Db.open(dir, url)) {
+            db.exec("DROP TABLE kanban_activity");
             db.exec("DROP TABLE vault_item");
             db.exec("DROP TABLE vault_meta");
             db.exec("UPDATE schema_migrations SET version = 6");

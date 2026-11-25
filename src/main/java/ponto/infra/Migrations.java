@@ -13,7 +13,7 @@ import java.sql.Statement;
  * with the final version half-way through.
  */
 public final class Migrations {
-    public static final int VERSION = 7;
+    public static final int VERSION = 8;
 
     static void apply(Db db) {
         int version = 0;
@@ -42,6 +42,15 @@ public final class Migrations {
         if (version == 6) {
             db.transaction(() -> {
                 createVault(db);
+                // Record 7, not 8: the next step still has to run.
+                db.exec("UPDATE schema_migrations SET version = 7");
+                return null;
+            });
+            version = 7;
+        }
+        if (version == 7) {
+            db.transaction(() -> {
+                createKanbanActivity(db);
                 db.exec("UPDATE schema_migrations SET version = " + VERSION);
                 return null;
             });
@@ -131,6 +140,8 @@ public final class Migrations {
                 + "reason TEXT NOT NULL, " + created + ", cleared TEXT, " + company + ", "
                 + "UNIQUE(id, company_id), FOREIGN KEY(card_id, company_id) REFERENCES kanban_card(id, company_id))");
 
+        createKanbanActivity(db);
+
         db.exec("CREATE TABLE kanban_card_file ("
                 + "id BIGSERIAL PRIMARY KEY, card_id INTEGER NOT NULL REFERENCES kanban_card(id) ON DELETE CASCADE, "
                 + "name TEXT NOT NULL DEFAULT '', key TEXT NOT NULL UNIQUE, "
@@ -166,6 +177,22 @@ public final class Migrations {
                 + "RETURN NEW; END $$ LANGUAGE plpgsql");
         db.exec("CREATE TRIGGER trg_note_tag_company BEFORE INSERT ON note_tag "
                 + "FOR EACH ROW EXECUTE FUNCTION check_note_tag_company()");
+    }
+
+    /**
+     * Kanban day activity ("kafeine"): one row per move into Em andamento/Feito,
+     * block or edit. Titles are snapshotted at event time; rows older than
+     * 5 days are pruned by KanbanStore on every write.
+     */
+    static void createKanbanActivity(Db db) {
+        String created = "crea TEXT NOT NULL DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI')";
+        String company = "company_id INTEGER NOT NULL REFERENCES company(id)";
+        db.exec("CREATE TABLE kanban_activity ("
+                + "id BIGSERIAL PRIMARY KEY, card_id INTEGER NOT NULL REFERENCES kanban_card(id) ON DELETE CASCADE, "
+                + "title TEXT NOT NULL DEFAULT '', "
+                + "kind TEXT NOT NULL CHECK(kind IN ('moved','blocked','edited')), "
+                + "column_name TEXT NOT NULL DEFAULT '', " + created + ", " + company + ")");
+        db.exec("CREATE INDEX ix_kanban_activity_company_crea ON kanban_activity(company_id, crea)");
     }
 
     static void createDayDigest(Db db) {

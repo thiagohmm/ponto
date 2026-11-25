@@ -22,6 +22,7 @@ final class KanbanRoutes {
 
     void register(Javalin app) {
         app.get("/api/kanban", this::board);
+        app.get("/api/kanban/activity", this::activity);
         app.post("/api/kanban/columns", this::columnCreate);
         app.put("/api/kanban/columns/{id}", this::columnUpdate);
         app.delete("/api/kanban/columns/{id}", this::columnDelete);
@@ -42,6 +43,16 @@ final class KanbanRoutes {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("columns", svc.kanbanColumns().stream().map(Json::json).toList());
         out.put("cards", svc.kanbanCards().stream().map(Json::json).toList());
+        ctx.json(out);
+    }
+
+    /** Titles of the cards touched on a day — feeds the "Gerar justificativa" button. */
+    private void activity(Context ctx) {
+        Service svc = service.apply(ctx);
+        java.time.LocalDate dia = Service.parseDate(ctx.queryParam("dia"), ponto.model.Time.today());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("dia", ponto.model.Str.iso(dia));
+        out.put("titles", svc.kanbanActivity(dia));
         ctx.json(out);
     }
 

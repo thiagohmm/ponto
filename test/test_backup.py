@@ -159,7 +159,7 @@ class BackupTest(unittest.TestCase):
             body = query('SELECT body FROM note')
             self.assertEqual(NOTE_BODY, body)
             version = query('SELECT version FROM schema_migrations')
-            self.assertEqual('7', version)
+            self.assertEqual('8', version)
 
             # 5) corruption detection: a broken archive aborts the restore
             (snapshot / 'minio.tar.gz').write_bytes(b'corrupted')

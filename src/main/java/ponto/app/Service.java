@@ -216,6 +216,8 @@ public final class Service {
     }
     public KanbanCard unblockKanbanCard(int id) { return kanban.unblockCard(id); }
     public KanbanCard kanbanCardById(int id) { return kanban.byId(id); }
+    /** Distinct kanban card titles touched on the day ("kafeine", 5-day retention). */
+    public List<String> kanbanActivity(java.time.LocalDate dia) { return kanban.activityOn(Str.iso(dia)); }
 
     // ---- vault ---------------------------------------------------------------
     // The vault is one: a single master password opens every company's records.

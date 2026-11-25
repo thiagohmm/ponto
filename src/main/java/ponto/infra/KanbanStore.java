@@ -22,6 +22,9 @@ public final class KanbanStore {
     private static final String COL_COLS = "id, name, position, crea";
     private static final String CARD_COLS = "id, column_id, title, body, done, position, revision, crea, upd";
 
+    /** "Kafeine" retention: day activity older than this is pruned on every write. */
+    public static final int ACTIVITY_TTL_DAYS = 5;
+
     private final Db db;
     private final Object lock;
 
@@ -98,7 +101,9 @@ public final class KanbanStore {
                   nz(title), nz(body), nz(done), id, cid(), revision);
             if (changed == 0)
                 throw new ponto.Conflict("Este cartão foi alterado em outro acesso. Recarregue e tente de novo.");
-            return mustCard(id);
+            KanbanCard next = mustCard(id);
+            recordActivity(next, "edited");
+            return next;
         }
     }
 
@@ -116,6 +121,7 @@ public final class KanbanStore {
                 if (why.length() > 500) throw new ponto.Bad("motivo longo demais");
                 insert("INSERT INTO kanban_block(card_id, kind, reason, company_id) VALUES(?,?,?,?)",
                         id, parsed.code(), why, cid());
+                recordActivity(card, "blocked");
                 return mustCard(id);
             });
         }
@@ -151,7 +157,11 @@ public final class KanbanStore {
                     write("UPDATE kanban_card SET column_id=?, position=? WHERE id=? AND company_id=?",
                           columnId, i, next.get(i).id(), cid());
                 }
-                if (oldCol != columnId) renumberCards(oldCol);
+                if (oldCol != columnId) {
+                    renumberCards(oldCol);
+                    String targetName = mustColumn(columnId).name();
+                    if (inProgress(targetName) || done(targetName)) recordActivity(card, "moved");
+                }
                 return mustCard(id);
             });
         }
@@ -171,6 +181,31 @@ public final class KanbanStore {
 
     public KanbanCard byId(int id) {
         synchronized (lock) { return mustCard(id); }
+    }
+
+    /**
+     * Distinct card titles with day activity (moved into Em andamento/Feito,
+     * blocked or edited) on the ISO day, oldest event first. Titles are the
+     * snapshot taken at event time.
+     */
+    public List<String> activityOn(String iso) {
+        synchronized (lock) {
+            List<String> out = new ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            String sql = "SELECT title FROM kanban_activity WHERE company_id=? AND crea LIKE ? ORDER BY id";
+            try (var q = prep(sql)) {
+                q.setInt(1, cid());
+                q.setString(2, iso + "%");
+                try (var rs = q.executeQuery()) {
+                    while (rs.next()) {
+                        String title = nz(rs.getString("title")).trim();
+                        if (title.isEmpty()) continue;
+                        if (seen.add(title.toLowerCase(Locale.ROOT))) out.add(title);
+                    }
+                }
+            } catch (SQLException e) { throw new Problema(clean(e)); }
+            return out;
+        }
     }
 
     private void reorderColumns(int id, int position) {
@@ -284,6 +319,17 @@ public final class KanbanStore {
                 return out;
             }
         } catch (SQLException e) { throw new Problema(clean(e)); }
+    }
+
+    /**
+     * Snapshots one day-activity event (title as it is now) and prunes the
+     * "kafeine" history past {@link #ACTIVITY_TTL_DAYS} days. Caller holds the lock.
+     */
+    private void recordActivity(KanbanCard card, String kind) {
+        insert("INSERT INTO kanban_activity(card_id, title, kind, column_name, company_id) VALUES(?,?,?,?,?)",
+                card.id(), card.title(), kind, normalizeName(mustColumn(card.columnId()).name()), cid());
+        write("DELETE FROM kanban_activity WHERE company_id=? "
+                + "AND crea < to_char(now() - interval '" + ACTIVITY_TTL_DAYS + " days', 'YYYY-MM-DD')", cid());
     }
 
     static String normalizeName(String name) {

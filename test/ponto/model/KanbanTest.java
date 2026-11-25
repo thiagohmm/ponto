@@ -13,6 +13,7 @@ import ponto.NotFound;
 import ponto.TestDb;
 
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -164,6 +165,101 @@ class KanbanTest {
             KanbanCard next = s.updateKanbanCard(card.id(), "T", "desc", "implementei X", card.revision());
             assertEquals("implementei X", next.done());
             assertEquals("implementei X", s.kanbanCardById(card.id()).done());
+        }
+    }
+
+    @Test void activityTracksMovesBlocksAndEditsPerDay() {
+        try (Db db = TestDb.open(dir)) {
+            Service s = new Service(db);
+            List<KanbanColumn> cols = s.kanbanColumns();
+            int todo = cols.get(0).id();
+            int doing = cols.get(1).id();
+            int done = cols.get(2).id();
+            LocalDate today = Time.today();
+
+            KanbanCard card = s.createKanbanCard("Update versão java", "", todo);
+            assertTrue(s.kanbanActivity(today).isEmpty(), "criar cartão não é atividade do dia");
+
+            s.moveKanbanCard(card.id(), doing, 0);
+            assertEquals(List.of("Update versão java"), s.kanbanActivity(today));
+
+            // reorder inside the same column and move to A fazer generate nothing new
+            KanbanCard other = s.createKanbanCard("Outro", "", doing);
+            s.moveKanbanCard(other.id(), doing, 0);
+            s.moveKanbanCard(other.id(), todo, 0);
+            assertEquals(List.of("Update versão java"), s.kanbanActivity(today));
+
+            // block counts; repeated events dedupe by title
+            s.blockKanbanCard(card.id(), "tecnico", "sem ambiente");
+            s.unblockKanbanCard(card.id());
+            s.moveKanbanCard(card.id(), done, 0);
+            assertEquals(List.of("Update versão java"), s.kanbanActivity(today));
+
+            // edit counts and snapshots the new title
+            KanbanCard edited = s.updateKanbanCard(other.id(), "Corrigir bug X", "corpo", "", other.revision());
+            assertEquals("Corrigir bug X", edited.title());
+            assertEquals(List.of("Update versão java", "Corrigir bug X"), s.kanbanActivity(today));
+
+            // another day has no activity
+            assertTrue(s.kanbanActivity(today.minusDays(1)).isEmpty());
+            assertTrue(s.kanbanActivity(today.plusDays(1)).isEmpty());
+        }
+    }
+
+    @Test void activityIsScopedByCompany() {
+        try (Db db = TestDb.open(dir)) {
+            Service root = new Service(db);
+            int a = root.companyId();
+            int b = root.createCompany("Outra", "", "").id();
+            Service sa = root.forCompany(a);
+            Service sb = root.forCompany(b);
+            LocalDate today = Time.today();
+
+            KanbanCard card = sa.createKanbanCard("Tarefa A", "", sa.kanbanColumns().get(0).id());
+            sa.moveKanbanCard(card.id(), sa.kanbanColumns().get(1).id(), 0);
+            assertEquals(List.of("Tarefa A"), sa.kanbanActivity(today));
+            assertTrue(sb.kanbanActivity(today).isEmpty());
+        }
+    }
+
+    @Test void activityPrunesRowsOlderThanFiveDays() {
+        try (Db db = TestDb.open(dir)) {
+            Service s = new Service(db);
+            List<KanbanColumn> cols = s.kanbanColumns();
+            int todo = cols.get(0).id();
+            int doing = cols.get(1).id();
+            LocalDate today = Time.today();
+
+            KanbanCard card = s.createKanbanCard("Antiga", "", todo);
+            s.moveKanbanCard(card.id(), doing, 0);
+            assertEquals(List.of("Antiga"), s.kanbanActivity(today));
+
+            // age the event beyond the 5-day retention
+            db.exec("UPDATE kanban_activity SET crea = to_char(now() - interval '6 days', 'YYYY-MM-DD HH24:MI')");
+            assertTrue(s.kanbanActivity(today).isEmpty(), "consulta por dia não vê evento antigo");
+
+            // any new write prunes the expired rows for good
+            KanbanCard fresh = s.createKanbanCard("Nova", "", todo);
+            s.moveKanbanCard(fresh.id(), doing, 0);
+            assertEquals(List.of("Nova"), s.kanbanActivity(today));
+            try (var q = db.conn().prepareStatement("SELECT count(*) FROM kanban_activity");
+                 var rs = q.executeQuery()) {
+                assertTrue(rs.next());
+                assertEquals(1, rs.getInt(1), "evento expirado foi podado");
+            } catch (java.sql.SQLException e) { throw new RuntimeException(e); }
+        }
+    }
+
+    @Test void deletingCardRemovesItsActivity() {
+        try (Db db = TestDb.open(dir)) {
+            Service s = new Service(db);
+            int todo = s.kanbanColumns().get(0).id();
+            int doing = s.kanbanColumns().get(1).id();
+            KanbanCard card = s.createKanbanCard("Some", "", todo);
+            s.moveKanbanCard(card.id(), doing, 0);
+            assertEquals(List.of("Some"), s.kanbanActivity(Time.today()));
+            s.deleteKanbanCard(card.id());
+            assertTrue(s.kanbanActivity(Time.today()).isEmpty());
         }
     }
 
