@@ -37,11 +37,15 @@ final class HttpRoutes {
     }
 
     private void getKeepScreenOn(Context ctx) {
-        ctx.json(Map.of(
-                "supported", keepScreenOn != null && keepScreenOn.isSupported(),
-                "active", keepScreenOn != null && keepScreenOn.isActive(),
-                "starting", keepScreenOn != null && keepScreenOn.isStarting()
-        ));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("supported", keepScreenOn != null && keepScreenOn.isSupported());
+        out.put("active", keepScreenOn != null && keepScreenOn.isActive());
+        out.put("starting", keepScreenOn != null && keepScreenOn.isStarting());
+        String err = keepScreenOn == null ? null : keepScreenOn.lastError();
+        if (err != null && !err.isBlank()) {
+            out.put("error", err);
+        }
+        ctx.json(out);
     }
 
     private void putKeepScreenOn(Context ctx) {
@@ -56,10 +60,14 @@ final class HttpRoutes {
         } else {
             keepScreenOn.stop();
         }
-        ctx.json(Map.of(
-                "supported", true,
-                "active", keepScreenOn.isActive()
-        ));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("supported", true);
+        out.put("active", keepScreenOn.isActive());
+        String err = keepScreenOn.lastError();
+        if (err != null && !err.isBlank()) {
+            out.put("error", err);
+        }
+        ctx.json(out);
     }
 
     private void getCollection(Context ctx) {

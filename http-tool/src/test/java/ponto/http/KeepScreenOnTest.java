@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -26,6 +27,7 @@ class KeepScreenOnTest {
         assertFalse(k.isActive());
         assertFalse(k.start());
         assertFalse(k.isActive());
+        assertNull(k.lastError());
         k.stop();
     }
 
@@ -37,7 +39,7 @@ class KeepScreenOnTest {
     }
 
     @Test
-    void startIsIdempotentAndStopRestoresCleanly() throws Exception {
+    void startIsIdempotentAndStopRestoresCleanly() {
         AtomicInteger starts = new AtomicInteger();
         FakeProcess proc = new FakeProcess("OK\n", true);
         KeepScreenOn k = new KeepScreenOn("powershell.exe", cmd -> {
@@ -45,13 +47,15 @@ class KeepScreenOnTest {
             assertEquals("powershell.exe", cmd.get(0));
             assertTrue(cmd.contains("-NoProfile"));
             assertTrue(cmd.contains("-WindowStyle"));
-            assertTrue(cmd.get(cmd.size() - 1).contains("SetThreadExecutionState"));
+            assertTrue(cmd.contains("-EncodedCommand"));
+            assertFalse(cmd.contains("-Command"));
             return proc;
         }, 2);
 
         assertTrue(k.isSupported());
         assertTrue(k.start());
         assertTrue(k.isActive());
+        assertNull(k.lastError());
         assertEquals(1, starts.get());
 
         // Second start is a no-op while active
@@ -65,34 +69,53 @@ class KeepScreenOnTest {
     }
 
     @Test
-    void returnsFalseWhenHelperReportsError() {
+    void returnsFalseAndRecordsErrorWhenHelperReportsErr() {
         FakeProcess proc = new FakeProcess("ERR\n", false);
         KeepScreenOn k = new KeepScreenOn("powershell.exe", cmd -> proc, 2);
 
         assertFalse(k.start());
         assertFalse(k.isActive());
         assertFalse(proc.isAlive());
+        assertNotNull(k.lastError());
+        assertTrue(k.lastError().contains("SetThreadExecutionState"));
     }
 
     @Test
-    void returnsFalseWhenLauncherThrows() {
+    void capturesDiagnosticOutputWhenHelperFailsUnexpectedly() {
+        FakeProcess proc = new FakeProcess("Add-Type : compilation failed\n", false);
+        KeepScreenOn k = new KeepScreenOn("powershell.exe", cmd -> proc, 2);
+
+        assertFalse(k.start());
+        assertFalse(k.isActive());
+        assertNotNull(k.lastError());
+        assertTrue(k.lastError().contains("compilation failed"));
+    }
+
+    @Test
+    void returnsFalseAndRecordsErrorWhenLauncherThrows() {
         KeepScreenOn k = new KeepScreenOn("powershell.exe", cmd -> {
             throw new IOException("not found");
         }, 2);
 
         assertFalse(k.start());
         assertFalse(k.isActive());
+        assertEquals("not found", k.lastError());
     }
 
     @Test
-    void buildCommandIncludesFlagsAndWin32Constants() {
+    void buildCommandUsesEncodedUtf16LeWithWin32ConstantsAndRefreshLoop() {
         List<String> cmd = KeepScreenOn.buildCommand("powershell.exe");
-        String script = cmd.get(cmd.size() - 1);
+        assertTrue(cmd.contains("-EncodedCommand"));
+        assertFalse(cmd.contains("-Command"));
+        String encoded = cmd.get(cmd.size() - 1);
+        String script = new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_16LE);
+
         assertTrue(script.contains("0x80000000u"));
         assertTrue(script.contains("0x00000001u"));
         assertTrue(script.contains("0x00000002u"));
-        assertTrue(script.contains("kernel32.dll"));
+        assertTrue(script.contains("[DllImport(\"kernel32.dll\")]"));
         assertTrue(script.contains("SetThreadExecutionState"));
+        assertTrue(script.contains("ManualResetEventSlim"));
     }
 
     private static final class FakeProcess extends Process {

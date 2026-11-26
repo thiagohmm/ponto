@@ -142,7 +142,9 @@ public final class HttpTool {
                 if (keepScreenOn.start()) {
                     System.out.println("Tela mantida ligada (Windows). Use --no-keep-screen-on para desativar.");
                 } else {
-                    System.err.println("Aviso: não foi possível ativar o modo manter tela ligada.");
+                    String err = keepScreenOn.lastError();
+                    System.err.println("Aviso: não foi possível ativar o modo manter tela ligada"
+                            + (err != null && !err.isBlank() ? " (" + err + ")" : "") + ".");
                 }
             }, "keep-screen-on-init");
             t.setDaemon(true);
