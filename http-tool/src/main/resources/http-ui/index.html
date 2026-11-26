@@ -20,6 +20,7 @@
         </div>
         <div class="side-actions">
           <button type="button" class="icon-btn" id="btn-new" title="Nova requisição">+</button>
+          <button type="button" class="icon-btn" id="btn-folder" title="Nova pasta">📁</button>
           <button type="button" class="icon-btn" id="btn-curl" title="Importar curl">⤵</button>
           <button type="button" class="icon-btn" id="btn-sync" title="Sync com o Ponto (banco)">☁</button>
         </div>
@@ -83,8 +84,12 @@
             <div id="body-none" class="body-none hidden">No Body</div>
             <div id="body-editor-wrap" class="body-editor-wrap">
               <div class="body-gutter" aria-hidden="true" id="body-gutter">1</div>
-              <textarea id="body" class="body-editor" spellcheck="false" placeholder=""></textarea>
+              <div class="editor-stack">
+                <pre class="highlight-layer" id="body-highlight" aria-hidden="true"></pre>
+                <textarea id="body" class="body-editor" spellcheck="false" placeholder="" wrap="soft"></textarea>
+              </div>
             </div>
+            <p id="body-json-warn" class="json-warn hidden" role="alert"></p>
             <div id="body-form" class="body-form hidden">
               <div class="headers-head"><span></span><span>Key</span><span>Value</span><span></span></div>
               <div id="form-params"></div>
@@ -109,6 +114,18 @@
       </div>
     </main>
   </div>
+
+  <dialog id="folder-dialog">
+    <form method="dialog" class="curl-form">
+      <h2 id="folder-dialog-title">Onde colocar a requisição?</h2>
+      <p class="muted">Escolha a pasta de destino ou a raiz da collection.</p>
+      <div id="folder-dialog-list" class="folder-dialog-list" role="radiogroup"></div>
+      <div class="row">
+        <button type="button" class="btn" id="btn-folder-cancel">Cancelar</button>
+        <button type="button" class="btn primary" id="btn-folder-confirm">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="curl-dialog">
     <form method="dialog" class="curl-form">

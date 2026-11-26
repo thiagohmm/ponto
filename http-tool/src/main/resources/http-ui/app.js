@@ -17,6 +17,8 @@
   const bodyModeEl = $("body-mode");
   const bodyModeBar = $("body-mode-bar");
   const bodyNone = $("body-none");
+  const bodyHighlight = $("body-highlight");
+  const bodyWarn = $("body-json-warn");
   const bodyEditorWrap = $("body-editor-wrap");
   const bodyForm = $("body-form");
   const bodyGutter = $("body-gutter");
@@ -52,6 +54,124 @@
 
   function uid() {
     return "r_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  }
+
+  function folderUid() {
+    return "f_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  }
+
+  // —— Folders ——
+  function createFolder(name) {
+    const folder = { id: folderUid(), name: (name || "").trim() || "Nova pasta", collapsed: false };
+    state.folders.push(folder);
+    saveState();
+    renderCollection();
+    return folder;
+  }
+
+  function renameFolder(id, name) {
+    const folder = state.folders.find((f) => f.id === id);
+    if (!folder) return;
+    const trimmed = (name || "").trim();
+    folder.name = trimmed || folder.name;
+    saveState();
+    renderCollection();
+  }
+
+  function deleteFolder(id) {
+    const idx = state.folders.findIndex((f) => f.id === id);
+    if (idx < 0) return;
+    state.folders.splice(idx, 1);
+    state.items.forEach((it) => {
+      if (it.folderId === id) it.folderId = null;
+    });
+    saveState();
+    renderCollection();
+  }
+
+  function toggleFolder(id) {
+    const folder = state.folders.find((f) => f.id === id);
+    if (!folder) return;
+    folder.collapsed = !folder.collapsed;
+    saveState();
+    renderCollection();
+  }
+
+  function moveItem(itemId, folderId) {
+    const item = state.items.find((i) => i.id === itemId);
+    if (!item) return;
+    const target = folderId && state.folders.some((f) => f.id === folderId) ? folderId : null;
+    if (item.folderId === target) return;
+    item.folderId = target;
+    saveState();
+    renderCollection();
+  }
+
+  function folderById(id) {
+    return state.folders.find((f) => f.id === id) || null;
+  }
+
+  function itemsInFolder(folderId) {
+    return state.items.filter((i) => (i.folderId || null) === (folderId || null));
+  }
+
+  /**
+   * Opens the destination-folder dialog. Resolves with
+   * { ok: true, folderId: string|null } on confirm (null = raiz) or
+   * { ok: false } on cancel.
+   */
+  function promptFolder(title = "Onde colocar a requisição?") {
+    return new Promise((resolve) => {
+      const dialog = $("folder-dialog");
+      const titleEl = $("folder-dialog-title");
+      const list = $("folder-dialog-list");
+      titleEl.textContent = title;
+      list.innerHTML = "";
+      const rootLabel = document.createElement("label");
+      rootLabel.className = "folder-choice";
+      const rootInput = document.createElement("input");
+      rootInput.type = "radio";
+      rootInput.name = "folder-choice";
+      rootInput.value = "";
+      rootInput.checked = true;
+      rootLabel.appendChild(rootInput);
+      const rootText = document.createElement("span");
+      rootText.textContent = "Sem pasta (raiz)";
+      rootLabel.appendChild(rootText);
+      list.appendChild(rootLabel);
+      state.folders.forEach((f) => {
+        const label = document.createElement("label");
+        label.className = "folder-choice";
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "folder-choice";
+        input.value = f.id;
+        label.appendChild(input);
+        const text = document.createElement("span");
+        text.textContent = "📁 " + f.name;
+        label.appendChild(text);
+        list.appendChild(label);
+      });
+      const confirmBtn = $("btn-folder-confirm");
+      const cancelBtn = $("btn-folder-cancel");
+      const close = (result) => {
+        confirmBtn.removeEventListener("click", onConfirm);
+        cancelBtn.removeEventListener("click", onCancel);
+        dialog.removeEventListener("close", onClose);
+        dialog.close();
+        resolve(result);
+      };
+      const onConfirm = () => {
+        const checked = list.querySelector('input[name="folder-choice"]:checked');
+        close({ ok: true, folderId: checked ? (checked.value || null) : null });
+      };
+      const onCancel = () => close({ ok: false });
+      const onClose = () => close({ ok: false });
+      confirmBtn.addEventListener("click", onConfirm);
+      cancelBtn.addEventListener("click", onCancel);
+      dialog.addEventListener("close", onClose);
+      dialog.showModal();
+    });
   }
 
   function inferBodyMode(headers, body) {
@@ -96,16 +216,29 @@
       body,
       bodyMode,
       formParams,
+      folderId: partial.folderId ?? null,
     };
   }
 
   function emptyState() {
     const first = defaultRequest({ name: "Untitled Request" });
-    return { name: "Minha collection", activeId: first.id, items: [first] };
+    return { name: "Minha collection", activeId: first.id, items: [first], folders: [] };
   }
 
   function normalizeState(raw) {
     if (!raw || !Array.isArray(raw.items) || !raw.items.length) return emptyState();
+    raw.folders = Array.isArray(raw.folders) ? raw.folders : [];
+    const folderMap = new Map();
+    raw.folders.forEach((f) => {
+      if (!f || typeof f !== "object") return;
+      if (!f.id) f.id = folderUid();
+      if (!f.name || !String(f.name).trim()) f.name = "Pasta";
+      if (typeof f.collapsed !== "boolean") f.collapsed = false;
+      if (folderMap.has(f.id)) return; // keep first occurrence of duplicate ids
+      folderMap.set(f.id, f);
+    });
+    raw.folders = [...folderMap.values()];
+    const folderIds = new Set(folderMap.keys());
     raw.items.forEach((it) => {
       if (!it.id) it.id = uid();
       if (!it.bodyMode) it.bodyMode = inferBodyMode(it.headers, it.body);
@@ -114,11 +247,14 @@
           ? parseFormBody(it.body || "")
           : [{ name: "", value: "", enabled: true }];
       }
+      if (!it.folderId || !folderIds.has(it.folderId)) it.folderId = null;
     });
+    const activeId = raw.items.some((i) => i.id === raw.activeId) ? raw.activeId : raw.items[0].id;
     return {
       name: raw.name || "Minha collection",
-      activeId: raw.activeId || raw.items[0].id,
+      activeId,
       items: raw.items,
+      folders: raw.folders,
     };
   }
 
@@ -137,7 +273,7 @@
           headers: h.headers || [],
           body: h.body || "",
         }));
-        return { name: "Minha collection", activeId: items[0].id, items };
+        return { name: "Minha collection", activeId: items[0].id, items, folders: [] };
       }
     } catch { /* ignore */ }
     return null;
@@ -162,6 +298,7 @@
           name: state.name,
           activeId: state.activeId,
           items: state.items,
+          folders: state.folders,
         }),
       });
       const data = await res.json();
@@ -476,6 +613,9 @@
     else bodyEl.placeholder = "";
     if (syncHeader) setContentType(mode);
     syncGutter();
+    renderBodyHighlight();
+    if (mode === "json") scheduleJsonValidation();
+    else hideJsonWarn();
   }
 
   function currentBodyForSend() {
@@ -519,10 +659,27 @@
     syncGutter();
   }
 
+  collectionListEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  });
+  collectionListEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain");
+    if (id) moveItem(id, null);
+  });
+
   function selectItem(id) {
     state.activeId = id;
     saveState();
     const item = active();
+    if (item && item.folderId) {
+      const folder = folderById(item.folderId);
+      if (folder && folder.collapsed) {
+        folder.collapsed = false;
+        saveState();
+      }
+    }
     if (item) fillForm(item);
     renderCollection();
   }
@@ -554,35 +711,171 @@
     renderCollection();
   }
 
+  function matchesFilter(item, q) {
+    if (!q) return true;
+    return (
+      (item.name || "").toLowerCase().includes(q) ||
+      (item.url || "").toLowerCase().includes(q) ||
+      (item.method || "").toLowerCase().includes(q)
+    );
+  }
+
+  function renderItem(item) {
+    const btn = document.createElement("div");
+    btn.className = "col-item" + (item.id === state.activeId ? " active" : "");
+    btn.setAttribute("role", "listitem");
+    btn.draggable = true;
+    btn.innerHTML = `
+      <span class="m ${methodClass(item.method)}">${escapeHtml(item.method || "GET")}</span>
+      <span class="n">${escapeHtml(item.name || "Untitled")}</span>
+      <button type="button" class="del" title="Remover" aria-label="Remover">×</button>
+    `;
+    btn.addEventListener("click", () => selectItem(item.id));
+    btn.querySelector(".del").addEventListener("click", (e) => removeItem(item.id, e));
+    btn.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", item.id);
+      e.dataTransfer.effectAllowed = "move";
+      btn.classList.add("dragging");
+    });
+    btn.addEventListener("dragend", () => {
+      btn.classList.remove("dragging");
+      clearDropTargets();
+    });
+    return btn;
+  }
+
+  function clearDropTargets() {
+    collectionListEl.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
+  }
+
+  function setupDropTarget(section, folderId) {
+    section.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      section.classList.add("drop-target");
+    });
+    section.addEventListener("dragleave", (e) => {
+      if (!section.contains(e.relatedTarget)) section.classList.remove("drop-target");
+    });
+    section.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      section.classList.remove("drop-target");
+      const id = e.dataTransfer.getData("text/plain");
+      if (id) moveItem(id, folderId);
+    });
+  }
+
+  function startFolderRename(folder, nameEl) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "folder-rename";
+    input.value = folder.name;
+    input.spellcheck = false;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const commit = (save) => {
+      if (done) return;
+      done = true;
+      if (save) renameFolder(folder.id, input.value);
+      else renderCollection();
+    };
+    input.addEventListener("blur", () => commit(true));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(true); }
+      else if (e.key === "Escape") { e.preventDefault(); commit(false); }
+    });
+  }
+
+  function appendRootSection(rootItems, q) {
+    const section = document.createElement("div");
+    section.className = "folder-section root-section";
+    const head = document.createElement("div");
+    head.className = "folder-head root-head";
+    head.innerHTML = `<span class="folder-caret"></span><span class="folder-icon">⌂</span><span class="folder-name">Sem pasta</span><span class="folder-count">${rootItems.length}</span>`;
+    section.appendChild(head);
+    const list = document.createElement("div");
+    list.className = "folder-items";
+    rootItems.forEach((item) => list.appendChild(renderItem(item)));
+    section.appendChild(list);
+    setupDropTarget(section, null);
+    collectionListEl.appendChild(section);
+  }
+
+  function appendFolderSection(folder, items, q) {
+    const section = document.createElement("div");
+    section.className = "folder-section";
+    const head = document.createElement("div");
+    head.className = "folder-head";
+    const caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "folder-caret";
+    caret.textContent = folder.collapsed ? "▸" : "▾";
+    caret.title = folder.collapsed ? "Expandir" : "Recolher";
+    caret.addEventListener("click", (e) => { e.stopPropagation(); toggleFolder(folder.id); });
+    const icon = document.createElement("span");
+    icon.className = "folder-icon";
+    icon.textContent = "📁";
+    const name = document.createElement("span");
+    name.className = "folder-name";
+    name.textContent = folder.name;
+    name.title = "Duplo clique para renomear";
+    name.addEventListener("dblclick", () => startFolderRename(folder, name));
+    const count = document.createElement("span");
+    count.className = "folder-count";
+    count.textContent = String(items.length);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "folder-del";
+    del.title = "Excluir pasta (itens voltam para a raiz)";
+    del.setAttribute("aria-label", "Excluir pasta");
+    del.textContent = "×";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (confirm(`Excluir a pasta "${folder.name}"? Os itens voltam para a raiz.`)) {
+        deleteFolder(folder.id);
+      }
+    });
+    head.appendChild(caret);
+    head.appendChild(icon);
+    head.appendChild(name);
+    head.appendChild(count);
+    head.appendChild(del);
+    section.appendChild(head);
+    const list = document.createElement("div");
+    list.className = "folder-items" + (folder.collapsed ? " hidden" : "");
+    items.forEach((item) => list.appendChild(renderItem(item)));
+    section.appendChild(list);
+    setupDropTarget(section, folder.id);
+    collectionListEl.appendChild(section);
+  }
+
   function renderCollection() {
     const q = (filterEl.value || "").trim().toLowerCase();
     collectionNameEl.textContent = state.name || "Minha collection";
     collectionListEl.innerHTML = "";
-    const items = state.items.filter((i) => {
-      if (!q) return true;
-      return (
-        (i.name || "").toLowerCase().includes(q) ||
-        (i.url || "").toLowerCase().includes(q) ||
-        (i.method || "").toLowerCase().includes(q)
-      );
-    });
-    if (!items.length) {
+
+    const visibleItems = state.items.filter((i) => matchesFilter(i, q));
+    if (!visibleItems.length) {
       collectionListEl.innerHTML = `<p class="col-empty">Nenhuma requisição. Importe um curl ou crie uma nova.</p>`;
       return;
     }
-    items.forEach((item) => {
-      const btn = document.createElement("div");
-      btn.className = "col-item" + (item.id === state.activeId ? " active" : "");
-      btn.setAttribute("role", "listitem");
-      btn.innerHTML = `
-        <span class="m ${methodClass(item.method)}">${escapeHtml(item.method || "GET")}</span>
-        <span class="n">${escapeHtml(item.name || "Untitled")}</span>
-        <button type="button" class="del" title="Remover" aria-label="Remover">×</button>
-      `;
-      btn.addEventListener("click", () => selectItem(item.id));
-      btn.querySelector(".del").addEventListener("click", (e) => removeItem(item.id, e));
-      collectionListEl.appendChild(btn);
-    });
+
+    const hasFolders = state.folders.length > 0;
+    const rootItems = visibleItems.filter((i) => !i.folderId);
+
+    if (hasFolders) {
+      appendRootSection(rootItems, q);
+      state.folders.forEach((folder) => {
+        const items = visibleItems.filter((i) => i.folderId === folder.id);
+        if (q && !items.length) return; // esconder pastas vazias durante a busca
+        appendFolderSection(folder, items, q);
+      });
+    } else {
+      rootItems.forEach((item) => collectionListEl.appendChild(renderItem(item)));
+    }
   }
 
   function switchTab(name) {
@@ -610,26 +903,120 @@
       .replace(/"/g, "&quot;");
   }
 
-  function prettyBody(text, contentType) {
+  // —— JSON highlight / validation ——
+  const JSON_TOKEN = /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+
+  function highlightJson(text) {
     if (!text) return "";
-    const ct = (contentType || "").toLowerCase();
-    if (ct.includes("json") || /^\s*[\[{]/.test(text)) {
-      try {
-        return JSON.stringify(JSON.parse(text), null, 2);
-      } catch { /* keep raw */ }
+    let out = "";
+    let last = 0;
+    let m;
+    JSON_TOKEN.lastIndex = 0;
+    while ((m = JSON_TOKEN.exec(text)) !== null) {
+      out += escapeHtml(text.slice(last, m.index));
+      if (m[1] !== undefined) {
+        out += `<span class="tk-str">${escapeHtml(m[1])}</span>`;
+        if (m[2] !== undefined) out += `<span class="tk-punc">${escapeHtml(m[2])}</span>`;
+      } else if (m[3] !== undefined) {
+        out += `<span class="tk-bool">${escapeHtml(m[3])}</span>`;
+      } else if (m[0] === "null") {
+        out += `<span class="tk-null">${escapeHtml(m[0])}</span>`;
+      } else {
+        out += `<span class="tk-num">${escapeHtml(m[0])}</span>`;
+      }
+      last = m.index + m[0].length;
     }
-    return text;
+    out += escapeHtml(text.slice(last));
+    return out;
+  }
+
+  function renderBodyHighlight() {
+    if (!bodyHighlight || !bodyEl) return;
+    const isJson = bodyModeEl.value === "json";
+    bodyHighlight.classList.toggle("hidden", !isJson);
+    bodyEl.classList.toggle("json-mode", isJson);
+    if (!isJson) return;
+    bodyHighlight.innerHTML = highlightJson(bodyEl.value) + "\n";
+    syncEditorScroll();
+  }
+
+  function syncEditorScroll() {
+    if (bodyGutter) bodyGutter.scrollTop = bodyEl.scrollTop;
+    if (bodyHighlight) {
+      bodyHighlight.scrollTop = bodyEl.scrollTop;
+      bodyHighlight.scrollLeft = bodyEl.scrollLeft;
+    }
+  }
+
+  function showJsonWarn(message) {
+    if (!bodyWarn) return;
+    bodyWarn.textContent = message;
+    bodyWarn.classList.remove("hidden");
+  }
+
+  function hideJsonWarn() {
+    if (!bodyWarn) return;
+    bodyWarn.textContent = "";
+    bodyWarn.classList.add("hidden");
+  }
+
+  function jsonPositionDetail(text, message) {
+    const posMatch = message.match(/position\s+(\d+)/i);
+    if (posMatch) {
+      const pos = parseInt(posMatch[1], 10);
+      const before = text.slice(0, pos);
+      const line = before.split("\n").length;
+      const col = pos - before.lastIndexOf("\n");
+      return ` (linha ${line}, coluna ${col})`;
+    }
+    const lineMatch = message.match(/line\s+(\d+)\s+column\s+(\d+)/i);
+    if (lineMatch) return ` (linha ${lineMatch[1]}, coluna ${lineMatch[2]})`;
+    return "";
+  }
+
+  let bodyJsonTimer = null;
+
+  function validateBodyJson() {
+    if (bodyModeEl.value !== "json") { hideJsonWarn(); return; }
+    const text = bodyEl.value || "";
+    if (!text.trim()) { hideJsonWarn(); return; }
+    try {
+      JSON.parse(text);
+      hideJsonWarn();
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      showJsonWarn(`⚠ JSON inválido: ${msg}${jsonPositionDetail(text, msg)}`);
+    }
+  }
+
+  function scheduleJsonValidation() {
+    clearTimeout(bodyJsonTimer);
+    bodyJsonTimer = setTimeout(validateBodyJson, 200);
+  }
+
+  function renderResponseBody(raw, contentType) {
+    const text = raw || "";
+    const ct = (contentType || "").toLowerCase();
+    const looksJson = ct.includes("json") || /^\s*[\[{]/.test(text);
+    if (looksJson) {
+      try {
+        const pretty = JSON.stringify(JSON.parse(text), null, 2);
+        respBody.innerHTML = highlightJson(pretty);
+        return;
+      } catch { /* fall through to plain text */ }
+    }
+    respBody.textContent = text;
   }
 
   function prettify() {
     if (bodyModeEl.value !== "json") return;
     try {
       bodyEl.value = JSON.stringify(JSON.parse(bodyEl.value), null, 2);
+      renderBodyHighlight();
+      hideJsonWarn();
       persistFromForm();
     } catch (e) {
-      respError.textContent = "JSON inválido para Prettify.";
-      respError.classList.remove("hidden");
-      setTimeout(() => respError.classList.add("hidden"), 2500);
+      showJsonWarn(`⚠ JSON inválido para Prettify: ${e && e.message ? e.message : e}`);
     }
   }
 
@@ -725,7 +1112,7 @@
         if (data.bodyBase64) {
           respBody.textContent = `[binário base64]\n${data.body || ""}`;
         } else {
-          respBody.textContent = prettyBody(data.body || "", data.contentType);
+          renderResponseBody(data.body || "", data.contentType);
         }
         respHeaders.textContent = (data.headers || [])
           .map((h) => `${h.name}: ${h.value}`)
@@ -766,17 +1153,26 @@
       if (mode === "json" && body) {
         try { body = JSON.stringify(JSON.parse(body), null, 2); } catch { /* keep */ }
       }
-      addItem({
+      const pending = {
         name: requestTitle(data.method, data.url),
         method: data.method || "GET",
         url: data.url || "",
         headers: data.headers || [],
         body,
         bodyMode: mode,
-      });
-      switchTab(data.body || mode !== "none" ? "body" : "headers");
-      curlText.value = "";
+      };
+      // Fecha o dialog de curl e pergunta a pasta de destino. Ao cancelar,
+      // o texto do curl permanece intacto e o dialog de curl reabre.
       curlDialog.close();
+      const choice = await promptFolder("Onde colocar a requisição?");
+      if (!choice.ok) {
+        curlDialog.showModal();
+        curlText.focus();
+        return;
+      }
+      addItem({ ...pending, folderId: choice.folderId });
+      switchTab(pending.body || pending.bodyMode !== "none" ? "body" : "headers");
+      curlText.value = "";
     } catch (e) {
       curlError.textContent = e.message || String(e);
       curlError.classList.remove("hidden");
@@ -800,8 +1196,10 @@
   });
   $("btn-send").addEventListener("click", send);
   $("btn-prettify").addEventListener("click", prettify);
-  $("btn-new").addEventListener("click", () => {
-    addItem({ name: "Untitled Request" });
+  $("btn-new").addEventListener("click", async () => {
+    const choice = await promptFolder("Onde colocar a requisição?");
+    if (!choice.ok) return;
+    addItem({ name: "Untitled Request", folderId: choice.folderId });
     switchTab("headers");
   });
   $("btn-curl").addEventListener("click", () => {
@@ -810,6 +1208,13 @@
     curlText.focus();
   });
   $("btn-curl-apply").addEventListener("click", applyCurl);
+  $("btn-folder").addEventListener("click", () => {
+    const name = prompt("Nome da nova pasta:", "Nova pasta");
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    createFolder(trimmed);
+  });
   $("btn-sync").addEventListener("click", async () => {
     await loadSyncForm();
     $("sync-dialog").showModal();
@@ -840,6 +1245,8 @@
       const end = bodyEl.selectionEnd;
       bodyEl.value = bodyEl.value.slice(0, start) + "  " + bodyEl.value.slice(end);
       bodyEl.selectionStart = bodyEl.selectionEnd = start + 2;
+      renderBodyHighlight();
+      scheduleJsonValidation();
       persistFromForm();
     }
   });
@@ -850,10 +1257,12 @@
   urlEl.addEventListener("input", persistFromForm);
   bodyEl.addEventListener("input", () => {
     syncGutter();
+    renderBodyHighlight();
+    scheduleJsonValidation();
     persistFromForm();
   });
   bodyEl.addEventListener("scroll", () => {
-    bodyGutter.scrollTop = bodyEl.scrollTop;
+    syncEditorScroll();
   });
   reqNameEl.addEventListener("input", persistFromForm);
   filterEl.addEventListener("input", renderCollection);
