@@ -13,11 +13,13 @@ final class HttpRoutes {
     private final CollectionStore collection;
     private final RemoteSync remote;
     private final String windowsHost;
+    private final KeepScreenOn keepScreenOn;
 
-    HttpRoutes(CollectionStore collection, RemoteSync remote, String windowsHost) {
+    HttpRoutes(CollectionStore collection, RemoteSync remote, String windowsHost, KeepScreenOn keepScreenOn) {
         this.collection = collection;
         this.remote = remote;
         this.windowsHost = windowsHost == null || windowsHost.isBlank() ? null : windowsHost;
+        this.keepScreenOn = keepScreenOn;
     }
 
     void register(Javalin app) {
@@ -29,7 +31,35 @@ final class HttpRoutes {
         app.put("/api/remote", this::putRemote);
         app.post("/api/remote/pull", this::pullRemote);
         app.post("/api/remote/push", this::pushRemote);
+        app.get("/api/keep-screen-on", this::getKeepScreenOn);
+        app.put("/api/keep-screen-on", this::putKeepScreenOn);
         app.get("/api/health", ctx -> ctx.json(Map.of("ok", true)));
+    }
+
+    private void getKeepScreenOn(Context ctx) {
+        ctx.json(Map.of(
+                "supported", keepScreenOn != null && keepScreenOn.isSupported(),
+                "active", keepScreenOn != null && keepScreenOn.isActive(),
+                "starting", keepScreenOn != null && keepScreenOn.isStarting()
+        ));
+    }
+
+    private void putKeepScreenOn(Context ctx) {
+        if (keepScreenOn == null || !keepScreenOn.isSupported()) {
+            ctx.status(400).json(Map.of("error", "Recurso disponível apenas no Windows/WSL2."));
+            return;
+        }
+        Map<?, ?> body = ctx.bodyAsClass(Map.class);
+        boolean enabled = body != null && Boolean.TRUE.equals(body.get("enabled"));
+        if (enabled) {
+            keepScreenOn.start();
+        } else {
+            keepScreenOn.stop();
+        }
+        ctx.json(Map.of(
+                "supported", true,
+                "active", keepScreenOn.isActive()
+        ));
     }
 
     private void getCollection(Context ctx) {

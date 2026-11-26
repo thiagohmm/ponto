@@ -36,15 +36,19 @@ export function HttpClientPage() {
         Fonte da verdade: tabela <code>http_client_collection</code> no Postgres (por empresa).
         Cache local do JAR: <code>~/.local/share/ponto-http/</code>.
       </p>
-      <h2 style={{ marginTop: 24, fontSize: "1.05rem" }}>WSL2</h2>
+      <h2 style={{ marginTop: 24, fontSize: "1.05rem" }}>Windows e WSL2</h2>
       <p className="muted" style={{ lineHeight: 1.7 }}>
-        Se a API estiver no Windows, use a opção <em>localhost → Windows</em>. O browser do
-        Windows abre sozinho ao subir o JAR.
+        Enquanto o JAR estiver rodando no Windows ou WSL2, a tela e o sistema são mantidos
+        ligados automaticamente (restaurado ao sair com <code>Ctrl+C</code>). Se a API estiver
+        no Windows via WSL2, use a opção <em>localhost → Windows</em>; o browser do Windows
+        abre sozinho ao subir o JAR.
       </p>
       <p className="muted" style={{ marginTop: 12 }}>
         Porta alternativa: <code>java -jar ponto-http.jar --port=9090</code>
         {" · "}
         Sem abrir o browser: <code>--no-open</code>
+        {" · "}
+        Sem manter tela ligada: <code>--no-keep-screen-on</code>
       </p>
     </div>
   );

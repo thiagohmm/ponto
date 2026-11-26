@@ -11,9 +11,11 @@ import java.util.Map;
  *   java -jar ponto-http.jar
  *   java -jar ponto-http.jar --port=1984
  *   java -jar ponto-http.jar --no-open
+ *   java -jar ponto-http.jar --no-keep-screen-on
  *
  * Requires Java 17 or newer (through Java 25+). Works on WSL2 (opens the Windows
- * browser and can map localhost → Windows host for destination APIs).
+ * browser and can map localhost → Windows host for destination APIs). On Windows
+ * and WSL2, keeps the screen and system awake while running.
  */
 public final class HttpTool {
 
@@ -22,6 +24,7 @@ public final class HttpTool {
     public static void main(String[] args) {
         int port = DEFAULT_PORT;
         boolean openBrowser = true;
+        boolean keepScreenEnabled = true;
         for (String a : args) {
             if (a.startsWith("--port=")) {
                 try {
@@ -33,6 +36,8 @@ public final class HttpTool {
                 }
             } else if (a.equals("--no-open")) {
                 openBrowser = false;
+            } else if (a.equals("--no-keep-screen-on")) {
+                keepScreenEnabled = false;
             } else if (a.equals("--help") || a.equals("-h")) {
                 System.out.println("""
                         ponto-http — cliente HTTP local (Java 17+)
@@ -41,8 +46,11 @@ public final class HttpTool {
                           java -jar ponto-http.jar
                           java -jar ponto-http.jar --port=1984
                           java -jar ponto-http.jar --no-open
+                          java -jar ponto-http.jar --no-keep-screen-on
 
                         Abra http://127.0.0.1:<porta> no navegador.
+                        No Windows/WSL2, mantém a tela ligada enquanto o servidor roda
+                        (restaura automaticamente ao encerrar com Ctrl+C).
                         No WSL2, o browser do Windows é aberto automaticamente e
                         localhost nas URLs de destino pode ser mapeado para o host Windows.
                         """);
@@ -58,11 +66,13 @@ public final class HttpTool {
         String windowsHost = Wsl.windowsHostIp();
         CollectionStore collection = CollectionStore.defaultStore();
         RemoteSync remote = new RemoteSync(collection.path().getParent());
+        KeepScreenOn keepScreenOn = new KeepScreenOn();
         Map<String, Object> env = new LinkedHashMap<>();
         env.put("wsl", Wsl.isWsl());
         env.put("windowsHost", windowsHost == null ? "" : windowsHost);
         env.put("dataPath", collection.path().toString());
         env.put("defaultRemoteUrl", RemoteSync.DEFAULT_URL);
+        env.put("keepScreenOnSupported", keepScreenOn.isSupported());
 
         Javalin app = Javalin.create(cfg -> {
             cfg.showJavalinBanner = false;
@@ -76,7 +86,7 @@ public final class HttpTool {
             });
         });
 
-        new HttpRoutes(collection, remote, windowsHost).register(app);
+        new HttpRoutes(collection, remote, windowsHost, keepScreenOn).register(app);
         app.get("/api/env", ctx -> ctx.json(env));
 
         // Pull shared collection from Ponto DB on startup when credentials exist.
@@ -118,6 +128,27 @@ public final class HttpTool {
                 System.out.println("Host Windows (para APIs em localhost no Windows): " + windowsHost);
             }
         }
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (keepScreenOn.isActive()) {
+                keepScreenOn.stop();
+                System.out.println("Execução restabelecida. A tela poderá desligar normalmente.");
+            } else {
+                keepScreenOn.stop();
+            }
+        }, "keep-screen-on-shutdown"));
+
+        if (keepScreenEnabled && keepScreenOn.isSupported()) {
+            Thread t = new Thread(() -> {
+                if (keepScreenOn.start()) {
+                    System.out.println("Tela mantida ligada (Windows). Use --no-keep-screen-on para desativar.");
+                } else {
+                    System.err.println("Aviso: não foi possível ativar o modo manter tela ligada.");
+                }
+            }, "keep-screen-on-init");
+            t.setDaemon(true);
+            t.start();
+        }
+
         System.out.println("Ctrl+C para sair.");
 
         if (openBrowser) {

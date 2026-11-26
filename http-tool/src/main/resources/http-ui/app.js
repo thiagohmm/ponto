@@ -39,6 +39,8 @@
   const wslMapEl = $("wsl-map");
   const wslMapWrap = $("wsl-map-wrap");
   const wslBanner = $("wsl-banner");
+  const keepScreenEl = $("keep-screen");
+  const keepScreenWrap = $("keep-screen-wrap");
 
   let env = { wsl: false, windowsHost: "" };
   let state = emptyState();
@@ -641,8 +643,43 @@
         wslBanner.textContent =
           `WSL: localhost → ${env.windowsHost} (opção no rodapé).`;
       }
+      if (env.keepScreenOnSupported) {
+        await refreshKeepScreenOn();
+      }
     } catch { /* ignore */ }
   }
+
+  async function refreshKeepScreenOn() {
+    try {
+      const res = await fetch("/api/keep-screen-on");
+      const data = await res.json();
+      if (data.supported) {
+        keepScreenWrap.classList.remove("hidden");
+        keepScreenEl.checked = !!(data.active || data.starting);
+        if (data.starting) {
+          setTimeout(refreshKeepScreenOn, 1500);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  keepScreenEl.addEventListener("change", async () => {
+    const desired = keepScreenEl.checked;
+    keepScreenEl.disabled = true;
+    try {
+      const res = await fetch("/api/keep-screen-on", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: desired }),
+      });
+      const data = await res.json();
+      keepScreenEl.checked = !!data.active;
+    } catch {
+      keepScreenEl.checked = !desired;
+    } finally {
+      keepScreenEl.disabled = false;
+    }
+  });
 
   async function send() {
     persistFromForm();
